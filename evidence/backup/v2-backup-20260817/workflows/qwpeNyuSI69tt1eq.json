@@ -1,0 +1,160 @@
+{
+  "updatedAt": "2026-07-07T21:33:43.032Z",
+  "createdAt": "2026-07-07T21:33:43.032Z",
+  "id": "qwpeNyuSI69tt1eq",
+  "name": "MDAL_STEP0_TEST__status_webhook",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "mission-loop/status",
+        "options": {}
+      },
+      "name": "Status Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "96e8ef0b-a489-4611-94a0-7ea137fee723",
+      "webhookId": "d7d91b30-4906-4f44-89a2-98abaad53026"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "value": "={{ JSON.stringify() }}",
+              "name": "data"
+            }
+          ]
+        },
+        "keepOnlySet": true
+      },
+      "name": "Read status.json",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ],
+      "notes": "Reads the Phase 3A dashboard output. Safe alternative to Execute Command (disabled in n8n 2.0+).",
+      "id": "b204f4d3-662e-4ddc-ae8b-f6cc161b7be3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the file content into JSON\nconst fileData = $input.first().json.data;\nconst statusData = JSON.parse(fileData);\n\n// Route through status-router code node logic\nconst rawStatus = statusData.overall_status;\nconst status = (typeof rawStatus === 'string' && rawStatus.trim().length > 0)\n  ? String(rawStatus).trim().toUpperCase()\n  : 'UNKNOWN';\n\nlet route = 'UNKNOWN';\nlet severity = 'review';\nlet canNotify = false;\nlet canStartNextRun = false;\nlet requiredHumanReview = true;\n\nif (status === 'RED_BLOCK') {\n  route = 'BLOCK'; severity = 'critical'; canNotify = true;\n  canStartNextRun = false; requiredHumanReview = true;\n} else if (status === 'YELLOW_REVIEW' || status === 'NEEDS_VALIDATION') {\n  route = 'REVIEW'; severity = 'warning'; canNotify = true;\n  canStartNextRun = false; requiredHumanReview = true;\n} else if (status === 'GREEN_SAFE') {\n  route = 'GREEN'; severity = 'info'; canNotify = false;\n  canStartNextRun = true; requiredHumanReview = false;\n} else if (status === 'TOOL_GAP') {\n  route = 'TOOL_GAP'; severity = 'warning'; canNotify = true;\n  canStartNextRun = false; requiredHumanReview = true;\n} else if (status === 'STALE') {\n  route = 'STALE'; severity = 'info'; canNotify = true;\n  canStartNextRun = false; requiredHumanReview = true;\n} else {\n  route = 'UNKNOWN'; severity = 'review'; canNotify = true;\n  canStartNextRun = false; requiredHumanReview = true;\n}\n\nreturn [{ json: { ...statusData, route, severity, canNotify, canStartNextRun, requiredHumanReview } }];"
+      },
+      "name": "Parse & Status Route",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ],
+      "notes": "CRITICAL: Uses explicit === string comparisons. NO IF Nodes. NO truthy/falsy logic. See n8n/code-nodes/status-router.js.",
+      "id": "f9b929d0-20cf-4fec-87cc-ddef382982fd"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Redaction: strip run_path, summarize artifacts\nfunction redactRun(run) {\n  if (!run || typeof run !== 'object') return null;\n  return {\n    run_id: String(run.run_id || 'UNKNOWN'),\n    per_run_status: String(run.per_run_status || 'UNKNOWN'),\n    classification: String(run.classification || 'UNKNOWN'),\n    is_stale: Boolean(run.is_stale),\n    agent_was_launched: Boolean(run.agent_was_launched),\n    decision: run.decision || null,\n    can_start_next_run: run.can_start_next_run === true,\n    required_human_review: run.required_human_review === true,\n    mission_title: String(run.mission_title || 'Unknown Mission'),\n    agent_status: run.agent_status || 'UNKNOWN',\n    agent_exit_code: run.agent_exit_code != null ? Number(run.agent_exit_code) : null,\n    runner_exit_code: run.runner_exit_code != null ? Number(run.runner_exit_code) : null,\n    agent_self_assessment: String(run.agent_self_assessment || 'UNKNOWN'),\n    controller_reason: String(run.controller_reason || ''),\n    artifacts_summary: {\n      present_count: Array.isArray(run.artifacts_present) ? run.artifacts_present.length : 0,\n      missing_count: Array.isArray(run.artifacts_missing) ? run.artifacts_missing.length : 0,\n      invalid_count: Array.isArray(run.artifacts_invalid) ? run.artifacts_invalid.length : 0\n    },\n    warnings_count: Array.isArray(run.warnings) ? run.warnings.length : 0\n  };\n}\n\nconst data = $input.first().json;\nconst runs = Array.isArray(data.runs) ? data.runs.map(redactRun).filter(Boolean) : [];\n\nreturn [{\n  json: {\n    project: String(data.project || 'unknown'),\n    generated_at: data.generated_at || new Date().toISOString(),\n    overall_status: String(data.overall_status || 'UNKNOWN'),\n    runs_found: Number(data.runs_found) || runs.length,\n    runs_with_controller_decision: Number(data.runs_with_controller_decision) || 0,\n    runs_with_agent_launched: Number(data.runs_with_agent_launched) || 0,\n    stale_runs: Number(data.stale_runs) || 0,\n    global_warnings_count: Array.isArray(data.global_warnings) ? data.global_warnings.length : 0,\n    latest_run_id: String(data.latest_run_id || 'UNKNOWN'),\n    can_start_next_run: data.canStartNextRun === true,\n    required_human_review: data.requiredHumanReview !== false,\n    runs: runs,\n    redacted: true,\n    redacted_at: new Date().toISOString(),\n    redaction_note: 'run_path removed, artifacts summarized as counts. See dashboard/output/status.json for full details.'\n  }\n}];"
+      },
+      "name": "Redact Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        0
+      ],
+      "notes": "Redacts sensitive data: strips run_path, summarizes artifacts as counts. See n8n/code-nodes/redaction.js.",
+      "id": "baef8c03-7335-4fab-af61-8553b27b3288"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "options": {}
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        800,
+        0
+      ],
+      "notes": "Returns redacted JSON response. NO agents started. NO runners launched.",
+      "id": "559033e7-aad9-4a1f-acf3-a145aaa7c62d"
+    }
+  ],
+  "connections": {
+    "Status Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read status.json",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read status.json": {
+      "main": [
+        [
+          {
+            "node": "Parse & Status Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Status Route": {
+      "main": [
+        [
+          {
+            "node": "Redact Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redact Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "b771255e-d49b-4dbe-b6ed-8e00167927a0",
+  "activeVersionId": null,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-07-07T21:33:43.036Z",
+      "createdAt": "2026-07-07T21:33:43.036Z",
+      "role": "workflow:owner",
+      "workflowId": "qwpeNyuSI69tt1eq",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

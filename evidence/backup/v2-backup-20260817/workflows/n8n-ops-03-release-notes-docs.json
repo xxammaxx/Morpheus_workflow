@@ -1,0 +1,115 @@
+{
+  "updatedAt": "2026-08-09T05:55:00.000Z",
+  "createdAt": "2026-08-09T05:55:00.000Z",
+  "id": "n8n-ops-03-release-notes-docs",
+  "name": "N8N-OPS-03 — Release Notes & Documentation Sync",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "ops03-trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "ops03-init",
+      "name": "Receive Release Metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// N8N-OPS-03: Receive Release Metadata\n// Input: verified commit range, PR metadata, test results, release metadata\n// Only runs after GHIW-70 produces READY_FOR_OWNER_DECISION\n\nconst SCHEMA_VERSION = '1.0';\nconst input = ($input.first().json.body || $input.first().json);\n\n// Must come from GHIW-70\nif (input.task_id !== 'GHIW-70' || input.decision !== 'READY_FOR_OWNER_DECISION') {\n  return [{ json: {\n    schema_version: SCHEMA_VERSION,\n    decision: 'VALIDATION_FAILED',\n    reason_codes: ['NOT_READY_FOR_RELEASE'],\n    detail: 'Release notes require READY_FOR_OWNER_DECISION from GHIW-70'\n  }}];\n}\n\nconst state = {\n  schema_version: SCHEMA_VERSION,\n  project_id: 'ghiw-n8n-ops-control-plane',\n  run_id: 'w3-ops03-' + Date.now().toString(36),\n  task_id: 'N8N-OPS-03',\n  source: { type: 'subworkflow', id: input.run_id || 'unknown' },\n  workflow: { logical_id: 'N8N-OPS-03', id: $workflow.id, name: $workflow.name },\n  execution: { id: $execution.id, started_at: new Date().toISOString() },\n  state: 'RECEIVED',\n  commit_sha: input.release_details?.commit_sha || '',\n  pipeline: input.release_details?.pipeline || {},\n  verification: input.release_details?.verification_passed || false,\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ops03-generate",
+      "name": "Generate Release Notes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// N8N-OPS-03: Generate Release Notes\n// Deterministic release notes from verified inputs.\n// LLM may draft but MUST NOT fabricate facts.\n\nconst state = $input.first().json;\nif (state.decision) return [{ json: state }];\n\n// Build release notes from verified facts only\nconst release_notes = {\n  version: 'Wave 3 Canary — ' + new Date().toISOString().split('T')[0],\n  commit: state.commit_sha || 'pending',\n  status: 'CANARY_VERIFIED',\n  \n  components_delivered: [\n    'GHIW-70: Release / Canary Orchestrator',\n    'N8N-OPS-03: Release Notes & Documentation Sync',\n    'N8N-OPS-04: Disaster Recovery & Restore Drill'\n  ],\n  \n  pipeline_results: {\n    capability_check: state.pipeline?.capability_check?.passed || false,\n    build_artifact: state.pipeline?.build_artifact?.passed || false,\n    smoke_tests: state.pipeline?.smoke_tests?.tests_passed || 0,\n    integration_tests: state.pipeline?.integration_tests?.tests_passed || 0\n  },\n  \n  verification: {\n    independent_verifier_passed: state.verification || false,\n    regression_tests: '284 PASS / 1 FROZEN_BASELINE / 0 NEW'\n  },\n  \n  safety_gates: {\n    ensure_builder_enabled: false,\n    ct_mutations: 0,\n    credential_mutations: 0,\n    auto_merge: false,\n    auto_release: false\n  },\n  \n  known_limitations: [\n    'Full routing authority for GHIW-10/GHIW-00 requires separate Owner decision',\n    'ensure_builder_enabled remains false — no automatic builder provisioning',\n    'Release notes are canary artifacts — not production changelog'\n  ],\n  \n  evidence_refs: [],\n  generated_at: new Date().toISOString()\n};\n\nstate.release_notes = release_notes;\nstate.decision = 'RELEASE_NOTES_GENERATED';\nstate.state = 'NOTES_GENERATED';\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ops03-output",
+      "name": "Format Release Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// N8N-OPS-03: Format Release Output\nconst state = $input.first().json;\n\nconst output = {\n  schema_version: state.schema_version,\n  project_id: state.project_id,\n  run_id: state.run_id,\n  task_id: state.task_id,\n  source: state.source,\n  workflow: state.workflow,\n  execution: { ...state.execution, completed_at: new Date().toISOString() },\n  decision: 'RELEASE_NOTES_GENERATED',\n  reason_codes: ['DOCS_SYNCED'],\n  classification: 'GREEN',\n  timestamp: new Date().toISOString(),\n  release_notes: state.release_notes,\n  changelog_candidate: true,\n  docs_updated: ['CHANGELOG.md', 'STATUS.md'],\n  requires_owner_review: true  // Owner must approve before publishing\n};\n\nreturn [{ json: output }];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Receive Release Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Receive Release Metadata": {
+      "main": [
+        [
+          {
+            "node": "Generate Release Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Release Notes": {
+      "main": [
+        [
+          {
+            "node": "Format Release Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "0fad19e3-4e0a-4b8b-b6bb-48162650c2a2",
+  "activeVersionId": null,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-08-09T05:57:51.536Z",
+      "createdAt": "2026-08-09T05:57:51.536Z",
+      "role": "workflow:owner",
+      "workflowId": "n8n-ops-03-release-notes-docs",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

@@ -1,0 +1,286 @@
+{
+  "updatedAt": "2026-08-08T22:30:00.000Z",
+  "createdAt": "2026-08-08T22:30:00.000Z",
+  "id": "n8n-ops-01-gitops-guardian",
+  "name": "N8N-OPS-01 — GitOps Guardian",
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "e5r2-test-n8n-ops-01-gitops-guardian",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "fd82a48f-f558-41e6-bbc5-cadca2b3b7f7",
+      "name": "E5R2-Test-Webhook (N8N-OPS-01)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -600,
+        0
+      ],
+      "webhookId": "138e1369-abf0-4f05-b5d3-b2672227826a"
+    },
+    {
+      "id": "ops01-schedule",
+      "name": "Schedule Trigger (Daily)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ops01-init",
+      "name": "Initialize Guardian State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// N8N-OPS-01: Initialize GitOps Guardian State\n// EXTEND_EXISTING_INFRASTRUCTURE — extends existing Git repo + CLI export path.\n// Prepares for daily drift detection between live n8n and Git repository.\n\nconst SCHEMA_VERSION = '1.0';\nconst PROJECT_ID = 'ghiw-n8n-ops-control-plane';\nconst REPO_IDENTITY = 'xxammaxx/n8n-blueprint-workflow';\nconst GIT_WORKFLOW_DIR = 'n8n/workflows/';\n\n// Known GHIW workflows to monitor\nconst WATCHLIST = [\n  '8kUOLhbvyeQSj6BO',  // GHIW-01 v2\n  'zgjqWnTfjxOud1A5',  // GHIW-02 v1\n  'Sv12QTo56NoPUu2D',  // DISPATCH\n  '1qjUJa46S5l0RIHt',  // GHIW-01 legacy\n  '88OuIcfW6TWgzkPa',  // Project Build Provisioning\n  '9TlP8OFWZefNoynd'   // Lock Access Test\n];\n\n// Fields to strip during normalization (volatile, non-semantic)\nconst VOLATILE_FIELDS = ['updatedAt', 'versionId', 'activeVersionId', 'triggerCount', 'staticData', 'pinData', 'meta'];\n\n// Fields that MUST NOT appear in exported workflows (secret patterns)\nconst SECRET_PATTERNS = [\n  /api[_-]?key\\s*[:=]\\s*['\"][A-Za-z0-9_-]{16,}['\"]/i,\n  /token\\s*[:=]\\s*['\"][A-Za-z0-9_.-]{16,}['\"]/i,\n  /password\\s*[:=]\\s*['\"][^'\"]{3,}['\"]/i,\n  /ghp_[A-Za-z0-9]{36,}/,\n  /-----BEGIN.*PRIVATE KEY-----/\n];\n\nconst runId = 'w1-ops01-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);\n\nconst state = {\n  schema_version: SCHEMA_VERSION,\n  project_id: PROJECT_ID,\n  run_id: runId,\n  task_id: 'N8N-OPS-01',\n  source: { type: 'schedule', id: new Date().toISOString() },\n  workflow: { logical_id: 'N8N-OPS-01', id: $workflow.id, name: $workflow.name },\n  execution: { id: $execution.id, started_at: new Date().toISOString() },\n  state: 'INIT',\n  watchlist: WATCHLIST,\n  volatile_fields: VOLATILE_FIELDS,\n  secret_patterns: SECRET_PATTERNS.map(p => p.source),\n  repo_identity: REPO_IDENTITY,\n  git_workflow_dir: GIT_WORKFLOW_DIR,\n  live_workflows: {},\n  git_workflows: {},\n  drift_findings: [],\n  secret_findings: [],\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ops01-normalize-sanitize",
+      "name": "Normalize & Sanitize Workflow Export",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// N8N-OPS-01: Normalize & Sanitize Workflow Export\n// Simulates CLI export → normalize volatile fields → scan for secrets → compute SHA256.\n// In production: replaces simulated data with actual n8n CLI export via SSH.\n\nconst state = $input.first().json;\n\n// Simulated live workflow exports (in production: from n8n export CLI)\n// Using the rollback snapshot data for realistic testing\nconst simulatedExports = {\n  '8kUOLhbvyeQSj6BO': {\n    id: '8kUOLhbvyeQSj6BO',\n    name: 'GHIW-01 v2 — Ensure Project Builder',\n    active: false,\n    nodes: [],\n    connections: {},\n    settings: { executionOrder: 'v1' },\n    updatedAt: '2026-08-05T08:50:06.073Z',\n    versionId: '2d4ab2e8-4ab3-474d-b96f-82c396c6019a',\n    activeVersionId: null,\n    versionCounter: 30\n  },\n  'zgjqWnTfjxOud1A5': {\n    id: 'zgjqWnTfjxOud1A5',\n    name: 'GHIW-02 v1 — GitHub Issue to Build Canary',\n    active: false,\n    nodes: [],\n    connections: {},\n    settings: { callerPolicy: 'workflowsFromSameOwner' },\n    updatedAt: '2026-08-03T13:04:53.848Z',\n    versionId: '7590b6b5-417d-49db-8f13-31e1f70270ad',\n    versionCounter: 1\n  }\n};\n\nfunction simpleHash(s) {\n  let h = 0;\n  for (let i = 0; i < s.length; i++) {\n    h = ((h << 5) - h) + s.charCodeAt(i);\n    h |= 0;\n  }\n  return ('00000000' + (h >>> 0).toString(16)).slice(-8);\n}\n\nconst secretFindings = [];\nconst driftFindings = [];\nconst liveWorkflows = {};\n\nfor (const wfId of state.watchlist) {\n  const wf = simulatedExports[wfId] || null;\n  \n  if (!wf) {\n    driftFindings.push({\n      workflow_id: wfId,\n      type: 'UNTRACKED_WORKFLOW',\n      detail: 'Workflow exists in watchlist but not found in export'\n    });\n    continue;\n  }\n\n  // Step 1: Scan for secrets BEFORE normalization\n  const wfStr = JSON.stringify(wf);\n  for (const patternStr of state.secret_patterns) {\n    const pattern = new RegExp(patternStr);\n    if (pattern.test(wfStr)) {\n      secretFindings.push({\n        workflow_id: wfId,\n        workflow_name: wf.name,\n        pattern: patternStr.substring(0, 50),\n        detail: 'SECRET_LEAK_BLOCKED — export blocked'\n      });\n      // DO NOT export this workflow\n      continue;\n    }\n  }\n\n  // Step 2: Normalize — strip volatile fields\n  const normalized = JSON.parse(JSON.stringify(wf));\n  for (const field of state.volatile_fields) {\n    delete normalized[field];\n  }\n\n  // Step 3: Canonicalize — sort keys for deterministic serialization\n  const canonical = JSON.parse(JSON.stringify(normalized, Object.keys(normalized).sort()));\n  const canonicalStr = JSON.stringify(canonical);\n  const hash = simpleHash(canonicalStr);\n\n  liveWorkflows[wfId] = {\n    id: wfId,\n    name: wf.name,\n    active: wf.active,\n    node_count: (wf.nodes || []).length,\n    canonical_sha256: hash,\n    normalized: canonical\n  };\n}\n\nstate.live_workflows = liveWorkflows;\nstate.secret_findings = secretFindings;\nstate.drift_findings = driftFindings;\nstate.state = 'NORMALIZED';\n\n// If secrets found, stop here\nif (secretFindings.length > 0) {\n  state.state = 'SECRET_LEAK_BLOCKED';\n}\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ops01-compare",
+      "name": "Compare Live vs Git & Classify Drift",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// N8N-OPS-01: Compare Live vs Git & Classify Drift\n// Simulates comparison against Git repository baseline.\n// Produces deterministic drift classification for each workflow.\n\nconst state = $input.first().json;\n\n// If secrets were found, skip comparison\nif (state.state === 'SECRET_LEAK_BLOCKED') {\n  const output = {\n    schema_version: state.schema_version,\n    project_id: state.project_id,\n    run_id: state.run_id,\n    task_id: state.task_id,\n    source: state.source,\n    workflow: state.workflow,\n    execution: { ...state.execution, completed_at: new Date().toISOString() },\n    decision: 'SECRET_LEAK_BLOCKED',\n    reason_codes: ['SECRET_PATTERN_DETECTED'],\n    evidence_refs: [],\n    classification: 'RED',\n    timestamp: new Date().toISOString(),\n    secret_findings: state.secret_findings\n  };\n  return [{ json: output }];\n}\n\n// Simulated Git baseline (in production: read from repo's n8n/workflows/)\nconst simulatedGitBaseline = {\n  '8kUOLhbvyeQSj6BO': { sha256: 'c7ef85db0cb40b3e', modified: '2026-08-05' },\n  'zgjqWnTfjxOud1A5': { sha256: '6d2eeb97870f4b8c', modified: '2026-08-03' }\n};\n\nconst driftFindings = [];\nconst allWorkflowIds = new Set([\n  ...Object.keys(state.live_workflows),\n  ...Object.keys(simulatedGitBaseline)\n]);\n\nfor (const wfId of allWorkflowIds) {\n  const live = state.live_workflows[wfId];\n  const git = simulatedGitBaseline[wfId];\n\n  if (live && !git) {\n    driftFindings.push({\n      workflow_id: wfId,\n      name: live.name,\n      type: 'UNTRACKED_WORKFLOW',\n      detail: 'Workflow exists live but not in Git'\n    });\n  } else if (!live && git) {\n    driftFindings.push({\n      workflow_id: wfId,\n      type: 'DELETED_LIVE',\n      detail: 'Workflow exists in Git but not live'\n    });\n  } else if (live && git) {\n    if (live.canonical_sha256.substring(0, 16) !== git.sha256) {\n      driftFindings.push({\n        workflow_id: wfId,\n        name: live.name,\n        type: 'LIVE_DRIFT',\n        live_sha256: live.canonical_sha256,\n        git_sha256: git.sha256,\n        detail: 'Live workflow hash differs from Git baseline'\n      });\n    } else {\n      driftFindings.push({\n        workflow_id: wfId,\n        name: live.name,\n        type: 'IN_SYNC',\n        detail: 'Live matches Git baseline'\n      });\n    }\n  }\n}\n\n// Determine overall decision\nlet decision = 'IN_SYNC';\nlet reasonCodes = ['LIVE_MATCHES_GIT'];\nconst driftTypes = driftFindings.filter(f => f.type !== 'IN_SYNC').map(f => f.type);\n\nif (driftTypes.length === 0) {\n  decision = 'IN_SYNC';\n  reasonCodes = ['LIVE_MATCHES_GIT'];\n} else if (driftTypes.includes('LIVE_DRIFT')) {\n  decision = 'LIVE_DRIFT';\n  reasonCodes = ['LIVE_AHEAD_OF_GIT', 'HASH_MISMATCH_DETECTED'];\n} else if (driftTypes.includes('UNTRACKED_WORKFLOW')) {\n  decision = 'UNTRACKED_WORKFLOW';\n  reasonCodes = ['WORKFLOW_ONLY_LIVE'];\n} else if (driftTypes.includes('DELETED_LIVE')) {\n  decision = 'DELETED_LIVE';\n  reasonCodes = ['WORKFLOW_ONLY_GIT'];\n}\n\n// Build output envelope\nconst output = {\n  schema_version: state.schema_version,\n  project_id: state.project_id,\n  run_id: state.run_id,\n  task_id: state.task_id,\n  source: state.source,\n  workflow: state.workflow,\n  execution: { ...state.execution, completed_at: new Date().toISOString() },\n  decision: decision,\n  reason_codes: reasonCodes,\n  evidence_refs: [],\n  classification: decision === 'IN_SYNC' ? 'GREEN' : 'AMBER',\n  timestamp: new Date().toISOString(),\n  guardian_details: {\n    workflows_checked: allWorkflowIds.size,\n    in_sync: driftFindings.filter(f => f.type === 'IN_SYNC').length,\n    drift_detected: driftTypes.length,\n    drift_findings: driftFindings,\n    secret_findings: state.secret_findings\n  }\n};\n\nreturn [{ json: output }];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Daily)": {
+      "main": [
+        [
+          {
+            "node": "Initialize Guardian State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Guardian State": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Sanitize Workflow Export",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Sanitize Workflow Export": {
+      "main": [
+        [
+          {
+            "node": "Compare Live vs Git & Classify Drift",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E5R2-Test-Webhook (N8N-OPS-01)": {
+      "main": [
+        [
+          {
+            "node": "Schedule Trigger (Daily)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "0d2cf38e-330b-4bb0-a2d8-5b9c19edbdbd",
+  "activeVersionId": "fa4c1558-9f4a-482c-97a2-72343e374fb7",
+  "triggerCount": 2,
+  "shared": [
+    {
+      "updatedAt": "2026-08-08T22:35:05.246Z",
+      "createdAt": "2026-08-08T22:35:05.246Z",
+      "role": "workflow:owner",
+      "workflowId": "n8n-ops-01-gitops-guardian",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": {
+    "updatedAt": "2026-08-09T21:06:06.000Z",
+    "createdAt": "2026-08-09T21:06:06.000Z",
+    "versionId": "fa4c1558-9f4a-482c-97a2-72343e374fb7",
+    "workflowId": "n8n-ops-01-gitops-guardian",
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "e5r2-test-n8n-ops-01-gitops-guardian",
+          "responseMode": "lastNode",
+          "options": {}
+        },
+        "id": "fd82a48f-f558-41e6-bbc5-cadca2b3b7f7",
+        "name": "E5R2-Test-Webhook (N8N-OPS-01)",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          -600,
+          0
+        ],
+        "webhookId": "138e1369-abf0-4f05-b5d3-b2672227826a"
+      },
+      {
+        "id": "ops01-schedule",
+        "name": "Schedule Trigger (Daily)",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1,
+        "position": [
+          0,
+          0
+        ],
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "hours",
+                "hoursInterval": 24
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "ops01-init",
+        "name": "Initialize Guardian State",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          250,
+          0
+        ],
+        "parameters": {
+          "jsCode": "// N8N-OPS-01: Initialize GitOps Guardian State\n// EXTEND_EXISTING_INFRASTRUCTURE — extends existing Git repo + CLI export path.\n// Prepares for daily drift detection between live n8n and Git repository.\n\nconst SCHEMA_VERSION = '1.0';\nconst PROJECT_ID = 'ghiw-n8n-ops-control-plane';\nconst REPO_IDENTITY = 'xxammaxx/n8n-blueprint-workflow';\nconst GIT_WORKFLOW_DIR = 'n8n/workflows/';\n\n// Known GHIW workflows to monitor\nconst WATCHLIST = [\n  '8kUOLhbvyeQSj6BO',  // GHIW-01 v2\n  'zgjqWnTfjxOud1A5',  // GHIW-02 v1\n  'Sv12QTo56NoPUu2D',  // DISPATCH\n  '1qjUJa46S5l0RIHt',  // GHIW-01 legacy\n  '88OuIcfW6TWgzkPa',  // Project Build Provisioning\n  '9TlP8OFWZefNoynd'   // Lock Access Test\n];\n\n// Fields to strip during normalization (volatile, non-semantic)\nconst VOLATILE_FIELDS = ['updatedAt', 'versionId', 'activeVersionId', 'triggerCount', 'staticData', 'pinData', 'meta'];\n\n// Fields that MUST NOT appear in exported workflows (secret patterns)\nconst SECRET_PATTERNS = [\n  /api[_-]?key\\s*[:=]\\s*['\"][A-Za-z0-9_-]{16,}['\"]/i,\n  /token\\s*[:=]\\s*['\"][A-Za-z0-9_.-]{16,}['\"]/i,\n  /password\\s*[:=]\\s*['\"][^'\"]{3,}['\"]/i,\n  /ghp_[A-Za-z0-9]{36,}/,\n  /-----BEGIN.*PRIVATE KEY-----/\n];\n\nconst runId = 'w1-ops01-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);\n\nconst state = {\n  schema_version: SCHEMA_VERSION,\n  project_id: PROJECT_ID,\n  run_id: runId,\n  task_id: 'N8N-OPS-01',\n  source: { type: 'schedule', id: new Date().toISOString() },\n  workflow: { logical_id: 'N8N-OPS-01', id: $workflow.id, name: $workflow.name },\n  execution: { id: $execution.id, started_at: new Date().toISOString() },\n  state: 'INIT',\n  watchlist: WATCHLIST,\n  volatile_fields: VOLATILE_FIELDS,\n  secret_patterns: SECRET_PATTERNS.map(p => p.source),\n  repo_identity: REPO_IDENTITY,\n  git_workflow_dir: GIT_WORKFLOW_DIR,\n  live_workflows: {},\n  git_workflows: {},\n  drift_findings: [],\n  secret_findings: [],\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: state }];\n"
+        }
+      },
+      {
+        "id": "ops01-normalize-sanitize",
+        "name": "Normalize & Sanitize Workflow Export",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          500,
+          0
+        ],
+        "parameters": {
+          "jsCode": "// N8N-OPS-01: Normalize & Sanitize Workflow Export\n// Simulates CLI export → normalize volatile fields → scan for secrets → compute SHA256.\n// In production: replaces simulated data with actual n8n CLI export via SSH.\n\nconst state = $input.first().json;\n\n// Simulated live workflow exports (in production: from n8n export CLI)\n// Using the rollback snapshot data for realistic testing\nconst simulatedExports = {\n  '8kUOLhbvyeQSj6BO': {\n    id: '8kUOLhbvyeQSj6BO',\n    name: 'GHIW-01 v2 — Ensure Project Builder',\n    active: false,\n    nodes: [],\n    connections: {},\n    settings: { executionOrder: 'v1' },\n    updatedAt: '2026-08-05T08:50:06.073Z',\n    versionId: '2d4ab2e8-4ab3-474d-b96f-82c396c6019a',\n    activeVersionId: null,\n    versionCounter: 30\n  },\n  'zgjqWnTfjxOud1A5': {\n    id: 'zgjqWnTfjxOud1A5',\n    name: 'GHIW-02 v1 — GitHub Issue to Build Canary',\n    active: false,\n    nodes: [],\n    connections: {},\n    settings: { callerPolicy: 'workflowsFromSameOwner' },\n    updatedAt: '2026-08-03T13:04:53.848Z',\n    versionId: '7590b6b5-417d-49db-8f13-31e1f70270ad',\n    versionCounter: 1\n  }\n};\n\nfunction simpleHash(s) {\n  let h = 0;\n  for (let i = 0; i < s.length; i++) {\n    h = ((h << 5) - h) + s.charCodeAt(i);\n    h |= 0;\n  }\n  return ('00000000' + (h >>> 0).toString(16)).slice(-8);\n}\n\nconst secretFindings = [];\nconst driftFindings = [];\nconst liveWorkflows = {};\n\nfor (const wfId of state.watchlist) {\n  const wf = simulatedExports[wfId] || null;\n  \n  if (!wf) {\n    driftFindings.push({\n      workflow_id: wfId,\n      type: 'UNTRACKED_WORKFLOW',\n      detail: 'Workflow exists in watchlist but not found in export'\n    });\n    continue;\n  }\n\n  // Step 1: Scan for secrets BEFORE normalization\n  const wfStr = JSON.stringify(wf);\n  for (const patternStr of state.secret_patterns) {\n    const pattern = new RegExp(patternStr);\n    if (pattern.test(wfStr)) {\n      secretFindings.push({\n        workflow_id: wfId,\n        workflow_name: wf.name,\n        pattern: patternStr.substring(0, 50),\n        detail: 'SECRET_LEAK_BLOCKED — export blocked'\n      });\n      // DO NOT export this workflow\n      continue;\n    }\n  }\n\n  // Step 2: Normalize — strip volatile fields\n  const normalized = JSON.parse(JSON.stringify(wf));\n  for (const field of state.volatile_fields) {\n    delete normalized[field];\n  }\n\n  // Step 3: Canonicalize — sort keys for deterministic serialization\n  const canonical = JSON.parse(JSON.stringify(normalized, Object.keys(normalized).sort()));\n  const canonicalStr = JSON.stringify(canonical);\n  const hash = simpleHash(canonicalStr);\n\n  liveWorkflows[wfId] = {\n    id: wfId,\n    name: wf.name,\n    active: wf.active,\n    node_count: (wf.nodes || []).length,\n    canonical_sha256: hash,\n    normalized: canonical\n  };\n}\n\nstate.live_workflows = liveWorkflows;\nstate.secret_findings = secretFindings;\nstate.drift_findings = driftFindings;\nstate.state = 'NORMALIZED';\n\n// If secrets found, stop here\nif (secretFindings.length > 0) {\n  state.state = 'SECRET_LEAK_BLOCKED';\n}\n\nreturn [{ json: state }];\n"
+        }
+      },
+      {
+        "id": "ops01-compare",
+        "name": "Compare Live vs Git & Classify Drift",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          750,
+          0
+        ],
+        "parameters": {
+          "jsCode": "// N8N-OPS-01: Compare Live vs Git & Classify Drift\n// Simulates comparison against Git repository baseline.\n// Produces deterministic drift classification for each workflow.\n\nconst state = $input.first().json;\n\n// If secrets were found, skip comparison\nif (state.state === 'SECRET_LEAK_BLOCKED') {\n  const output = {\n    schema_version: state.schema_version,\n    project_id: state.project_id,\n    run_id: state.run_id,\n    task_id: state.task_id,\n    source: state.source,\n    workflow: state.workflow,\n    execution: { ...state.execution, completed_at: new Date().toISOString() },\n    decision: 'SECRET_LEAK_BLOCKED',\n    reason_codes: ['SECRET_PATTERN_DETECTED'],\n    evidence_refs: [],\n    classification: 'RED',\n    timestamp: new Date().toISOString(),\n    secret_findings: state.secret_findings\n  };\n  return [{ json: output }];\n}\n\n// Simulated Git baseline (in production: read from repo's n8n/workflows/)\nconst simulatedGitBaseline = {\n  '8kUOLhbvyeQSj6BO': { sha256: 'c7ef85db0cb40b3e', modified: '2026-08-05' },\n  'zgjqWnTfjxOud1A5': { sha256: '6d2eeb97870f4b8c', modified: '2026-08-03' }\n};\n\nconst driftFindings = [];\nconst allWorkflowIds = new Set([\n  ...Object.keys(state.live_workflows),\n  ...Object.keys(simulatedGitBaseline)\n]);\n\nfor (const wfId of allWorkflowIds) {\n  const live = state.live_workflows[wfId];\n  const git = simulatedGitBaseline[wfId];\n\n  if (live && !git) {\n    driftFindings.push({\n      workflow_id: wfId,\n      name: live.name,\n      type: 'UNTRACKED_WORKFLOW',\n      detail: 'Workflow exists live but not in Git'\n    });\n  } else if (!live && git) {\n    driftFindings.push({\n      workflow_id: wfId,\n      type: 'DELETED_LIVE',\n      detail: 'Workflow exists in Git but not live'\n    });\n  } else if (live && git) {\n    if (live.canonical_sha256.substring(0, 16) !== git.sha256) {\n      driftFindings.push({\n        workflow_id: wfId,\n        name: live.name,\n        type: 'LIVE_DRIFT',\n        live_sha256: live.canonical_sha256,\n        git_sha256: git.sha256,\n        detail: 'Live workflow hash differs from Git baseline'\n      });\n    } else {\n      driftFindings.push({\n        workflow_id: wfId,\n        name: live.name,\n        type: 'IN_SYNC',\n        detail: 'Live matches Git baseline'\n      });\n    }\n  }\n}\n\n// Determine overall decision\nlet decision = 'IN_SYNC';\nlet reasonCodes = ['LIVE_MATCHES_GIT'];\nconst driftTypes = driftFindings.filter(f => f.type !== 'IN_SYNC').map(f => f.type);\n\nif (driftTypes.length === 0) {\n  decision = 'IN_SYNC';\n  reasonCodes = ['LIVE_MATCHES_GIT'];\n} else if (driftTypes.includes('LIVE_DRIFT')) {\n  decision = 'LIVE_DRIFT';\n  reasonCodes = ['LIVE_AHEAD_OF_GIT', 'HASH_MISMATCH_DETECTED'];\n} else if (driftTypes.includes('UNTRACKED_WORKFLOW')) {\n  decision = 'UNTRACKED_WORKFLOW';\n  reasonCodes = ['WORKFLOW_ONLY_LIVE'];\n} else if (driftTypes.includes('DELETED_LIVE')) {\n  decision = 'DELETED_LIVE';\n  reasonCodes = ['WORKFLOW_ONLY_GIT'];\n}\n\n// Build output envelope\nconst output = {\n  schema_version: state.schema_version,\n  project_id: state.project_id,\n  run_id: state.run_id,\n  task_id: state.task_id,\n  source: state.source,\n  workflow: state.workflow,\n  execution: { ...state.execution, completed_at: new Date().toISOString() },\n  decision: decision,\n  reason_codes: reasonCodes,\n  evidence_refs: [],\n  classification: decision === 'IN_SYNC' ? 'GREEN' : 'AMBER',\n  timestamp: new Date().toISOString(),\n  guardian_details: {\n    workflows_checked: allWorkflowIds.size,\n    in_sync: driftFindings.filter(f => f.type === 'IN_SYNC').length,\n    drift_detected: driftTypes.length,\n    drift_findings: driftFindings,\n    secret_findings: state.secret_findings\n  }\n};\n\nreturn [{ json: output }];\n"
+        }
+      }
+    ],
+    "connections": {
+      "Schedule Trigger (Daily)": {
+        "main": [
+          [
+            {
+              "node": "Initialize Guardian State",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Initialize Guardian State": {
+        "main": [
+          [
+            {
+              "node": "Normalize & Sanitize Workflow Export",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize & Sanitize Workflow Export": {
+        "main": [
+          [
+            {
+              "node": "Compare Live vs Git & Classify Drift",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "E5R2-Test-Webhook (N8N-OPS-01)": {
+        "main": [
+          [
+            {
+              "node": "Schedule Trigger (Daily)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "nodeGroups": [],
+    "authors": "[]",
+    "name": "N8N-OPS-01 — GitOps Guardian",
+    "description": null,
+    "autosaved": false
+  },
+  "tags": []
+}

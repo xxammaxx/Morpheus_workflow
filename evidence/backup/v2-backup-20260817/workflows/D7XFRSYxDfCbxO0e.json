@@ -1,0 +1,234 @@
+{
+  "updatedAt": "2026-07-03T02:21:38.762Z",
+  "createdAt": "2026-07-03T02:21:38.762Z",
+  "id": "D7XFRSYxDfCbxO0e",
+  "name": "DocVault-AI M13 Scanner Dummy E2E (Dryrun)",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger-m13",
+      "name": "Manual Trigger (M13 Dummy)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "object": {
+            "docvault_host": "192.168.1.160",
+            "scanner_server_url": "http://192.168.1.231:8080/",
+            "scanner_server_status": "read_only_preflight_ok",
+            "scanner_available": false,
+            "dummy_input": "/srv/docvault/tests/scanner-dummy-input/m13_scanner_dummy.pdf",
+            "dummy_output_dir": "/srv/docvault/tests/scanner-dummy-output",
+            "paperless_mode": "dryrun",
+            "real_documents_allowed": false,
+            "workflow_status": "M13_DUMMY_DISABLED",
+            "risk_class": "YELLOW_REVIEW",
+            "m13_phase": "dryrun_only",
+            "scan_triggered": false,
+            "scanner_post_called": false,
+            "real_scan_used": false
+          }
+        }
+      },
+      "id": "set-m13-config",
+      "name": "Set M13 Scanner Dummy Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "sha256sum /srv/docvault/tests/scanner-dummy-input/m13_scanner_dummy.pdf"
+      },
+      "id": "ssh-checksum-m13",
+      "name": "SSH: Verify Dummy SHA256 (placeholder)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        750,
+        300
+      ],
+      "notes": "REQUIRES: SSH Credential to CT107 as n8n-docbot.\nCredential NOT stored in repo — set manually in n8n UI.\nHost: 192.168.1.160, User: n8n-docbot, Auth: SSH Key.\nM13: Only test paths, no production data."
+    },
+    {
+      "parameters": {
+        "jsCode": "// DocVault-AI M13: Verify dummy scanner PDF (no real scan)\n// \n// SAFETY RULES:\n// - No real scanner triggered\n// - No POST to scanner server\n// - Only test paths (/srv/docvault/tests/scanner-dummy-*)\n// - No Paperless upload\n// - No production file moves\n// - Dummy PDF is artificial, not scanner original\n\nconst config = $input.first().json;\nconst checksumLine = $items('SSH: Verify Dummy SHA256 (placeholder)')[0]?.json?.stdout || '';\nconst sha256 = checksumLine.split(/\\s+/)[0] || 'M13_DUMMY_HASH_NOT_COMPUTED';\n\nconst manifest = {\n  manifest_version: '1.0-m13',\n  docvault_id: 'M13-DUMMY-' + Date.now(),\n  source: {\n    method: 'artificial-scanner-dummy',\n    scanner_model: 'simulated-kodak-i2000',\n    scanner_server_url: 'http://192.168.1.231:8080/',\n    scanner_preflight: 'read_only_ok',\n    original_filename: 'm13_scanner_dummy.pdf',\n    file_sha256: sha256,\n    file_size_bytes: 852,\n    content_type: 'application/pdf',\n    scan_triggered: false,\n    real_scan_used: false\n  },\n  processing: {\n    ocr_engine: 'tesseract_local',\n    page_count: 1,\n    text_length: 245,\n    language_detected: 'de',\n    processing_timestamp: new Date().toISOString()\n  },\n  classification: {\n    document_type: 'Anhoerung',\n    sender: 'Muster-Jobcenter Teststadt',\n    date_on_document: '2026-07-03',\n    contains_official_letter: true,\n    is_hearing: true,\n    case_category: 'SGB-II',\n    keywords: ['m13', 'dummy', 'scanner', 'docvault', 'anhoerung', 'jobcenter'],\n    llm_model: null,\n    llm_confidence: null\n  },\n  risk_class: 'YELLOW_REVIEW',\n  target_policy: 'tests',\n  review: {\n    status: 'PENDING',\n    assigned_to: null,\n    reviewed_at: null,\n    reviewer_notes: null\n  },\n  evidence: {\n    ingestion_timestamp: new Date().toISOString(),\n    pipeline_version: '0.13.0-m13',\n    processing_host: 'ct107',\n    raw_ocr_valid: true,\n    llm_response_valid: false,\n    routing_result: 'examples/manifests/m13_scanner_dummy_routing_manifest.json',\n    upload_dryrun: 'examples/manifests/m13_paperless_upload_dryrun.json'\n  },\n  safety_gates: {\n    real_documents_allowed: false,\n    paperless_upload_allowed: false,\n    n8n_workflow_activated: false,\n    scanner_post_called: false,\n    real_scan_used: false\n  },\n  file_operations: {\n    move_allowed: false,\n    copy_allowed: true,\n    delete_allowed: false,\n    rename_allowed: false,\n    source_path: '/srv/docvault/tests/scanner-dummy-input/m13_scanner_dummy.pdf',\n    output_path: '/srv/docvault/tests/scanner-dummy-output/'\n  }\n};\n\nreturn [{ json: manifest }];"
+      },
+      "id": "create-m13-manifest",
+      "name": "Code: Create M13 Dummy Manifest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "path": "/srv/docvault/tests/scanner-dummy-output/m13_dummy_manifest.json"
+      },
+      "id": "write-m13-manifest",
+      "name": "Write: M13 Manifest to Test Output",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        300
+      ],
+      "notes": "Only writes to test output directory — never production."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.risk_class }}",
+              "operation": "equal",
+              "value2": "YELLOW_REVIEW"
+            }
+          ]
+        }
+      },
+      "id": "risk-check-m13",
+      "name": "IF: YELLOW_REVIEW (human review needed)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// M13: No-op approval placeholder\n// Actual approval requires human in the loop.\n// This node only exists to document the review gate.\nreturn [{ json: { approved: false, message: 'M13 Dryrun only — human review required for M13B apply' } }];"
+      },
+      "id": "human-review-gate",
+      "name": "Code: Human Review Gate (placeholder)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1750,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// M13: Paperless upload is BLOCKED in dryrun mode.\n// This node documents what WOULD be uploaded.\n// No actual POST /api/documents/post_document/ occurs.\n\nconst config = $input.first().json;\n\nconst dryrun_payload = {\n  upload_blocked: true,\n  reason: 'ALLOW_PAPERLESS_UPLOAD=false (dryrun mode)',\n  would_upload: {\n    endpoint: 'POST /api/documents/post_document/',\n    title: 'm13_scanner_dummy_Anhoerung',\n    created: config.date_on_document,\n    document_type: 'Anhoerung',\n    tags: ['docvault-ai', 'doc_type:anhoerung', 'domain:sgb-ii', 'm13-scanner-dummy'],\n    storage_path: 'SGB-II'\n  },\n  dryrun_manifest: 'examples/manifests/m13_paperless_upload_dryrun.json',\n  safety_check: {\n    ALLOW_PAPERLESS_UPLOAD: false,\n    ALLOW_REAL_DOCUMENTS: false,\n    ALLOW_N8N_WORKFLOW_ACTIVATION: false\n  }\n};\n\nreturn [{ json: dryrun_payload }];"
+      },
+      "id": "paperless-dryrun",
+      "name": "Code: Paperless Upload Dryrun (blocked)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1750,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger (M13 Dummy)": {
+      "main": [
+        [
+          {
+            "node": "Set M13 Scanner Dummy Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set M13 Scanner Dummy Config": {
+      "main": [
+        [
+          {
+            "node": "SSH: Verify Dummy SHA256 (placeholder)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: Verify Dummy SHA256 (placeholder)": {
+      "main": [
+        [
+          {
+            "node": "Code: Create M13 Dummy Manifest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Create M13 Dummy Manifest": {
+      "main": [
+        [
+          {
+            "node": "Write: M13 Manifest to Test Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write: M13 Manifest to Test Output": {
+      "main": [
+        [
+          {
+            "node": "IF: YELLOW_REVIEW (human review needed)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: YELLOW_REVIEW (human review needed)": {
+      "main": [
+        [
+          {
+            "node": "Code: Human Review Gate (placeholder)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code: Paperless Upload Dryrun (blocked)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "bd8935a2-b623-4add-9589-fe89a913c30a",
+  "activeVersionId": null,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-07-03T02:21:38.767Z",
+      "createdAt": "2026-07-03T02:21:38.767Z",
+      "role": "workflow:owner",
+      "workflowId": "D7XFRSYxDfCbxO0e",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

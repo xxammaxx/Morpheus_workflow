@@ -1,0 +1,4 @@
+bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+lxc-n8n-local
+192.168.1.52 2003:d3:e720:53aa:be24:11ff:fe96:3d9a 
+    inet 192.168.1.52/24 brd 192.168.1.255 scope global dynamic eth0

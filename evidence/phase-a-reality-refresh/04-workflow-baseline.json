@@ -1,0 +1,554 @@
+{
+  "healthz": {
+    "status": "ok"
+  },
+  "workflow_count": 40,
+  "workflows": [
+    {
+      "id": "1cRVmiZSVNBrFgKk",
+      "name": "Blueprint RED-SDD \u2013 SSH Runner \u2013 REVIEW",
+      "active": false,
+      "createdAt": "2026-07-19T08:14:51.184Z",
+      "updatedAt": "2026-07-21T14:45:43.194Z",
+      "tags": []
+    },
+    {
+      "id": "1qjUJa46S5l0RIHt",
+      "name": "GHIW-01 \u2014 Ensure Project Builder",
+      "active": false,
+      "createdAt": "2026-07-29T07:28:01.946Z",
+      "updatedAt": "2026-07-29T07:28:01.946Z",
+      "tags": []
+    },
+    {
+      "id": "2Y3gUFCgVronVagT",
+      "name": "MDAL_STEP0_TEST__manual_approval_gate",
+      "active": false,
+      "createdAt": "2026-07-07T21:33:43.213Z",
+      "updatedAt": "2026-07-07T21:33:43.213Z",
+      "tags": []
+    },
+    {
+      "id": "7BdoKSsnOhApjEP8",
+      "name": "My workflow 2",
+      "active": true,
+      "createdAt": "2026-06-21T15:12:23.701Z",
+      "updatedAt": "2026-06-21T18:09:10.000Z",
+      "tags": []
+    },
+    {
+      "id": "7aa07e57-ee3b-47",
+      "name": "TEMP GHIW Phase E3-R2 Live Canary ghiw-foundation-phase-e3-r2-20260731T092534Z",
+      "active": false,
+      "createdAt": "2026-07-30T10:33:33.450Z",
+      "updatedAt": "2026-07-31T10:04:21.000Z",
+      "tags": []
+    },
+    {
+      "id": "88OuIcfW6TWgzkPa",
+      "name": "n8n-spec-kit \u2014 Project Build Provisioning \u2014 v1",
+      "active": false,
+      "createdAt": "2026-07-25T21:01:40.251Z",
+      "updatedAt": "2026-07-27T18:20:10.282Z",
+      "tags": []
+    },
+    {
+      "id": "8kUOLhbvyeQSj6BO",
+      "name": "GHIW-01 v2 \u2014 Ensure Project Builder",
+      "active": false,
+      "createdAt": "2026-07-30T10:33:33.450Z",
+      "updatedAt": "2026-08-05T08:50:06.073Z",
+      "tags": []
+    },
+    {
+      "id": "9SuA5UOJdN0ZwDgj",
+      "name": "[TEST REPRO #2] IF Boolean equals",
+      "active": false,
+      "createdAt": "2026-07-06T07:22:38.862Z",
+      "updatedAt": "2026-07-06T07:22:38.862Z",
+      "tags": []
+    },
+    {
+      "id": "9TlP8OFWZefNoynd",
+      "name": "GHIW TEST - Lock Access v1",
+      "active": false,
+      "createdAt": "2026-07-30T04:14:16.673Z",
+      "updatedAt": "2026-07-30T04:19:48.678Z",
+      "tags": []
+    },
+    {
+      "id": "BiQAsQZ5a7AegiBL",
+      "name": "DocVault-AI M6 Intake (Dummy)",
+      "active": false,
+      "createdAt": "2026-06-29T11:28:01.973Z",
+      "updatedAt": "2026-06-29T14:22:32.501Z",
+      "tags": [
+        "dummy",
+        "docvault",
+        "umlaut-policy",
+        "m6",
+        "disabled"
+      ]
+    },
+    {
+      "id": "D7XFRSYxDfCbxO0e",
+      "name": "DocVault-AI M13 Scanner Dummy E2E (Dryrun)",
+      "active": false,
+      "createdAt": "2026-07-03T02:21:38.762Z",
+      "updatedAt": "2026-07-03T02:21:38.762Z",
+      "tags": []
+    },
+    {
+      "id": "DWObExlXhOX6XepN",
+      "name": "My workflow",
+      "active": false,
+      "createdAt": "2026-06-21T14:43:30.817Z",
+      "updatedAt": "2026-06-21T14:57:20.694Z",
+      "tags": []
+    },
+    {
+      "id": "LTzRBBOYznnRZWOF",
+      "name": "DocVault-AI M13 Scanner Dummy E2E (Dryrun)",
+      "active": false,
+      "createdAt": "2026-07-03T02:21:44.044Z",
+      "updatedAt": "2026-07-03T02:32:15.136Z",
+      "tags": []
+    },
+    {
+      "id": "OasGdvLd6v7No5YU",
+      "name": "MDAL_STEP0_TEST__android_tv_status",
+      "active": false,
+      "createdAt": "2026-07-07T21:33:43.280Z",
+      "updatedAt": "2026-07-07T21:33:43.280Z",
+      "tags": []
+    },
+    {
+      "id": "OfzOhKUhgBj5Egho",
+      "name": "[TEST REPRO #3] IF Number equals",
+      "active": false,
+      "createdAt": "2026-07-06T07:22:41.977Z",
+      "updatedAt": "2026-07-06T07:22:41.977Z",
+      "tags": []
+    },
+    {
+      "id": "Sv12QTo56NoPUu2D",
+      "name": "GitHub Ready Issue -> Runner Agent Dispatch",
+      "active": false,
+      "createdAt": "2026-06-25T03:45:22.630Z",
+      "updatedAt": "2026-07-30T03:44:30.000Z",
+      "tags": [
+        "source-of-truth",
+        "dispatcher",
+        "github"
+      ]
+    },
+    {
+      "id": "blueprint-speckit-bootstrap-v2",
+      "name": "Blueprint -> SpecKit/OpenCode Bootstrap V2",
+      "active": true,
+      "createdAt": "2026-06-22T12:43:30.987Z",
+      "updatedAt": "2026-06-23T06:19:29.000Z",
+      "tags": []
+    },
+    {
+      "id": "blueprint-speckit-opencode-bootstrap",
+      "name": "Blueprint \u2192 SpecKit/OpenCode Bootstrap",
+      "active": true,
+      "createdAt": "2026-06-20T17:36:32.825Z",
+      "updatedAt": "2026-06-21T18:11:50.000Z",
+      "tags": []
+    },
+    {
+      "id": "ebfMKYOKUZczLueZ",
+      "name": "TEST \u2014 n8n-spec-kit Router Output Contract \u2014 INACTIVE",
+      "active": false,
+      "createdAt": "2026-07-26T17:25:05.676Z",
+      "updatedAt": "2026-07-26T17:25:50.737Z",
+      "tags": []
+    },
+    {
+      "id": "ghiw-00-preflight-capability-gate",
+      "name": "GHIW-00 \u2014 Preflight & Capability Gate (SHADOW MODE)",
+      "active": false,
+      "createdAt": "2026-07-30T10:33:33.450Z",
+      "updatedAt": "2026-08-05T08:50:06.073Z",
+      "tags": []
+    },
+    {
+      "id": "ghiw-10-issue-intake-firewall",
+      "name": "GHIW-10 \u2014 Issue Intake Firewall (SHADOW MODE)",
+      "active": false,
+      "createdAt": "2026-06-25T03:45:22.630Z",
+      "updatedAt": "2026-07-30T03:44:30.000Z",
+      "tags": [
+        "source-of-truth",
+        "dispatcher",
+        "github"
+      ]
+    },
+    {
+      "id": "ghiw-10-issue-intake-firewall-auth",
+      "name": "GHIW-10 \u2014 Issue Intake Firewall (AUTHORITATIVE) + v3 Builder Lifecycle",
+      "active": true,
+      "createdAt": "2026-06-25T03:45:22.630Z",
+      "updatedAt": "2026-08-13T05:04:22.948Z",
+      "tags": [
+        "source-of-truth",
+        "dispatcher",
+        "github"
+      ]
+    },
+    {
+      "id": "ghiw-50-evidence-ledger",
+      "name": "GHIW-50 \u2014 Evidence Ledger",
+      "active": false,
+      "createdAt": "2026-08-08T22:30:00.000Z",
+      "updatedAt": "2026-08-08T22:30:00.000Z",
+      "tags": []
+    },
+    {
+      "id": "ghiw-60-orphan-watcher",
+      "name": "GHIW-60 \u2014 Builder Lease & Orphan Watcher",
+      "active": true,
+      "createdAt": "2026-08-08T22:30:00.000Z",
+      "updatedAt": "2026-08-08T22:30:00.000Z",
+      "tags": []
+    },
+    {
+      "id": "ghiw-70-release-canary-orchestrator",
+      "name": "GHIW-70 \u2014 Release / Canary Orchestrator",
+      "active": false,
+      "createdAt": "2026-08-09T05:55:00.000Z",
+      "updatedAt": "2026-08-09T05:55:00.000Z",
+      "tags": []
+    },
+    {
+      "id": "ghiw-90-independent-verification-gate",
+      "name": "GHIW-90 \u2014 Independent Verification Gate",
+      "active": false,
+      "createdAt": "2026-08-08T22:55:00.000Z",
+      "updatedAt": "2026-08-08T22:55:00.000Z",
+      "tags": []
+    },
+    {
+      "id": "ghiw-blueprint-intake-dryrun",
+      "name": "GHIW Blueprint Intake (DRY RUN)",
+      "active": false,
+      "createdAt": "2026-08-10T17:26:30.000Z",
+      "updatedAt": "2026-08-10T17:26:30.000Z",
+      "tags": []
+    },
+    {
+      "id": "h78eENwLGwr2QUmU",
+      "name": "GitHub Issue \u2192 Runner Agent Intake",
+      "active": false,
+      "createdAt": "2026-06-23T11:41:42.664Z",
+      "updatedAt": "2026-06-24T10:39:49.797Z",
+      "tags": [
+        "source-of-truth",
+        "github"
+      ]
+    },
+    {
+      "id": "jb7BgKeWGee5Iq9d",
+      "name": "GitHub Issue -> Runner Agent Intake",
+      "active": false,
+      "createdAt": "2026-06-24T12:26:44.471Z",
+      "updatedAt": "2026-06-24T17:30:21.507Z",
+      "tags": [
+        "source-of-truth",
+        "github"
+      ]
+    },
+    {
+      "id": "kqQsFuz6HJl6OOgH",
+      "name": "MDAL_STEP0_TEST__notification",
+      "active": false,
+      "createdAt": "2026-07-07T21:33:43.145Z",
+      "updatedAt": "2026-07-07T21:33:43.145Z",
+      "tags": []
+    },
+    {
+      "id": "mcpSmoke001",
+      "name": "MCP Smoke Test",
+      "active": false,
+      "createdAt": "2026-06-24T07:50:05.407Z",
+      "updatedAt": "2026-06-24T07:50:05.407Z",
+      "tags": []
+    },
+    {
+      "id": "n8n-ops-01-gitops-guardian",
+      "name": "N8N-OPS-01 \u2014 GitOps Guardian",
+      "active": true,
+      "createdAt": "2026-08-08T22:30:00.000Z",
+      "updatedAt": "2026-08-08T22:30:00.000Z",
+      "tags": []
+    },
+    {
+      "id": "n8n-ops-02-dead-man-sentinel",
+      "name": "N8N-OPS-02 \u2014 Dead-Man Sentinel",
+      "active": true,
+      "createdAt": "2026-08-08T22:30:00.000Z",
+      "updatedAt": "2026-08-08T22:30:00.000Z",
+      "tags": []
+    },
+    {
+      "id": "n8n-ops-03-release-notes-docs",
+      "name": "N8N-OPS-03 \u2014 Release Notes & Documentation Sync",
+      "active": false,
+      "createdAt": "2026-08-09T05:55:00.000Z",
+      "updatedAt": "2026-08-09T05:55:00.000Z",
+      "tags": []
+    },
+    {
+      "id": "n8n-ops-04-dr-restore-drill",
+      "name": "N8N-OPS-04 \u2014 Disaster Recovery & Restore Drill",
+      "active": true,
+      "createdAt": "2026-08-09T05:55:00.000Z",
+      "updatedAt": "2026-08-09T05:55:00.000Z",
+      "tags": []
+    },
+    {
+      "id": "q7UqOYRC1a8GCrdy",
+      "name": "TEST \u2013 CT102 SSH Credential Probe \u2013 INACTIVE",
+      "active": false,
+      "createdAt": "2026-07-19T03:48:08.897Z",
+      "updatedAt": "2026-07-19T05:44:58.566Z",
+      "tags": []
+    },
+    {
+      "id": "qwpeNyuSI69tt1eq",
+      "name": "MDAL_STEP0_TEST__status_webhook",
+      "active": false,
+      "createdAt": "2026-07-07T21:33:43.032Z",
+      "updatedAt": "2026-07-07T21:33:43.032Z",
+      "tags": []
+    },
+    {
+      "id": "wWkLqF0FWaJi6XW3",
+      "name": "Blueprint Intake \u2192 SpecKit OpenCode Project Builder [EXECUTION GATE FIXED]",
+      "active": false,
+      "createdAt": "2026-07-03T05:05:04.646Z",
+      "updatedAt": "2026-07-05T04:50:25.506Z",
+      "tags": [
+        "draft",
+        "blueprint",
+        "spec-kit",
+        "execution-gate-fixed",
+        "opencode",
+        "dry-run-safe"
+      ]
+    },
+    {
+      "id": "wz8vzcR8MonCZmcg",
+      "name": "[TEST REPRO #1] IF Boolean true/false",
+      "active": false,
+      "createdAt": "2026-07-06T07:22:27.846Z",
+      "updatedAt": "2026-07-06T07:34:43.423Z",
+      "tags": []
+    },
+    {
+      "id": "zgjqWnTfjxOud1A5",
+      "name": "GHIW-02 v1 \u2014 GitHub Issue to Build Canary",
+      "active": false,
+      "createdAt": "2026-08-03T13:04:53.848Z",
+      "updatedAt": "2026-08-03T13:04:53.848Z",
+      "tags": []
+    }
+  ],
+  "relevant_workflow_details": [
+    {
+      "id": "1cRVmiZSVNBrFgKk",
+      "name": "Blueprint RED-SDD \u2013 SSH Runner \u2013 REVIEW",
+      "active": false,
+      "createdAt": "2026-07-19T08:14:51.184Z",
+      "updatedAt": "2026-07-21T14:45:43.194Z",
+      "node_count": 6,
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.manualTrigger",
+        "n8n-nodes-base.ssh"
+      ],
+      "webhook_nodes": [],
+      "tags": []
+    },
+    {
+      "id": "blueprint-speckit-bootstrap-v2",
+      "name": "Blueprint -> SpecKit/OpenCode Bootstrap V2",
+      "active": true,
+      "createdAt": "2026-06-22T12:43:30.987Z",
+      "updatedAt": "2026-06-23T06:19:29.000Z",
+      "node_count": 8,
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.formTrigger",
+        "n8n-nodes-base.ssh",
+        "n8n-nodes-base.wait"
+      ],
+      "webhook_nodes": [],
+      "tags": []
+    },
+    {
+      "id": "blueprint-speckit-opencode-bootstrap",
+      "name": "Blueprint \u2192 SpecKit/OpenCode Bootstrap",
+      "active": true,
+      "createdAt": "2026-06-20T17:36:32.825Z",
+      "updatedAt": "2026-06-21T18:11:50.000Z",
+      "node_count": 8,
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.formTrigger",
+        "n8n-nodes-base.ssh",
+        "n8n-nodes-base.wait"
+      ],
+      "webhook_nodes": [],
+      "tags": []
+    },
+    {
+      "id": "ghiw-10-issue-intake-firewall",
+      "name": "GHIW-10 \u2014 Issue Intake Firewall (SHADOW MODE)",
+      "active": false,
+      "createdAt": "2026-06-25T03:45:22.630Z",
+      "updatedAt": "2026-07-30T03:44:30.000Z",
+      "node_count": 22,
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.httpRequest",
+        "n8n-nodes-base.manualTrigger",
+        "n8n-nodes-base.scheduleTrigger",
+        "n8n-nodes-base.ssh",
+        "n8n-nodes-base.wait"
+      ],
+      "webhook_nodes": [],
+      "tags": [
+        "source-of-truth",
+        "dispatcher",
+        "github"
+      ]
+    },
+    {
+      "id": "ghiw-10-issue-intake-firewall-auth",
+      "name": "GHIW-10 \u2014 Issue Intake Firewall (AUTHORITATIVE) + v3 Builder Lifecycle",
+      "active": true,
+      "createdAt": "2026-06-25T03:45:22.630Z",
+      "updatedAt": "2026-08-13T05:04:22.948Z",
+      "node_count": 36,
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.httpRequest",
+        "n8n-nodes-base.manualTrigger",
+        "n8n-nodes-base.scheduleTrigger",
+        "n8n-nodes-base.ssh",
+        "n8n-nodes-base.wait",
+        "n8n-nodes-base.webhook"
+      ],
+      "webhook_nodes": [
+        {
+          "name": "GHIW E7 Runtime Canary Webhook",
+          "path": "ghiw-e7-runtime-canary",
+          "method": "POST"
+        }
+      ],
+      "tags": [
+        "source-of-truth",
+        "dispatcher",
+        "github"
+      ]
+    },
+    {
+      "id": "ghiw-70-release-canary-orchestrator",
+      "name": "GHIW-70 \u2014 Release / Canary Orchestrator",
+      "active": false,
+      "createdAt": "2026-08-09T05:55:00.000Z",
+      "updatedAt": "2026-08-09T05:55:00.000Z",
+      "node_count": 4,
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.executeWorkflowTrigger"
+      ],
+      "webhook_nodes": [],
+      "tags": []
+    },
+    {
+      "id": "ghiw-blueprint-intake-dryrun",
+      "name": "GHIW Blueprint Intake (DRY RUN)",
+      "active": false,
+      "createdAt": "2026-08-10T17:26:30.000Z",
+      "updatedAt": "2026-08-10T17:26:30.000Z",
+      "node_count": 9,
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.manualTrigger",
+        "n8n-nodes-base.respondToWebhook",
+        "n8n-nodes-base.ssh",
+        "n8n-nodes-base.webhook"
+      ],
+      "webhook_nodes": [
+        {
+          "name": "Blueprint Intake Webhook",
+          "path": "blueprint-intake",
+          "method": "POST"
+        }
+      ],
+      "tags": []
+    },
+    {
+      "id": "n8n-ops-03-release-notes-docs",
+      "name": "N8N-OPS-03 \u2014 Release Notes & Documentation Sync",
+      "active": false,
+      "createdAt": "2026-08-09T05:55:00.000Z",
+      "updatedAt": "2026-08-09T05:55:00.000Z",
+      "node_count": 4,
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.executeWorkflowTrigger"
+      ],
+      "webhook_nodes": [],
+      "tags": []
+    },
+    {
+      "id": "wWkLqF0FWaJi6XW3",
+      "name": "Blueprint Intake \u2192 SpecKit OpenCode Project Builder [EXECUTION GATE FIXED]",
+      "active": false,
+      "createdAt": "2026-07-03T05:05:04.646Z",
+      "updatedAt": "2026-07-05T04:50:25.506Z",
+      "node_count": 23,
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.if",
+        "n8n-nodes-base.manualTrigger",
+        "n8n-nodes-base.respondToWebhook",
+        "n8n-nodes-base.set",
+        "n8n-nodes-base.ssh",
+        "n8n-nodes-base.webhook"
+      ],
+      "webhook_nodes": [
+        {
+          "name": "Start Pipeline Trigger (Webhook)",
+          "path": "blueprint-speckit-opencode-project-builder",
+          "method": "POST"
+        }
+      ],
+      "tags": [
+        "draft",
+        "blueprint",
+        "spec-kit",
+        "execution-gate-fixed",
+        "opencode",
+        "dry-run-safe"
+      ]
+    }
+  ],
+  "executions_first_page": {
+    "count_on_page": 250,
+    "keys": [
+      "data",
+      "nextCursor"
+    ],
+    "nextCursor": "eyJsYXN0SWQiOiI0MzkyIiwibGltaXQiOjI1MH0="
+  },
+  "execution_stats_from_api": {
+    "total": 1201,
+    "failed": 60
+  }
+}

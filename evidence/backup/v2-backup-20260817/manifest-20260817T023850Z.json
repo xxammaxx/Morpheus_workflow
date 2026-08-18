@@ -1,0 +1,208 @@
+{
+  "stamp": "20260817T023850Z",
+  "workflow_total": 41,
+  "active_total": 9,
+  "active": [
+    {
+      "id": "7BdoKSsnOhApjEP8",
+      "name": "My workflow 2",
+      "nodes": 1
+    },
+    {
+      "id": "NdM7vcGvA4wkYswp",
+      "name": "AutoDev Harness - Graph Orchestrator v1",
+      "nodes": 39
+    },
+    {
+      "id": "blueprint-speckit-bootstrap-v2",
+      "name": "Blueprint -> SpecKit/OpenCode Bootstrap V2",
+      "nodes": 8
+    },
+    {
+      "id": "blueprint-speckit-opencode-bootstrap",
+      "name": "Blueprint → SpecKit/OpenCode Bootstrap",
+      "nodes": 8
+    },
+    {
+      "id": "ghiw-10-issue-intake-firewall-auth",
+      "name": "GHIW-10 — Issue Intake Firewall (AUTHORITATIVE) + v3 Builder Lifecycle",
+      "nodes": 36
+    },
+    {
+      "id": "ghiw-60-orphan-watcher",
+      "name": "GHIW-60 — Builder Lease & Orphan Watcher",
+      "nodes": 6
+    },
+    {
+      "id": "n8n-ops-01-gitops-guardian",
+      "name": "N8N-OPS-01 — GitOps Guardian",
+      "nodes": 5
+    },
+    {
+      "id": "n8n-ops-02-dead-man-sentinel",
+      "name": "N8N-OPS-02 — Dead-Man Sentinel",
+      "nodes": 5
+    },
+    {
+      "id": "n8n-ops-04-dr-restore-drill",
+      "name": "N8N-OPS-04 — Disaster Recovery & Restore Drill",
+      "nodes": 6
+    }
+  ],
+  "webhooks": [
+    {
+      "workflow": "GHIW-01 — Ensure Project Builder",
+      "workflow_id": "1qjUJa46S5l0RIHt",
+      "method": "POST",
+      "path": "ghiw01-ensure-project-builder"
+    },
+    {
+      "workflow": "MDAL_STEP0_TEST__manual_approval_gate",
+      "workflow_id": "2Y3gUFCgVronVagT",
+      "method": "POST",
+      "path": "mission-loop/approval"
+    },
+    {
+      "workflow": "n8n-spec-kit — Project Build Provisioning — v1",
+      "workflow_id": "88OuIcfW6TWgzkPa",
+      "method": "POST",
+      "path": "provisioning-v1"
+    },
+    {
+      "workflow": "GHIW-01 v2 — Ensure Project Builder",
+      "workflow_id": "8kUOLhbvyeQSj6BO",
+      "method": "POST",
+      "path": "ghiw01-ensure-project-builder"
+    },
+    {
+      "workflow": "[TEST REPRO #2] IF Boolean equals",
+      "workflow_id": "9SuA5UOJdN0ZwDgj",
+      "method": "POST",
+      "path": "issue-20-repro-2-equals"
+    },
+    {
+      "workflow": "AutoDev Harness - Graph Orchestrator v1",
+      "workflow_id": "NdM7vcGvA4wkYswp",
+      "method": "POST",
+      "path": "autodev-harness"
+    },
+    {
+      "workflow": "MDAL_STEP0_TEST__android_tv_status",
+      "workflow_id": "OasGdvLd6v7No5YU",
+      "method": "GET",
+      "path": "mission-loop/tv-status"
+    },
+    {
+      "workflow": "[TEST REPRO #3] IF Number equals",
+      "workflow_id": "OfzOhKUhgBj5Egho",
+      "method": "POST",
+      "path": "issue-20-repro-3-number"
+    },
+    {
+      "workflow": "TEST — n8n-spec-kit Router Output Contract — INACTIVE",
+      "workflow_id": "ebfMKYOKUZczLueZ",
+      "method": "POST",
+      "path": "routing-test-v1"
+    },
+    {
+      "workflow": "GHIW-10 — Issue Intake Firewall (AUTHORITATIVE) + v3 Builder Lifecycle",
+      "workflow_id": "ghiw-10-issue-intake-firewall-auth",
+      "method": "POST",
+      "path": "ghiw-e7-runtime-canary"
+    },
+    {
+      "workflow": "GHIW-60 — Builder Lease & Orphan Watcher",
+      "workflow_id": "ghiw-60-orphan-watcher",
+      "method": "POST",
+      "path": "e5r2-test-ghiw-60-orphan-watcher"
+    },
+    {
+      "workflow": "GHIW Blueprint Intake (DRY RUN)",
+      "workflow_id": "ghiw-blueprint-intake-dryrun",
+      "method": "POST",
+      "path": "blueprint-intake"
+    },
+    {
+      "workflow": "N8N-OPS-01 — GitOps Guardian",
+      "workflow_id": "n8n-ops-01-gitops-guardian",
+      "method": "POST",
+      "path": "e5r2-test-n8n-ops-01-gitops-guardian"
+    },
+    {
+      "workflow": "N8N-OPS-04 — Disaster Recovery & Restore Drill",
+      "workflow_id": "n8n-ops-04-dr-restore-drill",
+      "method": "POST",
+      "path": "e5r2-test-n8n-ops-04-dr-restore-drill"
+    },
+    {
+      "workflow": "MDAL_STEP0_TEST__status_webhook",
+      "workflow_id": "qwpeNyuSI69tt1eq",
+      "method": "GET",
+      "path": "mission-loop/status"
+    },
+    {
+      "workflow": "Blueprint Intake → SpecKit OpenCode Project Builder [EXECUTION GATE FIXED]",
+      "workflow_id": "wWkLqF0FWaJi6XW3",
+      "method": "POST",
+      "path": "blueprint-speckit-opencode-project-builder"
+    },
+    {
+      "workflow": "[TEST REPRO #1] IF Boolean true/false",
+      "workflow_id": "wz8vzcR8MonCZmcg",
+      "method": "POST",
+      "path": "issue-20-repro-1-boolean"
+    }
+  ],
+  "credential_metadata_only": [
+    {
+      "id": "phY3ceFIRjWj3hIK",
+      "name": "n8n-ghiw-provisioner",
+      "type": "sshPrivateKey"
+    },
+    {
+      "id": "lHEqepKESDGDiqdD",
+      "name": "n8n-ghiw-lock",
+      "type": "sshPrivateKey"
+    },
+    {
+      "id": "1bq2YLZJkZX5aPeW",
+      "name": "n8n-ghiw-proxmox-api",
+      "type": "httpHeaderAuth"
+    },
+    {
+      "id": "f7TlDgFwFTjFAocw",
+      "name": "n8n-ghiw-builder",
+      "type": "sshPrivateKey"
+    },
+    {
+      "id": "oUwJtufb80UzGC2Z",
+      "name": "n8n-ghiw-pve-audit",
+      "type": "sshPrivateKey"
+    },
+    {
+      "id": "cd39v0hrnRkZSipg",
+      "name": "n8n-ct101-local",
+      "type": "sshPassword"
+    },
+    {
+      "id": "MVhrNBHPe7Yb0Z7f",
+      "name": "CT107 n8n-docbot",
+      "type": "sshPrivateKey"
+    },
+    {
+      "id": "bXlNIsMcFMFvldyX",
+      "name": "CT107 n8n-docbot",
+      "type": "sshPrivateKey"
+    },
+    {
+      "id": "M5hvZu2nCwFcHBYX",
+      "name": "GitHub account",
+      "type": "githubApi"
+    },
+    {
+      "id": "42a60f05-16eb-493f-8257-3eeb5aef531a",
+      "name": "dev-runner-ssh",
+      "type": "sshPrivateKey"
+    }
+  ]
+}

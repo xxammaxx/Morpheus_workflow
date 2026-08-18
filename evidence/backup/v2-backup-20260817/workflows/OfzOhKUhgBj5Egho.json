@@ -1,0 +1,127 @@
+{
+  "updatedAt": "2026-07-06T07:22:41.977Z",
+  "createdAt": "2026-07-06T07:22:41.977Z",
+  "id": "OfzOhKUhgBj5Egho",
+  "name": "[TEST REPRO #3] IF Number equals",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "c3d4e5f6-0003-4000-8000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "issue-20-repro-3-number",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "947a068a-f57e-466d-a097-da9b4e82c8e1"
+    },
+    {
+      "id": "c3d4e5f6-0003-4000-8000-000000000002",
+      "name": "IF Gate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        300,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.body.test_value}}",
+              "operation": "equals",
+              "value2": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c3d4e5f6-0003-4000-8000-000000000003",
+      "name": "Respond TRUE",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        600,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'IF_TRUE_BRANCH', test_value: $json.body.test_value, branch: 'TRUE', method: 'API', variant: 'number_equals' }) }}"
+      }
+    },
+    {
+      "id": "c3d4e5f6-0003-4000-8000-000000000004",
+      "name": "Respond FALSE",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        600,
+        400
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'IF_FALSE_BRANCH', test_value: $json.body.test_value, branch: 'FALSE', method: 'API', variant: 'number_equals' }) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "IF Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Gate": {
+      "main": [
+        [
+          {
+            "node": "Respond TRUE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond FALSE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "f13b05ae-b0e9-47f8-83c0-39d838f8da18",
+  "activeVersionId": null,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-07-06T07:22:41.978Z",
+      "createdAt": "2026-07-06T07:22:41.978Z",
+      "role": "workflow:owner",
+      "workflowId": "OfzOhKUhgBj5Egho",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

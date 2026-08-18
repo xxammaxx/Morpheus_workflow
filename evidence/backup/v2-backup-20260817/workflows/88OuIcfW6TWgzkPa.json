@@ -1,0 +1,1311 @@
+{
+  "updatedAt": "2026-07-27T18:20:10.282Z",
+  "createdAt": "2026-07-25T21:01:40.251Z",
+  "id": "88OuIcfW6TWgzkPa",
+  "name": "n8n-spec-kit — Project Build Provisioning — v1",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "provisioning-v1",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "id": "webhook-trigger",
+      "name": "Provisioning Request (Webhook)",
+      "webhookId": "b9608542-6c97-4737-9d11-6109dd103212"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Validate Request Schema — Webhook v2 Body Normalization ===\n// Handles both direct payload and webhook-v2 body-wrapped payload.\n// Produces structured fail-closed error codes. No silent fallbacks.\n\nconst inputItem = $input.first();\nif (!inputItem) {\n  return [{ json: { status: 'FAILED', stage: 'VALIDATE_REQUEST', error: { code: 'INPUT_ITEM_MISSING', message: 'No input item received' }, timestamp: new Date().toISOString() } }];\n}\n\nconst envelope = inputItem.json;\nif (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) {\n  return [{ json: { status: 'FAILED', stage: 'VALIDATE_REQUEST', error: { code: 'INPUT_NOT_OBJECT', message: 'Input is not a valid JSON object' }, timestamp: new Date().toISOString() } }];\n}\n\n// Normalize: webhook v2 wraps payload under json.body\nconst hasObjectBody =\n  Object.prototype.hasOwnProperty.call(envelope, 'body') &&\n  envelope.body !== null &&\n  typeof envelope.body === 'object' &&\n  !Array.isArray(envelope.body);\n\nconst payload = hasObjectBody ? envelope.body : envelope;\n\n// Shell injection guard - detect dangerous shell metacharacters\nconst shellChars = /[;&|><`\\(\\)\\{\\}\\[\\]\\*\\?]/;\nconst stringFields = ['project_id', 'repository', 'requested_ref', 'correlation_id', 'hostname', 'build_profile', 'request_class'];\nfor (const field of stringFields) {\n  if (typeof payload[field] === 'string' && shellChars.test(payload[field])) {\n    errors.push({ code: 'SHELL_INJECTION_DETECTED', field: field, message: 'Shell metacharacter detected in ' + field });\n  }\n}\n// Schema validation\nconst required = ['project_id', 'repository', 'requested_ref', 'correlation_id', 'idempotency_key', 'template_id', 'template_version'];\nconst errors = [];\nfor (const field of required) {\n  if (!payload[field]) {\n    errors.push({ code: 'REQUIRED_FIELD_MISSING', field: field, message: 'Missing required field: ' + field });\n  }\n}\n\n// --- sata-local Contract Enforcement ---\nif (payload.target_storage && payload.target_storage !== 'sata-local') {\n  errors.push({ code: 'INVALID_TARGET_STORAGE', field: 'target_storage', message: 'Only sata-local storage is allowed', received: payload.target_storage });\n}\nif (payload.clone_mode && payload.clone_mode !== 'linked') {\n  errors.push({ code: 'INVALID_CLONE_MODE', field: 'clone_mode', message: 'Only linked clone mode is allowed', received: payload.clone_mode });\n}\nif (payload.template_id && payload.template_id !== 112) {\n  errors.push({ code: 'INVALID_TEMPLATE_ID', field: 'template_id', message: 'Only template CT 112 (sata-local) is allowed. CT 111 is deprecated.', received: payload.template_id });\n}\n\nif (errors.length > 0) {\n  return [{ json: {\n    status: 'FAILED',\n    stage: 'VALIDATE_REQUEST',\n    validation: 'FAILED',\n    errors: errors,\n    correlation_id: payload.correlation_id || 'UNKNOWN',\n    timestamp: new Date().toISOString()\n  } }];\n}\n\nreturn [{ json: {\n  status: 'PASSED',\n  stage: 'VALIDATE_REQUEST', \n  validation: 'PASSED',\n  project_id: payload.project_id,\n  repository: payload.repository,\n  requested_ref: payload.requested_ref,\n  correlation_id: payload.correlation_id,\n  idempotency_key: payload.idempotency_key,\n  template_id: payload.template_id || 112,\n  template_version: payload.template_version || 'v0.6.0',\n  target_node: payload.target_node || 'pve',\n  target_storage: payload.target_storage || 'sata-local',\n  clone_mode: payload.clone_mode || 'linked',\n  max_containers: payload.max_containers || 1,\n  dry_run: payload.dry_run || false,\n  hostname: payload.hostname,\n  build_profile: payload.build_profile || 'default',\n  request_class: payload.request_class || 'standard',\n  timestamp: new Date().toISOString()\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        300
+      ],
+      "id": "code-validate-request",
+      "name": "Validate Request Schema"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nif (data.validation === 'FAILED') {\n  return [{ json: { route: 'INVALID_REQUEST', errors: data.errors, correlation_id: data.correlation_id || 'UNKNOWN', timestamp: data.timestamp || new Date().toISOString() } }];\n}\nreturn [{ json: { route: 'VALID_REQUEST', ...data } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        300
+      ],
+      "id": "code-route-validation",
+      "name": "Route: Request Valid?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 3: Idempotency Gate — CRITICAL ROUTING\n// Check if this idempotency key was already processed.\n// Returns cached result if found, otherwise signals NEW_REQUEST.\n\nconst data = $input.first().json;\n\n// This node will be connected to SSH: Registry Idempotency Check\n// For now, mark as PENDING_IDEMPOTENCY_CHECK — the SSH node result will determine routing\nreturn {\n  ...data,\n  idempotency_status: 'PENDING_CHECK',\n  stage: 'IDEMPOTENCY_GATE'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        300
+      ],
+      "id": "code-idempotency-prep",
+      "name": "Prepare Idempotency Check"
+    },
+    {
+      "parameters": {
+        "command": "python3 /var/lib/n8n-spec-kit/registry_cli.py check-idempotency '{{$json.idempotency_key}}'",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        300
+      ],
+      "id": "ssh-check-idempotency",
+      "name": "SSH: Registry — Check Idempotency",
+      "credentials": {
+        "sshPassword": {
+          "id": "cd39v0hrnRkZSipg",
+          "name": "n8n-ct101-local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst stdout = (data.stdout || '').toString();\nlet cached = false;\ntry { const r = JSON.parse(stdout); cached = r.status === 'DUPLICATE' || r.idempotent === true; } catch(e) {}\n\nif (cached) {\n  try {\n    const result = JSON.parse(stdout);\n    return [\n      { json: { route: 'ALREADY_PROCESSED', cached_result: result, correlation_id: data.correlation_id } },\n      { json: {} }\n    ];\n  } catch(e) {\n    return [\n      { json: { route: 'ALREADY_PROCESSED', raw_stdout: stdout } },\n      { json: {} }\n    ];\n  }\n}\nreturn [\n  { json: {} },\n  { json: { route: 'NEW_REQUEST', stage: 'DISCOVERING', run_id: 'n8n-provisioning-' + Date.now() } }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        300
+      ],
+      "id": "code-route-idempotency",
+      "name": "Route: Already Processed?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nif (!data.cached_result && !data.route) { return []; }\nreturn [{ json: { status: 'ALREADY_PROCESSED', correlation_id: data.correlation_id || 'UNKNOWN', cached_result: data.cached_result || data.raw_stdout, timestamp: new Date().toISOString() } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1750,
+        100
+      ],
+      "id": "code-already-processed",
+      "name": "Return: Already Processed"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 4: Prepare Registry Discovery\n// Records idempotency key and prepares for project lookup\n\nconst data = $input.first().json;\n\nreturn {\n  ...data,\n  stage: 'DISCOVERING',\n  run_id: `n8n-provisioning-${Date.now()}`\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1750,
+        300
+      ],
+      "id": "code-prepare-discovery",
+      "name": "Prepare Registry Discovery"
+    },
+    {
+      "parameters": {
+        "command": "python3 /var/lib/n8n-spec-kit/registry_cli.py discover-project '{{$json.project_id}}' '{{$json.repository}}' '{{$json.requested_ref}}' '{{$json.template_id}}' '{{$json.template_version}}' '{{$json.run_id}}' '{{$json.correlation_id}}' '{{$json.idempotency_key}}' '{{$json.hostname}}'",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        300
+      ],
+      "id": "ssh-discover-project",
+      "name": "SSH: Registry — Discover Project",
+      "credentials": {
+        "sshPassword": {
+          "id": "cd39v0hrnRkZSipg",
+          "name": "n8n-ct101-local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst stdout = (data.stdout || '').toString();\nlet discoveryResult;\ntry { discoveryResult = JSON.parse(stdout); } catch(e) { discoveryResult = { status: 'ERROR', error: 'Failed to parse registry response' }; }\n\nif (discoveryResult.status === 'ALREADY_EXISTS') {\n  if (discoveryResult.state === 'READY' || discoveryResult.state === 'SUCCEEDED') {\n    return [\n      { json: { route: 'PROJECT_READY', discovery: discoveryResult, ctid: discoveryResult.ctid, hostname: discoveryResult.hostname } },\n      { json: {} }\n    ];\n  }\n  return [\n    { json: { route: 'PROJECT_EXISTS_NOT_READY', error: 'Project exists in state: ' + (discoveryResult.state || 'unknown') } },\n    { json: {} }\n  ];\n}\nif (discoveryResult.status === 'NEW_PROJECT') {\n  return [\n    { json: {} },\n    { json: { route: 'PROJECT_NEW', discovery: discoveryResult } }\n  ];\n}\nreturn [\n  { json: { route: 'DISCOVERY_FAILED', error: discoveryResult.error || 'Unknown discovery error' } },\n  { json: {} }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2250,
+        300
+      ],
+      "id": "code-route-discovery",
+      "name": "Route: Project Status"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nif (!data.ctid && !data.route) { return []; }\nreturn [{ json: { ctid: data.ctid, hostname: data.hostname, stage: 'REUSE_READY' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2500,
+        150
+      ],
+      "id": "code-project-ready",
+      "name": "Handle: Project Ready"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 6: Prepare Proxmox Reconcile\n// Verify registry state against Proxmox reality\n\nconst data = $input.first().json;\nreturn {\n  ...data,\n  stage: 'RECONCILING'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2500,
+        300
+      ],
+      "id": "code-prepare-reconcile",
+      "name": "Prepare Proxmox Reconcile"
+    },
+    {
+      "parameters": {
+        "command": "echo '{\"operation\":\"reconcile\",\"protocol_version\":\"1\",\"correlation_id\":\"{{$json.correlation_id}}\",\"idempotency_key\":\"{{$json.idempotency_key}}\",\"run_id\":\"{{$json.run_id}}\",\"project_id\":\"{{$json.project_id}}\"}' | /opt/dev-fabric/n8n/prov-call.sh",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 2,
+      "position": [
+        2750,
+        300
+      ],
+      "id": "ssh-proxmox-reconcile",
+      "name": "SSH: Proxmox — Reconcile",
+      "credentials": {
+        "sshPassword": {
+          "id": "cd39v0hrnRkZSipg",
+          "name": "n8n-ct101-local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst stdout = (data.stdout || '').toString();\nlet reconcileResult;\ntry { reconcileResult = JSON.parse(stdout); } catch(e) { return [{ json: { } }, { { json: { route: 'RECONCILE_FAILED', error: 'Failed to parse Proxmox response', stdout: stdout } } }];; }\nif (reconcileResult.operation !== 'reconcile' || reconcileResult.status !== 'SUCCEEDED') {\n  return [{ json: { } }, { { json: { route: 'RECONCILE_FAILED', error: (reconcileResult.error || 'Reconcile returned non-success'), result: reconcileResult } } }];;\n}\nif (!reconcileResult.template_exists) {\n  return [{ json: { } }, { { json: { route: 'TEMPLATE_MISSING', error: 'Golden template not found' } } }];;\n}\nconst thinPool = reconcileResult.thin_pool || {};\nconst dataPct = parseFloat(thinPool.data_percent || '100');\nif (dataPct > 90) {\n  return [{ json: { } }, { { json: { route: 'STORAGE_EXHAUSTED', error: 'Thin pool data at ' + dataPct + '%', thin_pool: thinPool } } }];;\n}\nreturn [{ json: { route: 'TEMPLATE_AND_STORAGE_OK', reconcile: reconcileResult } }, { json: {} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3000,
+        300
+      ],
+      "id": "code-template-storage-gate",
+      "name": "Gate: Template & Storage"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gate: Approval — route APPROVED vs REQUIRED\nconst data = $input.first().json;\n\n// Canary projects are auto-approved\nconst isCanary = (data.project_id || '').startsWith('n8n-spec-kit-canary') ||\n                 (data.request_class || '') === 'canary';\nconst approvalStatus = isCanary ? 'APPROVED' : 'APPROVAL_REQUIRED';\n\nconst result = {\n  approval: approvalStatus,\n  project_id: data.project_id,\n  run_id: data.run_id,\n  template_id: data.template_id || 112,\n  template_version: data.template_version || 'v0.6.0'\n};\n\n// Branch 0: APPROVED (continue)\n// Branch 1: APPROVAL_REQUIRED (stop)\nif (approvalStatus === 'APPROVED') {\n  return [{ json: result }, { json: {} }];\n} else {\n  return [{ json: {} }, { json: { approval: 'APPROVAL_REQUIRED', error: 'Production provisioning requires approval token' } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3250,
+        300
+      ],
+      "id": "code-approval-gate",
+      "name": "Gate: Approval"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 9: Atomic CTID Allocation under Lease\n\nconst data = $input.first().json;\n\nreturn {\n  ...data,\n  stage: 'ALLOCATING'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3500,
+        300
+      ],
+      "id": "code-prepare-allocate",
+      "name": "Prepare CTID Allocation"
+    },
+    {
+      "parameters": {
+        "command": "python3 /var/lib/n8n-spec-kit/registry_cli.py allocate-ctid '{{$json.project_id}}' '{{$json.run_id}}'",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 2,
+      "position": [
+        3750,
+        300
+      ],
+      "id": "ssh-allocate-ctid",
+      "name": "SSH: Registry — Allocate CTID",
+      "credentials": {
+        "sshPassword": {
+          "id": "cd39v0hrnRkZSipg",
+          "name": "n8n-ct101-local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst stdout = (data.stdout || '').toString();\nlet allocResult;\ntry { allocResult = JSON.parse(stdout); } catch(e) { return [{ json: {} }, { json: { route: 'ALLOCATION_FAILED', error: 'Failed to parse allocation response' } }]; }\nif (allocResult.status === 'ALLOCATED') {\n  return [{ json: { route: 'ALLOCATED', ctid: allocResult.ctid } }, { json: {} }];\n}\nreturn [{ json: {} }, { json: { route: 'ALLOCATION_FAILED', error: allocResult.error || 'Unknown allocation error' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4000,
+        300
+      ],
+      "id": "code-route-allocate",
+      "name": "Route: CTID Allocated?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 11: Prepare Linked Clone from CT 111\n\nconst data = $input.first().json;\nconst hostname = data.hostname || `${data.project_id.replace(/[^a-zA-Z0-9-]/g, '-').substring(0, 20)}-build`;\n\nreturn {\n  ...data,\n  hostname: hostname,\n  stage: 'CLONING'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4250,
+        300
+      ],
+      "id": "code-prepare-clone",
+      "name": "Prepare Clone"
+    },
+    {
+      "parameters": {
+        "command": "echo '{\"operation\":\"clone\",\"protocol_version\":\"1\",\"correlation_id\":\"{{$json.correlation_id}}\",\"idempotency_key\":\"{{$json.idempotency_key}}\",\"run_id\":\"{{$json.run_id}}\",\"project_id\":\"{{$json.project_id}}\",\"target_ctid\":{{$json.ctid}},\"hostname\":\"{{$json.hostname}}\",\"template_id\":{{$json.template_id}},\"template_version\":\"{{$json.template_version}}\"}' | /opt/dev-fabric/n8n/prov-call.sh",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 2,
+      "position": [
+        4500,
+        300
+      ],
+      "id": "ssh-clone-container",
+      "name": "SSH: Proxmox — Clone Container",
+      "credentials": {
+        "sshPassword": {
+          "id": "cd39v0hrnRkZSipg",
+          "name": "n8n-ct101-local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst stdout = (data.stdout || '').toString();\nlet cloneResult;\ntry { cloneResult = JSON.parse(stdout); } catch(e) { return [{ json: { route: 'CLONE_FAILED', error: 'Failed to parse clone response' } }, { json: {} }]; }\nif (cloneResult.status === 'SUCCEEDED') {\n  return [{ json: {} }, { json: { route: 'CLONE_SUCCEEDED', clone: cloneResult } }];\n}\nreturn [{ json: { route: 'CLONE_FAILED', error: cloneResult.error || 'Clone operation failed' } }, { json: {} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4750,
+        300
+      ],
+      "id": "code-route-clone",
+      "name": "Route: Clone Result"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 12: Prepare Network Isolation Installation\n\nconst data = $input.first().json;\n\nreturn {\n  ...data,\n  stage: 'NETWORK_ISOLATION'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5000,
+        300
+      ],
+      "id": "code-prepare-firewall",
+      "name": "Prepare Firewall Installation"
+    },
+    {
+      "parameters": {
+        "command": "echo '{\"operation\":\"initialize\",\"protocol_version\":\"1\",\"correlation_id\":\"{{$json.correlation_id}}\",\"idempotency_key\":\"{{$json.idempotency_key}}\",\"run_id\":\"{{$json.run_id}}\",\"project_id\":\"{{$json.project_id}}\",\"ctid\":{{$json.ctid}},\"action\":\"install-firewall\",\"template_id\":{{$json.template_id}},\"template_version\":\"{{$json.template_version}}\"}' | /opt/dev-fabric/n8n/prov-call.sh",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 2,
+      "position": [
+        5250,
+        300
+      ],
+      "id": "ssh-install-firewall",
+      "name": "SSH: Proxmox — Install Firewall",
+      "credentials": {
+        "sshPassword": {
+          "id": "cd39v0hrnRkZSipg",
+          "name": "n8n-ct101-local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 13: Container Initialization\n// Set hostname, start network, configure DNS\n\nconst data = $input.first().json;\n\nreturn {\n  ...data,\n  stage: 'INITIALIZING'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5500,
+        300
+      ],
+      "id": "code-prepare-init",
+      "name": "Prepare Container Init"
+    },
+    {
+      "parameters": {
+        "command": "echo '{\"operation\":\"initialize\",\"protocol_version\":\"1\",\"correlation_id\":\"{{$json.correlation_id}}\",\"idempotency_key\":\"{{$json.idempotency_key}}\",\"run_id\":\"{{$json.run_id}}\",\"project_id\":\"{{$json.project_id}}\",\"ctid\":{{$json.ctid}},\"hostname\":\"{{$json.hostname}}\",\"action\":\"full-init\",\"template_id\":{{$json.template_id}},\"template_version\":\"{{$json.template_version}}\"}' | /opt/dev-fabric/n8n/prov-call.sh",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 2,
+      "position": [
+        5750,
+        300
+      ],
+      "id": "ssh-init-container",
+      "name": "SSH: Proxmox — Initialize Container",
+      "credentials": {
+        "sshPassword": {
+          "id": "cd39v0hrnRkZSipg",
+          "name": "n8n-ct101-local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst stdout = (data.stdout || '').toString();\nlet initResult;\ntry { initResult = JSON.parse(stdout); } catch(e) { return [{ json: { route: 'INIT_FAILED', error: 'Failed to parse init response' } }, { json: {} }]; }\nif (!initResult.ready) {\n  return [{ json: { route: 'NOT_READY', error: initResult.error || 'Container not ready', details: initResult } }, { json: {} }];\n}\nif (!initResult.firewall_active) {\n  return [{ json: { route: 'NOT_READY', error: 'Firewall not active', details: initResult } }, { json: {} }];\n}\nreturn [{ json: {} }, { json: { route: 'READY', ctid: initResult.ctid, hostname: initResult.hostname, init: initResult } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6000,
+        300
+      ],
+      "id": "code-readiness-gate",
+      "name": "Gate: Readiness (incl. Firewall)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nif (!data.error && !data.route) { return []; }\nreturn [{ json: { error: data.error || 'Container failed readiness gate', details: data.details } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6250,
+        100
+      ],
+      "id": "code-not-ready",
+      "name": "STOP: Not Ready"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 15: Registry → READY\nconst data = $input.first().json;\nreturn {\n  ...data,\n  stage: 'REGISTERING'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6250,
+        300
+      ],
+      "id": "code-prepare-register",
+      "name": "Prepare Registry READY"
+    },
+    {
+      "parameters": {
+        "command": "python3 /var/lib/n8n-spec-kit/registry_cli.py transition-state '{{$json.project_id}}' 'READY' '{{$json.run_id}}' '{{$json.correlation_id}}' '{{$json.ctid}}' '{{$json.hostname}}'",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 2,
+      "position": [
+        6500,
+        300
+      ],
+      "id": "ssh-registry-ready",
+      "name": "SSH: Registry — Set READY",
+      "credentials": {
+        "sshPassword": {
+          "id": "cd39v0hrnRkZSipg",
+          "name": "n8n-ct101-local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 16: Prepare Build — via separate Build Adapter\n// Build must NOT start before READY\n\nconst data = $input.first().json;\nconst buildId = `build-${data.project_id}-${Date.now()}`;\n\nreturn {\n  ...data,\n  build_id: buildId,\n  stage: 'BUILD_QUEUED'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6750,
+        300
+      ],
+      "id": "code-prepare-build",
+      "name": "Prepare Build"
+    },
+    {
+      "parameters": {
+        "command": "echo '{\"operation\":\"build-start\",\"build_id\":\"{{$json.build_id}}\",\"project_id\":\"{{$json.project_id}}\",\"ctid\":{{$json.ctid}},\"repository\":\"{{$json.repository}}\",\"git_ref\":\"{{$json.requested_ref}}\"}' | /opt/dev-fabric/n8n/build-call.sh",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 2,
+      "position": [
+        7000,
+        300
+      ],
+      "id": "ssh-start-build",
+      "name": "SSH: Build Adapter — Start Build",
+      "credentials": {
+        "sshPassword": {
+          "id": "cd39v0hrnRkZSipg",
+          "name": "n8n-ct101-local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst stdout = (data.stdout || '').toString();\nlet buildResult;\ntry { buildResult = JSON.parse(stdout); } catch(e) { return [{ json: {} }, { json: { route: 'BUILD_LAUNCH_FAILED', error: 'Failed to parse build-start response' } }]; }\nif (buildResult.status === 'BUILD_LAUNCHED') {\n  return [{ json: { route: 'BUILD_LAUNCHED', build_id: buildResult.build_id, build: buildResult } }, { json: {} }];\n}\nreturn [{ json: {} }, { json: { route: 'BUILD_LAUNCH_FAILED', error: buildResult.error || 'Build did not launch' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7250,
+        300
+      ],
+      "id": "code-build-launched",
+      "name": "Route: Build Launched"
+    },
+    {
+      "parameters": {
+        "amount": "60",
+        "unit": "seconds",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        7500,
+        300
+      ],
+      "id": "wait-build",
+      "name": "Wait: Build Completion",
+      "webhookId": "4aa204e5-a62d-44a8-81a0-e098af4bef26"
+    },
+    {
+      "parameters": {
+        "command": "echo '{\"operation\":\"build-status\",\"build_id\":\"{{$json.build_id}}\"}' | /opt/dev-fabric/n8n/build-call.sh",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 2,
+      "position": [
+        7750,
+        300
+      ],
+      "id": "ssh-build-status",
+      "name": "SSH: Build Adapter — Check Status",
+      "credentials": {
+        "sshPassword": {
+          "id": "cd39v0hrnRkZSipg",
+          "name": "n8n-ct101-local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst stdout = (data.stdout || '').toString();\nlet statusResult;\ntry { statusResult = JSON.parse(stdout); } catch(e) { return [{ json: { route: 'BUILD_STATUS_UNKNOWN', error: 'Failed to parse build status' } }, { json: {} }]; }\nif (statusResult.status === 'BUILD_SUCCEEDED') {\n  return [{ json: {} }, { json: { route: 'BUILD_SUCCEEDED', build: statusResult } }];\n}\nif (statusResult.status === 'BUILD_RUNNING') {\n  return [{ json: { route: 'BUILD_RUNNING', build: statusResult } }, { json: {} }];\n}\nreturn [{ json: { route: 'BUILD_FAILED', build: statusResult, error: statusResult.error || 'Build failed' } }, { json: {} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8000,
+        300
+      ],
+      "id": "code-route-build-result",
+      "name": "Route: Build Result"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 17c: BUILD_RUNNING — loop back to wait\nconst data = $input.first().json;\nreturn {\n  route: 'BUILD_RUNNING',\n  build: data.build,\n  wait_again: true\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8250,
+        150
+      ],
+      "id": "code-build-running",
+      "name": "Build Still Running"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst build = data.build || {};\nconst artifacts = build.artifacts || {};\nif (artifacts.sha256) {\n  const sha256Regex = /^[a-fA-F0-9]{64}$/;\n  if (!sha256Regex.test(artifacts.sha256)) {\n    return [{ json: { route: 'ARTIFACT_INVALID', error: 'Invalid artifact SHA256: ' + artifacts.sha256 } }, { json: {} }];\n  }\n}\nreturn [{ json: {} }, { json: { route: 'ARTIFACT_VALID', artifact_sha256: artifacts.sha256, test_passed: build.test_passed || 0, test_total: build.test_total || 0 } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8250,
+        300
+      ],
+      "id": "code-validate-artifact",
+      "name": "Validate Artifact"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nif (!data.error && !data.route) { return []; }\nreturn [{ json: { error: data.error } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8500,
+        150
+      ],
+      "id": "code-artifact-invalid",
+      "name": "STOP: Artifact Invalid"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 19: Evidence Seal\n// Record success in registry and prepare final evidence\n\nconst data = $input.first().json;\n\nreturn {\n  ...data,\n  stage: 'EVIDENCE_SEAL',\n  completed_at: new Date().toISOString()\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8500,
+        300
+      ],
+      "id": "code-evidence-seal",
+      "name": "Evidence Seal"
+    },
+    {
+      "parameters": {
+        "command": "python3 /var/lib/n8n-spec-kit/registry_cli.py transition-state '{{$json.project_id}}' 'SUCCEEDED' '{{$json.run_id}}' '{{$json.correlation_id}}'",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 2,
+      "position": [
+        8750,
+        300
+      ],
+      "id": "ssh-registry-succeeded",
+      "name": "SSH: Registry — Set SUCCEEDED",
+      "credentials": {
+        "sshPassword": {
+          "id": "cd39v0hrnRkZSipg",
+          "name": "n8n-ct101-local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 20: Final Result Assembly\n// CRITICAL: All code-node routing throughout\n\nconst data = $input.first().json;\nconst buildData = $('Validate Artifact').first().json || {};\n\nreturn {\n  json: {\n    status: 'SUCCEEDED',\n    correlation_id: data.correlation_id,\n    project_id: data.project_id,\n    ctid: data.ctid,\n    hostname: data.hostname,\n    build_id: data.build_id,\n    artifact_sha256: buildData.artifact_sha256,\n    test_passed: buildData.test_passed,\n    test_total: buildData.test_total,\n    run_id: data.run_id,\n    completed_at: data.completed_at || new Date().toISOString()\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9000,
+        300
+      ],
+      "id": "code-final-result",
+      "name": "Final Result"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        9250,
+        300
+      ],
+      "id": "respond-webhook",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nconst isDryRun = data.dry_run === true || data.dry_run === 'true';\nconst isInvalid = data.route === 'INVALID_REQUEST';\n\nlet route;\nif (isInvalid) {\n  route = 'INVALID';\n} else if (isDryRun) {\n  route = 'DRY_RUN';\n} else {\n  route = 'PROCEED';\n}\n\nreturn [{\n  json: {\n    route: route,\n    request: {\n      project_id: data.project_id,\n      repository: data.repository,\n      requested_ref: data.requested_ref,\n      template_id: data.template_id || 112,\n      template_version: data.template_version || 'v0.6.0',\n      target_storage: data.target_storage || 'sata-local',\n      target_node: data.target_node || 'pve',\n      clone_mode: data.clone_mode || 'linked',\n      max_containers: data.max_containers || 1,\n      dry_run: data.dry_run || false,\n      hostname: data.hostname,\n      build_profile: data.build_profile || 'default',\n      request_class: data.request_class || 'standard'\n    },\n    errors: (data.errors && data.errors.length > 0) ? data.errors : null,\n    correlation_id: data.correlation_id || 'UNKNOWN',\n    idempotency_key: data.idempotency_key,\n    template_id: data.template_id || 112,\n    template_version: data.template_version || 'v0.6.0',\n    target_storage: data.target_storage || 'sata-local',\n    target_node: data.target_node || 'pve',\n    clone_mode: data.clone_mode || 'linked',\n    max_containers: data.max_containers || 1,\n    dry_run: data.dry_run || false,\n    hostname: data.hostname,\n    build_profile: data.build_profile || 'default',\n    request_class: data.request_class || 'default',\n    timestamp: new Date().toISOString(),\n    validation: data.validation,\n    status: data.status,\n    stage: data.stage\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        450
+      ],
+      "id": "1b6fde23-347e-48a3-a95d-43cbd1f6109b",
+      "name": "Classify Route"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1630,
+        0
+      ],
+      "id": "respond-invalid",
+      "name": "Respond Invalid"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1630,
+        200
+      ],
+      "id": "respond-dry-run",
+      "name": "Respond Dry Run"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\n\nif (!item?.json) {\n  throw new Error(\"Gate Provisioning: ROUTING_INPUT_MISSING\");\n}\n\nif (item.json.route === \"PROCEED\") {\n  return [item];\n}\n\nif (item.json.route === \"INVALID\" || item.json.route === \"DRY_RUN\") {\n  return [];\n}\n\nthrow new Error(\"Gate Provisioning: UNKNOWN_ROUTE: \" + (item.json.route || \"undefined\"));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        450
+      ],
+      "id": "gate-provisioning",
+      "name": "Gate Provisioning"
+    },
+    {
+      "id": "gate-invalid-response",
+      "name": "Gate Invalid Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first();\n\nif (!item?.json) {\n  throw new Error(\"Gate Invalid Response: ROUTING_INPUT_MISSING\");\n}\n\nif (item.json.route === \"INVALID\") {\n  return [item];\n}\n\nif (item.json.route === \"DRY_RUN\" || item.json.route === \"PROCEED\") {\n  return [];\n}\n\nthrow new Error(\"Gate Invalid Response: UNKNOWN_ROUTE: \" + (item.json.route || \"undefined\"));",
+        "language": "javaScript"
+      }
+    },
+    {
+      "id": "gate-dry-run-response",
+      "name": "Gate Dry Run Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first();\n\nif (!item?.json) {\n  throw new Error(\"Gate Dry Run Response: ROUTING_INPUT_MISSING\");\n}\n\nif (item.json.route === \"DRY_RUN\") {\n  return [item];\n}\n\nif (item.json.route === \"INVALID\" || item.json.route === \"PROCEED\") {\n  return [];\n}\n\n// Unknown route: return empty, no mutation\nreturn [];",
+        "language": "javaScript"
+      }
+    }
+  ],
+  "connections": {
+    "Provisioning Request (Webhook)": {
+      "main": [
+        [
+          {
+            "node": "Validate Request Schema",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Request Schema": {
+      "main": [
+        [
+          {
+            "node": "Route: Request Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route: Request Valid?": {
+      "main": [
+        [
+          {
+            "node": "Classify Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Idempotency Check": {
+      "main": [
+        [
+          {
+            "node": "SSH: Registry — Check Idempotency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: Registry — Check Idempotency": {
+      "main": [
+        [
+          {
+            "node": "Route: Already Processed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route: Already Processed?": {
+      "main": [
+        [
+          {
+            "node": "Return: Already Processed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Registry Discovery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Return: Already Processed": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Registry Discovery": {
+      "main": [
+        [
+          {
+            "node": "SSH: Registry — Discover Project",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: Registry — Discover Project": {
+      "main": [
+        [
+          {
+            "node": "Route: Project Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route: Project Status": {
+      "main": [
+        [
+          {
+            "node": "Handle: Project Ready",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Proxmox Reconcile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle: Project Ready": {
+      "main": [
+        [
+          {
+            "node": "Prepare Build",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Proxmox Reconcile": {
+      "main": [
+        [
+          {
+            "node": "SSH: Proxmox — Reconcile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: Proxmox — Reconcile": {
+      "main": [
+        [
+          {
+            "node": "Gate: Template & Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gate: Template & Storage": {
+      "main": [
+        [
+          {
+            "node": "Gate: Approval",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gate: Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gate: Approval": {
+      "main": [
+        [
+          {
+            "node": "Prepare CTID Allocation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare CTID Allocation": {
+      "main": [
+        [
+          {
+            "node": "SSH: Registry — Allocate CTID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: Registry — Allocate CTID": {
+      "main": [
+        [
+          {
+            "node": "Route: CTID Allocated?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route: CTID Allocated?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Clone",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Clone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Clone": {
+      "main": [
+        [
+          {
+            "node": "SSH: Proxmox — Clone Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: Proxmox — Clone Container": {
+      "main": [
+        [
+          {
+            "node": "Route: Clone Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route: Clone Result": {
+      "main": [
+        [
+          {
+            "node": "Prepare Firewall Installation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Firewall Installation": {
+      "main": [
+        [
+          {
+            "node": "SSH: Proxmox — Install Firewall",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: Proxmox — Install Firewall": {
+      "main": [
+        [
+          {
+            "node": "Prepare Container Init",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Container Init": {
+      "main": [
+        [
+          {
+            "node": "SSH: Proxmox — Initialize Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: Proxmox — Initialize Container": {
+      "main": [
+        [
+          {
+            "node": "Gate: Readiness (incl. Firewall)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gate: Readiness (incl. Firewall)": {
+      "main": [
+        [
+          {
+            "node": "STOP: Not Ready",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Registry READY",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "STOP: Not Ready": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Registry READY": {
+      "main": [
+        [
+          {
+            "node": "SSH: Registry — Set READY",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: Registry — Set READY": {
+      "main": [
+        [
+          {
+            "node": "Prepare Build",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Build": {
+      "main": [
+        [
+          {
+            "node": "SSH: Build Adapter — Start Build",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: Build Adapter — Start Build": {
+      "main": [
+        [
+          {
+            "node": "Route: Build Launched",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route: Build Launched": {
+      "main": [
+        [
+          {
+            "node": "Wait: Build Completion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait: Build Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait: Build Completion": {
+      "main": [
+        [
+          {
+            "node": "SSH: Build Adapter — Check Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: Build Adapter — Check Status": {
+      "main": [
+        [
+          {
+            "node": "Route: Build Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route: Build Result": {
+      "main": [
+        [
+          {
+            "node": "Build Still Running",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate Artifact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Still Running": {
+      "main": [
+        [
+          {
+            "node": "Wait: Build Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Artifact": {
+      "main": [
+        [
+          {
+            "node": "STOP: Artifact Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Evidence Seal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "STOP: Artifact Invalid": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evidence Seal": {
+      "main": [
+        [
+          {
+            "node": "SSH: Registry — Set SUCCEEDED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: Registry — Set SUCCEEDED": {
+      "main": [
+        [
+          {
+            "node": "Final Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Result": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Route": {
+      "main": [
+        [
+          {
+            "node": "Gate Provisioning",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gate Invalid Response",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gate Dry Run Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gate Provisioning": {
+      "main": [
+        [
+          {
+            "node": "Prepare Idempotency Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gate Invalid Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gate Dry Run Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Dry Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": false,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 600
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "9f28f080-25b2-4cec-9ac1-044aff61e396",
+  "activeVersionId": null,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-07-25T21:01:40.268Z",
+      "createdAt": "2026-07-25T21:01:40.268Z",
+      "role": "workflow:owner",
+      "workflowId": "88OuIcfW6TWgzkPa",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

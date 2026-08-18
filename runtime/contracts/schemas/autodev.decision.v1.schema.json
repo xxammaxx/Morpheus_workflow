@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autodev.decision.v1",
+  "title": "AutoDev Decision Contract v1",
+  "description": "Deterministic decision produced by the decision policy (no LLM controller).",
+  "type": "object",
+  "x-metadata": ["job_id", "attempt_id", "started_at", "ended_at", "duration_ms", "provider", "model", "backend"],
+  "required": ["contract", "version", "run_id", "decision", "reason_code", "evidence"],
+  "properties": {
+    "contract": { "const": "autodev.decision.v1" },
+    "version": { "const": "v1" },
+    "run_id": { "type": "string", "minLength": 6, "maxLength": 64 },
+    "decision": { "enum": ["DONE", "FIX", "SPLIT", "BLOCKED"] },
+    "reason_code": { "type": "string", "minLength": 3, "maxLength": 128 },
+    "next": { "type": "string", "maxLength": 128 },
+    "evidence": {
+      "type": "object",
+      "required": ["verification_ref", "review_ref"],
+      "properties": {
+        "verification_ref": { "type": "string", "maxLength": 256 },
+        "review_ref": { "type": "string", "maxLength": 256 }
+      },
+      "additionalProperties": false
+    },
+    "x-metadata": { "type": "object", "additionalProperties": true }
+  },
+  "additionalProperties": false
+}

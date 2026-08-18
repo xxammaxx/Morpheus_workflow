@@ -1,0 +1,37 @@
+{
+  "n8n_base": "http://192.168.1.52:5678",
+  "adapter_base": "http://192.168.1.136:8081",
+  "webhook_base": "http://192.168.1.52:5678",
+  "tables": {
+    "runs": "P3Eyck556Y76TC4p",
+    "attempts": "5ArfenIk1qhsigL6"
+  },
+  "workflow_ids": {
+    "00 AutoDev API Start": "gEsDC2xM2gQdL41M",
+    "01 AutoDev Orchestrator": "qU9xIrDwQzKQqyjY",
+    "02 AutoDev API Status": "5aEdqehBNAkcFBqq",
+    "10 AutoDev Baseline": "GepUsIJxsZDqs2FJ",
+    "20 AutoDev Research Batch": "Kn3shoxfDtlw3eVc",
+    "30 AutoDev Plan": "Z0pcm5duMZyczCWV",
+    "40 AutoDev Build": "I2rTcgcpfszBxYFC",
+    "50 AutoDev Verify": "Y0E3ldGuhxJFv9gI",
+    "60 AutoDev Review Batch": "Aq3MeuZ90IsTLxiU",
+    "70 AutoDev Decision": "MgP6KArl3oFPgu0j",
+    "80 AutoDev Fix": "s5MP598olzgUIKql",
+    "90 AutoDev Split": "EVfB7USkDsDlrhEy"
+  },
+  "creds": {
+    "n8n_api": {
+      "id": "Qy9ElX1H6XmeXGr9",
+      "name": "autodev-n8n-api"
+    },
+    "harness_token": {
+      "id": "Jc8UTFOaP9WCcnIt",
+      "name": "autodev-harness-token"
+    },
+    "api_auth": {
+      "id": "bNrV3DszwdD7hXuY",
+      "name": "autodev-api-auth"
+    }
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "updatedAt": "2026-06-21T14:57:20.694Z",
+  "createdAt": "2026-06-21T14:43:30.817Z",
+  "id": "DWObExlXhOX6XepN",
+  "name": "My workflow",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Debug Minimal Form UI",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "project_slug"
+            },
+            {
+              "fieldLabel": "blueprint_text"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "73a03654-9e32-4ca2-9369-b5058f44c283",
+      "name": "On form submission",
+      "webhookId": "7e4d1cc1-c18f-4037-b03a-42537070636e"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "a8df14d4-85c7-4466-a382-9c83483c05c9",
+      "name": "Edit Fields"
+    }
+  ],
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {
+    "On form submission": [
+      {
+        "json": {
+          "name": "First item",
+          "code": 1
+        }
+      },
+      {
+        "json": {
+          "name": "Second item",
+          "code": 2
+        }
+      }
+    ]
+  },
+  "versionId": "8a302573-f20d-49c3-bbdf-4e461c49743a",
+  "activeVersionId": null,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-06-21T14:43:30.821Z",
+      "createdAt": "2026-06-21T14:43:30.821Z",
+      "role": "workflow:owner",
+      "workflowId": "DWObExlXhOX6XepN",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

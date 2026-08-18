@@ -1,0 +1,278 @@
+{
+  "updatedAt": "2026-08-08T22:30:00.000Z",
+  "createdAt": "2026-08-08T22:30:00.000Z",
+  "id": "n8n-ops-02-dead-man-sentinel",
+  "name": "N8N-OPS-02 — Dead-Man Sentinel",
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "ops02-schedule",
+      "name": "Schedule Trigger (30min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ops02-init",
+      "name": "Initialize Sentinel State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// N8N-OPS-02: Initialize Dead-Man Sentinel State\n// Deterministic monitoring — NO LLM required.\n// Watches scheduled/critical workflows for execution failures and missing runs.\n// SELF-MONITORING LOOP PROTECTION: Sentinel never monitors itself.\n\nconst SCHEMA_VERSION = '1.0';\nconst PROJECT_ID = 'ghiw-n8n-ops-control-plane';\n\n// Watchlist: workflows to monitor with expected cadence\nconst WATCHLIST = [\n  { workflow_id: '8kUOLhbvyeQSj6BO', name: 'GHIW-01 v2', expected_cadence: 'on_demand', grace_minutes: 0 },\n  { workflow_id: 'Sv12QTo56NoPUu2D', name: 'DISPATCH', expected_cadence: 'every_15m', grace_minutes: 30 },\n  { workflow_id: 'zgjqWnTfjxOud1A5', name: 'GHIW-02 v1', expected_cadence: 'on_demand', grace_minutes: 0 }\n];\n\n// SELF-MONITORING PROTECTION: Exclude Sentinel itself and other ops workflows\nconst EXCLUDE_WORKFLOW_IDS = [\n  'n8n-ops-02-dead-man-sentinel',  // Sentinel itself\n  'ghiw-50-evidence-ledger',        // Evidence Ledger (ops)\n  'ghiw-60-orphan-watcher',         // Orphan Watcher (ops)\n  'n8n-ops-01-gitops-guardian'      // GitOps Guardian (ops)\n];\n\n// Bootstrap detection: first run sets baseline, doesn't alert\nconst IS_BOOTSTRAP = true;  // Set to false after first successful baseline run\n\nconst runId = 'w1-ops02-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);\n\nconst state = {\n  schema_version: SCHEMA_VERSION,\n  project_id: PROJECT_ID,\n  run_id: runId,\n  task_id: 'N8N-OPS-02',\n  source: { type: 'schedule', id: new Date().toISOString() },\n  workflow: { logical_id: 'N8N-OPS-02', id: $workflow.id, name: $workflow.name },\n  execution: { id: $execution.id, started_at: new Date().toISOString() },\n  state: 'INIT',\n  watchlist: WATCHLIST,\n  exclude_workflow_ids: EXCLUDE_WORKFLOW_IDS,\n  is_bootstrap: IS_BOOTSTRAP,\n  execution_status: {},\n  findings: [],\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ops02-query-executions",
+      "name": "Query n8n Executions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// N8N-OPS-02: Query n8n Executions\n// Simulates querying n8n API for latest execution status per watched workflow.\n// In production: calls n8n REST API /api/v1/executions.\n// For Wave 1: uses simulated execution data for contract testing.\n\nconst state = $input.first().json;\nconst now = new Date();\n\n// Simulated execution data (in production: from n8n API)\nconst simulatedExecutions = {};\n\nfor (const wf of state.watchlist) {\n  // Skip excluded workflows\n  if (state.exclude_workflow_ids.includes(wf.workflow_id)) {\n    continue;\n  }\n\n  // Simulate: all workflows have recent successful executions\n  // (Different states for contract testing)\n  const lastRun = new Date(now.getTime() - 5 * 60000); // 5 minutes ago\n  \n  simulatedExecutions[wf.workflow_id] = {\n    workflow_id: wf.workflow_id,\n    workflow_name: wf.name,\n    last_execution: lastRun.toISOString(),\n    last_success: lastRun.toISOString(),\n    last_failure: null,\n    execution_count: 42,\n    failure_count: 0,\n    status: 'success',\n    expected_cadence: wf.expected_cadence,\n    grace_minutes: wf.grace_minutes\n  };\n}\n\nstate.execution_status = simulatedExecutions;\nstate.state = 'EXECUTIONS_QUERIED';\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ops02-compare-expected",
+      "name": "Compare vs Expected Cadence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// N8N-OPS-02: Compare vs Expected Cadence\n// Checks each watched workflow against its expected schedule.\n// Detects: FAILED executions, LATE executions, MISSING executions, DISABLED workflows.\n// Bootstrap: first run sets baseline, doesn't alert.\n\nconst state = $input.first().json;\nconst now = new Date();\nconst findings = [];\n\nfor (const wf of state.watchlist) {\n  // Self-monitoring protection: skip excluded workflows\n  if (state.exclude_workflow_ids.includes(wf.workflow_id)) {\n    continue;\n  }\n\n  const exec = state.execution_status[wf.workflow_id];\n  \n  if (!exec) {\n    // Workflow in watchlist but no execution data\n    if (!state.is_bootstrap) {\n      findings.push({\n        workflow_id: wf.workflow_id,\n        workflow_name: wf.name,\n        type: 'UNKNOWN',\n        detail: 'No execution data available'\n      });\n    }\n    continue;\n  }\n\n  // Check 1: Failed execution?\n  if (exec.status === 'error' || exec.last_failure) {\n    const lastFailure = exec.last_failure ? new Date(exec.last_failure) : null;\n    const failureIsRecent = lastFailure && (now.getTime() - lastFailure.getTime() < 3600000); // 1 hour\n    \n    findings.push({\n      workflow_id: wf.workflow_id,\n      workflow_name: wf.name,\n      type: 'FAILED',\n      last_failure: exec.last_failure,\n      detail: failureIsRecent ? 'Recent execution failure detected' : 'Past execution failure recorded'\n    });\n    continue;\n  }\n\n  // Check 2: Missing execution? (only for scheduled workflows)\n  if (wf.expected_cadence !== 'on_demand' && exec.last_execution) {\n    const lastExec = new Date(exec.last_execution);\n    const expectedIntervalMs = wf.expected_cadence === 'every_15m' ? 15 * 60000 : 30 * 60000;\n    const graceMs = wf.grace_minutes * 60000;\n    const maxAllowedGap = expectedIntervalMs + graceMs;\n    const actualGap = now.getTime() - lastExec.getTime();\n\n    if (actualGap > maxAllowedGap) {\n      if (!exec.last_execution || actualGap > maxAllowedGap * 3) {\n        findings.push({\n          workflow_id: wf.workflow_id,\n          workflow_name: wf.name,\n          type: 'MISSING_EXECUTION',\n          last_execution: exec.last_execution,\n          expected_cadence: wf.expected_cadence,\n          grace_minutes: wf.grace_minutes,\n          gap_minutes: Math.round(actualGap / 60000),\n          detail: `Expected execution within ${Math.round(maxAllowedGap / 60000)}min, last was ${Math.round(actualGap / 60000)}min ago`\n        });\n      } else {\n        findings.push({\n          workflow_id: wf.workflow_id,\n          workflow_name: wf.name,\n          type: 'LATE',\n          last_execution: exec.last_execution,\n          expected_cadence: wf.expected_cadence,\n          gap_minutes: Math.round(actualGap / 60000),\n          detail: `Execution is ${Math.round(actualGap / 60000)}min late (grace: ${wf.grace_minutes}min)`\n        });\n      }\n      continue;\n    }\n  }\n\n  // Check 3: Never executed? (only if not bootstrap)\n  if (!exec.last_execution && !state.is_bootstrap) {\n    findings.push({\n      workflow_id: wf.workflow_id,\n      workflow_name: wf.name,\n      type: 'MISSING_EXECUTION',\n      detail: 'Workflow has never been executed'\n    });\n    continue;\n  }\n\n  // Healthy\n  findings.push({\n    workflow_id: wf.workflow_id,\n    workflow_name: wf.name,\n    type: 'HEALTHY',\n    last_execution: exec.last_execution,\n    detail: 'Execution on schedule'\n  });\n}\n\nstate.findings = findings;\nstate.state = 'COMPARED';\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ops02-classify",
+      "name": "Classify & Produce Sentinel Verdict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// N8N-OPS-02: Classify & Produce Sentinel Verdict\n// Deterministic overall classification based on findings.\n// Bootstrap run → HEALTHY (baseline set), no alerts.\n\nconst state = $input.first().json;\n\n// Determine overall decision\nlet decision = 'HEALTHY';\nlet reasonCodes = ['EXECUTION_ON_SCHEDULE'];\n\nconst problemTypes = state.findings\n  .filter(f => f.type !== 'HEALTHY')\n  .map(f => f.type);\n\nif (state.is_bootstrap) {\n  decision = 'HEALTHY';\n  reasonCodes = ['BOOTSTRAP_BASELINE_SET', 'EXECUTION_ON_SCHEDULE'];\n} else if (problemTypes.length === 0) {\n  decision = 'HEALTHY';\n  reasonCodes = ['EXECUTION_ON_SCHEDULE'];\n} else if (problemTypes.includes('FAILED')) {\n  decision = 'FAILED';\n  reasonCodes = ['EXECUTION_FAILED'];\n} else if (problemTypes.includes('MISSING_EXECUTION')) {\n  decision = 'MISSING_EXECUTION';\n  reasonCodes = ['EXECUTION_NEVER_OCCURRED'];\n} else if (problemTypes.includes('LATE')) {\n  decision = 'LATE';\n  reasonCodes = ['EXECUTION_OVERDUE', 'GRACE_PERIOD_ACTIVE'];\n} else {\n  decision = 'UNKNOWN';\n  reasonCodes = ['WORKFLOW_NOT_IN_WATCHLIST'];\n}\n\n// Count healthy vs problems\nconst healthyCount = state.findings.filter(f => f.type === 'HEALTHY').length;\nconst problemCount = problemTypes.length;\n\n// Build output envelope\nconst output = {\n  schema_version: state.schema_version,\n  project_id: state.project_id,\n  run_id: state.run_id,\n  task_id: state.task_id,\n  source: state.source,\n  workflow: state.workflow,\n  execution: { ...state.execution, completed_at: new Date().toISOString() },\n  decision: decision,\n  reason_codes: reasonCodes,\n  evidence_refs: [],\n  classification: decision === 'HEALTHY' ? 'GREEN' : (decision === 'LATE' ? 'AMBER' : 'RED'),\n  timestamp: new Date().toISOString(),\n  sentinel_details: {\n    is_bootstrap: state.is_bootstrap,\n    workflows_watched: state.watchlist.length,\n    workflows_checked: state.findings.length,\n    healthy_count: healthyCount,\n    problem_count: problemCount,\n    excluded_count: state.exclude_workflow_ids.length,\n    findings: state.findings\n  }\n};\n\nreturn [{ json: output }];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (30min)": {
+      "main": [
+        [
+          {
+            "node": "Initialize Sentinel State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Sentinel State": {
+      "main": [
+        [
+          {
+            "node": "Query n8n Executions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query n8n Executions": {
+      "main": [
+        [
+          {
+            "node": "Compare vs Expected Cadence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare vs Expected Cadence": {
+      "main": [
+        [
+          {
+            "node": "Classify & Produce Sentinel Verdict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "f8c82e85-101d-4cc8-a3a0-ce9b0b46f667",
+  "activeVersionId": "82e36fd2-6c8f-40ec-9308-85494229e12e",
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-08-08T22:35:14.034Z",
+      "createdAt": "2026-08-08T22:35:14.034Z",
+      "role": "workflow:owner",
+      "workflowId": "n8n-ops-02-dead-man-sentinel",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": {
+    "updatedAt": "2026-08-09T20:43:27.000Z",
+    "createdAt": "2026-08-09T20:43:27.000Z",
+    "versionId": "82e36fd2-6c8f-40ec-9308-85494229e12e",
+    "workflowId": "n8n-ops-02-dead-man-sentinel",
+    "nodes": [
+      {
+        "id": "ops02-schedule",
+        "name": "Schedule Trigger (30min)",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1,
+        "position": [
+          0,
+          0
+        ],
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "minutes",
+                "minutesInterval": 30
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "ops02-init",
+        "name": "Initialize Sentinel State",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          250,
+          0
+        ],
+        "parameters": {
+          "jsCode": "// N8N-OPS-02: Initialize Dead-Man Sentinel State\n// Deterministic monitoring — NO LLM required.\n// Watches scheduled/critical workflows for execution failures and missing runs.\n// SELF-MONITORING LOOP PROTECTION: Sentinel never monitors itself.\n\nconst SCHEMA_VERSION = '1.0';\nconst PROJECT_ID = 'ghiw-n8n-ops-control-plane';\n\n// Watchlist: workflows to monitor with expected cadence\nconst WATCHLIST = [\n  { workflow_id: '8kUOLhbvyeQSj6BO', name: 'GHIW-01 v2', expected_cadence: 'on_demand', grace_minutes: 0 },\n  { workflow_id: 'Sv12QTo56NoPUu2D', name: 'DISPATCH', expected_cadence: 'every_15m', grace_minutes: 30 },\n  { workflow_id: 'zgjqWnTfjxOud1A5', name: 'GHIW-02 v1', expected_cadence: 'on_demand', grace_minutes: 0 }\n];\n\n// SELF-MONITORING PROTECTION: Exclude Sentinel itself and other ops workflows\nconst EXCLUDE_WORKFLOW_IDS = [\n  'n8n-ops-02-dead-man-sentinel',  // Sentinel itself\n  'ghiw-50-evidence-ledger',        // Evidence Ledger (ops)\n  'ghiw-60-orphan-watcher',         // Orphan Watcher (ops)\n  'n8n-ops-01-gitops-guardian'      // GitOps Guardian (ops)\n];\n\n// Bootstrap detection: first run sets baseline, doesn't alert\nconst IS_BOOTSTRAP = true;  // Set to false after first successful baseline run\n\nconst runId = 'w1-ops02-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);\n\nconst state = {\n  schema_version: SCHEMA_VERSION,\n  project_id: PROJECT_ID,\n  run_id: runId,\n  task_id: 'N8N-OPS-02',\n  source: { type: 'schedule', id: new Date().toISOString() },\n  workflow: { logical_id: 'N8N-OPS-02', id: $workflow.id, name: $workflow.name },\n  execution: { id: $execution.id, started_at: new Date().toISOString() },\n  state: 'INIT',\n  watchlist: WATCHLIST,\n  exclude_workflow_ids: EXCLUDE_WORKFLOW_IDS,\n  is_bootstrap: IS_BOOTSTRAP,\n  execution_status: {},\n  findings: [],\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: state }];\n"
+        }
+      },
+      {
+        "id": "ops02-query-executions",
+        "name": "Query n8n Executions",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          500,
+          0
+        ],
+        "parameters": {
+          "jsCode": "// N8N-OPS-02: Query n8n Executions\n// Simulates querying n8n API for latest execution status per watched workflow.\n// In production: calls n8n REST API /api/v1/executions.\n// For Wave 1: uses simulated execution data for contract testing.\n\nconst state = $input.first().json;\nconst now = new Date();\n\n// Simulated execution data (in production: from n8n API)\nconst simulatedExecutions = {};\n\nfor (const wf of state.watchlist) {\n  // Skip excluded workflows\n  if (state.exclude_workflow_ids.includes(wf.workflow_id)) {\n    continue;\n  }\n\n  // Simulate: all workflows have recent successful executions\n  // (Different states for contract testing)\n  const lastRun = new Date(now.getTime() - 5 * 60000); // 5 minutes ago\n  \n  simulatedExecutions[wf.workflow_id] = {\n    workflow_id: wf.workflow_id,\n    workflow_name: wf.name,\n    last_execution: lastRun.toISOString(),\n    last_success: lastRun.toISOString(),\n    last_failure: null,\n    execution_count: 42,\n    failure_count: 0,\n    status: 'success',\n    expected_cadence: wf.expected_cadence,\n    grace_minutes: wf.grace_minutes\n  };\n}\n\nstate.execution_status = simulatedExecutions;\nstate.state = 'EXECUTIONS_QUERIED';\n\nreturn [{ json: state }];\n"
+        }
+      },
+      {
+        "id": "ops02-compare-expected",
+        "name": "Compare vs Expected Cadence",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          750,
+          0
+        ],
+        "parameters": {
+          "jsCode": "// N8N-OPS-02: Compare vs Expected Cadence\n// Checks each watched workflow against its expected schedule.\n// Detects: FAILED executions, LATE executions, MISSING executions, DISABLED workflows.\n// Bootstrap: first run sets baseline, doesn't alert.\n\nconst state = $input.first().json;\nconst now = new Date();\nconst findings = [];\n\nfor (const wf of state.watchlist) {\n  // Self-monitoring protection: skip excluded workflows\n  if (state.exclude_workflow_ids.includes(wf.workflow_id)) {\n    continue;\n  }\n\n  const exec = state.execution_status[wf.workflow_id];\n  \n  if (!exec) {\n    // Workflow in watchlist but no execution data\n    if (!state.is_bootstrap) {\n      findings.push({\n        workflow_id: wf.workflow_id,\n        workflow_name: wf.name,\n        type: 'UNKNOWN',\n        detail: 'No execution data available'\n      });\n    }\n    continue;\n  }\n\n  // Check 1: Failed execution?\n  if (exec.status === 'error' || exec.last_failure) {\n    const lastFailure = exec.last_failure ? new Date(exec.last_failure) : null;\n    const failureIsRecent = lastFailure && (now.getTime() - lastFailure.getTime() < 3600000); // 1 hour\n    \n    findings.push({\n      workflow_id: wf.workflow_id,\n      workflow_name: wf.name,\n      type: 'FAILED',\n      last_failure: exec.last_failure,\n      detail: failureIsRecent ? 'Recent execution failure detected' : 'Past execution failure recorded'\n    });\n    continue;\n  }\n\n  // Check 2: Missing execution? (only for scheduled workflows)\n  if (wf.expected_cadence !== 'on_demand' && exec.last_execution) {\n    const lastExec = new Date(exec.last_execution);\n    const expectedIntervalMs = wf.expected_cadence === 'every_15m' ? 15 * 60000 : 30 * 60000;\n    const graceMs = wf.grace_minutes * 60000;\n    const maxAllowedGap = expectedIntervalMs + graceMs;\n    const actualGap = now.getTime() - lastExec.getTime();\n\n    if (actualGap > maxAllowedGap) {\n      if (!exec.last_execution || actualGap > maxAllowedGap * 3) {\n        findings.push({\n          workflow_id: wf.workflow_id,\n          workflow_name: wf.name,\n          type: 'MISSING_EXECUTION',\n          last_execution: exec.last_execution,\n          expected_cadence: wf.expected_cadence,\n          grace_minutes: wf.grace_minutes,\n          gap_minutes: Math.round(actualGap / 60000),\n          detail: `Expected execution within ${Math.round(maxAllowedGap / 60000)}min, last was ${Math.round(actualGap / 60000)}min ago`\n        });\n      } else {\n        findings.push({\n          workflow_id: wf.workflow_id,\n          workflow_name: wf.name,\n          type: 'LATE',\n          last_execution: exec.last_execution,\n          expected_cadence: wf.expected_cadence,\n          gap_minutes: Math.round(actualGap / 60000),\n          detail: `Execution is ${Math.round(actualGap / 60000)}min late (grace: ${wf.grace_minutes}min)`\n        });\n      }\n      continue;\n    }\n  }\n\n  // Check 3: Never executed? (only if not bootstrap)\n  if (!exec.last_execution && !state.is_bootstrap) {\n    findings.push({\n      workflow_id: wf.workflow_id,\n      workflow_name: wf.name,\n      type: 'MISSING_EXECUTION',\n      detail: 'Workflow has never been executed'\n    });\n    continue;\n  }\n\n  // Healthy\n  findings.push({\n    workflow_id: wf.workflow_id,\n    workflow_name: wf.name,\n    type: 'HEALTHY',\n    last_execution: exec.last_execution,\n    detail: 'Execution on schedule'\n  });\n}\n\nstate.findings = findings;\nstate.state = 'COMPARED';\n\nreturn [{ json: state }];\n"
+        }
+      },
+      {
+        "id": "ops02-classify",
+        "name": "Classify & Produce Sentinel Verdict",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1000,
+          0
+        ],
+        "parameters": {
+          "jsCode": "// N8N-OPS-02: Classify & Produce Sentinel Verdict\n// Deterministic overall classification based on findings.\n// Bootstrap run → HEALTHY (baseline set), no alerts.\n\nconst state = $input.first().json;\n\n// Determine overall decision\nlet decision = 'HEALTHY';\nlet reasonCodes = ['EXECUTION_ON_SCHEDULE'];\n\nconst problemTypes = state.findings\n  .filter(f => f.type !== 'HEALTHY')\n  .map(f => f.type);\n\nif (state.is_bootstrap) {\n  decision = 'HEALTHY';\n  reasonCodes = ['BOOTSTRAP_BASELINE_SET', 'EXECUTION_ON_SCHEDULE'];\n} else if (problemTypes.length === 0) {\n  decision = 'HEALTHY';\n  reasonCodes = ['EXECUTION_ON_SCHEDULE'];\n} else if (problemTypes.includes('FAILED')) {\n  decision = 'FAILED';\n  reasonCodes = ['EXECUTION_FAILED'];\n} else if (problemTypes.includes('MISSING_EXECUTION')) {\n  decision = 'MISSING_EXECUTION';\n  reasonCodes = ['EXECUTION_NEVER_OCCURRED'];\n} else if (problemTypes.includes('LATE')) {\n  decision = 'LATE';\n  reasonCodes = ['EXECUTION_OVERDUE', 'GRACE_PERIOD_ACTIVE'];\n} else {\n  decision = 'UNKNOWN';\n  reasonCodes = ['WORKFLOW_NOT_IN_WATCHLIST'];\n}\n\n// Count healthy vs problems\nconst healthyCount = state.findings.filter(f => f.type === 'HEALTHY').length;\nconst problemCount = problemTypes.length;\n\n// Build output envelope\nconst output = {\n  schema_version: state.schema_version,\n  project_id: state.project_id,\n  run_id: state.run_id,\n  task_id: state.task_id,\n  source: state.source,\n  workflow: state.workflow,\n  execution: { ...state.execution, completed_at: new Date().toISOString() },\n  decision: decision,\n  reason_codes: reasonCodes,\n  evidence_refs: [],\n  classification: decision === 'HEALTHY' ? 'GREEN' : (decision === 'LATE' ? 'AMBER' : 'RED'),\n  timestamp: new Date().toISOString(),\n  sentinel_details: {\n    is_bootstrap: state.is_bootstrap,\n    workflows_watched: state.watchlist.length,\n    workflows_checked: state.findings.length,\n    healthy_count: healthyCount,\n    problem_count: problemCount,\n    excluded_count: state.exclude_workflow_ids.length,\n    findings: state.findings\n  }\n};\n\nreturn [{ json: output }];\n"
+        }
+      }
+    ],
+    "connections": {
+      "Schedule Trigger (30min)": {
+        "main": [
+          [
+            {
+              "node": "Initialize Sentinel State",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Initialize Sentinel State": {
+        "main": [
+          [
+            {
+              "node": "Query n8n Executions",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Query n8n Executions": {
+        "main": [
+          [
+            {
+              "node": "Compare vs Expected Cadence",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Compare vs Expected Cadence": {
+        "main": [
+          [
+            {
+              "node": "Classify & Produce Sentinel Verdict",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "nodeGroups": [],
+    "authors": "[]",
+    "name": "N8N-OPS-02 — Dead-Man Sentinel",
+    "description": null,
+    "autosaved": false
+  },
+  "tags": []
+}

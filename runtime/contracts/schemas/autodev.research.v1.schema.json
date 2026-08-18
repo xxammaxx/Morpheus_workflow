@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autodev.research.v1",
+  "title": "AutoDev Research Contract v1",
+  "description": "Joined result of the research batch (code/docs/tests). Bounded notes only — no blobs.",
+  "type": "object",
+  "x-metadata": ["job_id", "attempt_id", "started_at", "ended_at", "duration_ms", "provider", "model", "backend"],
+  "required": ["contract", "version", "run_id", "areas", "parallelism"],
+  "properties": {
+    "contract": { "const": "autodev.research.v1" },
+    "version": { "const": "v1" },
+    "run_id": { "type": "string", "minLength": 6, "maxLength": 64 },
+    "areas": {
+      "type": "object",
+      "required": ["code", "docs", "tests"],
+      "properties": {
+        "code": { "type": "string", "maxLength": 4000 },
+        "docs": { "type": "string", "maxLength": 4000 },
+        "tests": { "type": "string", "maxLength": 4000 }
+      },
+      "additionalProperties": false
+    },
+    "findings": { "type": "array", "items": { "type": "string", "maxLength": 512 } },
+    "recommendations": { "type": "array", "items": { "type": "string", "maxLength": 512 } },
+    "parallelism": {
+      "type": "object",
+      "required": ["jobs", "overlap_proven"],
+      "properties": {
+        "overlap_proven": { "type": "boolean" },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["job_id", "job_type", "started_at", "ended_at", "duration_ms"],
+            "properties": {
+              "job_id": { "type": "string", "maxLength": 64 },
+              "job_type": { "type": "string", "maxLength": 64 },
+              "started_at": { "type": "string", "maxLength": 64 },
+              "ended_at": { "type": "string", "maxLength": 64 },
+              "duration_ms": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "x-metadata": { "type": "object", "additionalProperties": true }
+  },
+  "additionalProperties": false
+}

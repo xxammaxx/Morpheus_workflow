@@ -1,0 +1,3154 @@
+{
+  "name": "01 AutoDev Orchestrator",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "sub-workflow-trigger",
+      "name": "Sub-Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst issue = s.issue || s;\nreturn [{json: {\n  issue: issue, fixture: s.fixture || null,\n  backend: s.backend || 'opencode-builder-8001',\n  run_row: {state: 'ACCEPTED', current_job: 'baseline', reason_code: 'INTAKE_OK'},\n  baseline: null, research: null, plan: null, gate: null,\n  build: null, verification: null, review: null, decision: null,\n  attempt_build: 0, attempt_fix: 0,\n  max_attempts: issue.max_attempts || 2\n}}];"
+      },
+      "id": "init-run-state",
+      "name": "Init Run State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'BASELINING';\nrow.current_job = 'baseline';\nrow.reason_code = 'START_BASELINE';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "baseline-state-prep",
+      "name": "Baseline State Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "baseline-state-update",
+      "name": "Baseline State Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        241,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Baseline State Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "baseline-state-restore",
+      "name": "Baseline State Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        242,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "GepUsIJxsZDqs2FJ",
+          "cachedResultName": "10 AutoDev Baseline"
+        },
+        "mode": "once",
+        "options": {
+          "executeOnce": true
+        }
+      },
+      "id": "run-baseline",
+      "name": "Run Baseline",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 4,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $json;\nconst b = out.baseline || {};\nconst s = Object.assign({}, $('Baseline State Prep').first().json.state || {}, {baseline: b});\nreturn [{json: Object.assign({}, s, {baseline_ok: !!b.contract && b.ok !== false})}];"
+      },
+      "id": "post-baseline",
+      "name": "Post-Baseline",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.baseline_ok}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "baseline-ok?",
+      "name": "Baseline OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'baseline';\nrow.decision = 'BLOCKED'; row.reason_code = 'BASELINE_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "baseline-failed-prep",
+      "name": "Baseline Failed Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "baseline-failed-update",
+      "name": "Baseline Failed Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1441,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Baseline Failed Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "baseline-failed-restore",
+      "name": "Baseline Failed Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1442,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'RESEARCHING';\nrow.current_job = 'research';\nrow.reason_code = 'BASELINE_OK';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "research-state-prep",
+      "name": "Research State Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "research-state-update",
+      "name": "Research State Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1441,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Research State Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "research-state-restore",
+      "name": "Research State Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1442,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Kn3shoxfDtlw3eVc",
+          "cachedResultName": "20 AutoDev Research Batch"
+        },
+        "mode": "once",
+        "options": {
+          "executeOnce": true
+        }
+      },
+      "id": "run-research",
+      "name": "Run Research",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 4,
+      "position": [
+        1920,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $json;\nconst r = out.research || {};\nconst s = Object.assign({}, $('Research State Prep').first().json.state || {}, {research: r});\nreturn [{json: Object.assign({}, s, {research_ok: !!r.contract && r.ok !== false})}];"
+      },
+      "id": "post-research",
+      "name": "Post-Research",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.research_ok}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "research-ok?",
+      "name": "Research OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'research';\nrow.decision = 'BLOCKED'; row.reason_code = 'RESEARCH_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "research-failed-prep",
+      "name": "Research Failed Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "research-failed-update",
+      "name": "Research Failed Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2641,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Research Failed Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "research-failed-restore",
+      "name": "Research Failed Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2642,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'PLANNING';\nrow.current_job = 'plan';\nrow.reason_code = 'RESEARCH_OK';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "plan-state-prep",
+      "name": "Plan State Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "plan-state-update",
+      "name": "Plan State Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2641,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Plan State Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "plan-state-restore",
+      "name": "Plan State Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2642,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Z0pcm5duMZyczCWV",
+          "cachedResultName": "30 AutoDev Plan"
+        },
+        "mode": "once",
+        "options": {
+          "executeOnce": true
+        }
+      },
+      "id": "run-plan",
+      "name": "Run Plan",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 4,
+      "position": [
+        3120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $json;\nconst s = Object.assign({}, $('Plan State Prep').first().json.state || {});\nconst baseline = s.baseline || {};\nreturn [{json: Object.assign({}, s, {\n  plan: out.plan || null,\n  plan_fingerprint: out.plan_fingerprint || '',\n  plan_job: out.job_record || {},\n  baseline_head: (baseline.repository && baseline.repository.head) || '',\n  gate: out.gate || {status: 'BLOCKED', reason_code: 'PLAN_MISSING'}})}];"
+      },
+      "id": "post-plan",
+      "name": "Post-Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.gate.status}}",
+              "rightValue": "=APPROVED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "plan-gate?",
+      "name": "Plan Gate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'PLAN_BLOCKED';\nrow.current_job = 'plan';\nrow.decision = 'BLOCKED'; row.reason_code = $json.gate.reason_code || 'PLAN_REJECTED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "plan-blocked-prep",
+      "name": "Plan Blocked Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3840,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "plan-blocked-update",
+      "name": "Plan Blocked Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3841,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Plan Blocked Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "plan-blocked-restore",
+      "name": "Plan Blocked Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3842,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nreturn [{json: {artifact: {contract: 'autodev.decision.v1', version: 'v1',\n  run_id: s.issue.run_id, decision: 'BLOCKED',\n  reason_code: s.gate.reason_code || 'PLAN_REJECTED', next: 'terminal',\n  evidence: {verification_ref: '', review_ref: ''}}}}];"
+      },
+      "id": "plan-blocked-artifact",
+      "name": "Plan Blocked Artifact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4080,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.136:8081/v1/artifacts/{{ $json.issue.run_id }}/decision",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "store-plan-blocked",
+      "name": "Store Plan Blocked",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        4320,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Jc8UTFOaP9WCcnIt",
+          "name": "autodev-harness-token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'BUILDING';\nrow.current_job = 'build';\nrow.reason_code = 'PLAN_GATE_APPROVED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "build-state-prep",
+      "name": "Build State Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3840,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "build-state-update",
+      "name": "Build State Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3841,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Build State Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "build-state-restore",
+      "name": "Build State Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3842,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "I2rTcgcpfszBxYFC",
+          "cachedResultName": "40 AutoDev Build"
+        },
+        "mode": "once",
+        "options": {
+          "executeOnce": true
+        }
+      },
+      "id": "run-build",
+      "name": "Run Build",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 4,
+      "position": [
+        4320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $json;\nconst b = out.build_result || {};\nconst s = Object.assign({}, $('Build State Prep').first().json.state || {});\nreturn [{json: Object.assign({}, s, {\n  build: b, build_job: b.job_record || {},\n  build_ok: !!b && !!b.contract && b.status === 'success',\n  attempt_build: (s.attempt_build || 0) + 1})}];"
+      },
+      "id": "post-build",
+      "name": "Post-Build",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4560,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.build_ok}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "build-ok?",
+      "name": "Build OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4800,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'build';\nrow.decision = 'BLOCKED'; row.reason_code = 'BUILD_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "build-failed-prep",
+      "name": "Build Failed Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5040,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "build-failed-update",
+      "name": "Build Failed Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        5041,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Build Failed Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "build-failed-restore",
+      "name": "Build Failed Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5042,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst rec = s.job_record || s.build_job || {};\nreturn [{json: {state: s, data: [{\n  run_id: s.issue.run_id,\n  job_id: rec.job_id || '',\n  attempt_id: rec.attempt_id || '',\n  status: rec.status || '',\n  input_contract: rec.input_contract || '',\n  input_fingerprint: rec.input_fingerprint || '',\n  output_contract: rec.output_contract || '',\n  output_fingerprint: rec.output_fingerprint || '',\n  provider: rec.provider || '',\n  model: rec.model || '',\n  started_at: rec.started_at || '',\n  ended_at: rec.ended_at || '',\n  failure_signature: rec.failure_signature || '',\n  strategy_delta: rec.strategy_delta || '',\n  result_ref: rec.result_ref || ''\n}], returnType: 'all'}}];"
+      },
+      "id": "build-attempt-prep-attempt",
+      "name": "Build Attempt Prep Attempt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5040,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/5ArfenIk1qhsigL6/rows",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "build-attempt-insert-attempt",
+      "name": "Build Attempt Insert Attempt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        5041,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Build Attempt Prep Attempt').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "build-attempt-attempt-restore",
+      "name": "Build Attempt Attempt Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5042,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Y0E3ldGuhxJFv9gI",
+          "cachedResultName": "50 AutoDev Verify"
+        },
+        "mode": "once",
+        "options": {
+          "executeOnce": true
+        }
+      },
+      "id": "run-verify",
+      "name": "Run Verify",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 4,
+      "position": [
+        5520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $json;\nconst v = out.verification || {};\n// the state flows through the restore that ran directly before Run Verify\n// (candidates: decision-fix loop, retry-fix loop, happy path)\nlet srcState = {};\ntry {\n  const d = $('Decision Fix Attempt Attempt Restore');\n  if (d && d.first) srcState = d.first().json;\n} catch (e) { /* node not executed in this run */ }\nif (!srcState || !srcState.issue) {\n  try {\n    const f = $('Fix Attempt Attempt Restore');\n    if (f && f.first) srcState = f.first().json;\n  } catch (e) { /* node not executed in this run */ }\n}\nif (!srcState || !srcState.issue) {\n  try {\n    const b = $('Build Attempt Attempt Restore');\n    if (b && b.first) srcState = b.first().json;\n  } catch (e) { /* node not executed in this run */ }\n}\nconst s = Object.assign({}, srcState);\nreturn [{json: Object.assign({}, s, {\n  verification: v, verify_job: out.job_record || {},\n  verify_ok: !!v && !!v.contract && v.passed === true})}];"
+      },
+      "id": "post-verify",
+      "name": "Post-Verify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5760,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.verification && $json.verification.passed === true}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "verify-passed?",
+      "name": "Verify Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        6000,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst v = s.verification || {};\nconst attempts = (s.attempt_build || 0) + (s.attempt_fix || 0);\nconst maxAttempts = s.max_attempts || 2;\nlet retry = null;\nif (!v.failure_signature) {\n  retry = {decision: 'SPLIT', reason_code: 'RETRY_DENIED_NO_FAILURE_SIGNATURE'};\n} else if (attempts >= maxAttempts) {\n  retry = {decision: 'SPLIT', reason_code: 'RETRY_DENIED_ATTEMPT_LIMIT'};\n} else if (!v.new_evidence || !v.new_evidence.length) {\n  retry = {decision: 'SPLIT', reason_code: 'RETRY_DENIED_NO_STRATEGY_DELTA'};\n} else {\n  retry = {decision: 'FIX', reason_code: 'VERIFY_FAILED_WITH_DELTA'};\n}\nreturn [{json: Object.assign({}, s, {retry: retry})}];"
+      },
+      "id": "retry-policy",
+      "name": "Retry Policy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.retry.decision}}",
+              "rightValue": "=FIX",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "retry-fix?",
+      "name": "Retry FIX?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        6480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.retry.decision}}",
+              "rightValue": "=SPLIT",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "retry-split?",
+      "name": "Retry SPLIT?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        6720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FIX_REQUIRED';\nrow.current_job = 'fix';\nrow.decision = 'FIX'; row.reason_code = $json.retry.reason_code || 'VERIFY_FAILED_WITH_DELTA';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "fix-state-prep",
+      "name": "Fix State Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6960,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "fix-state-update",
+      "name": "Fix State Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        6961,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Fix State Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "fix-state-restore",
+      "name": "Fix State Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6962,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "s5MP598olzgUIKql",
+          "cachedResultName": "80 AutoDev Fix"
+        },
+        "mode": "once",
+        "options": {
+          "executeOnce": true
+        }
+      },
+      "id": "run-fix",
+      "name": "Run Fix",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 4,
+      "position": [
+        7440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $json;\nconst b = out.build_result || {};\nconst s = Object.assign({}, $('Fix State Prep').first().json.state || {});\nreturn [{json: Object.assign({}, s, {\n  build: b, build_job: b.job_record || {},\n  build_ok: !!b && !!b.contract && b.status === 'success',\n  attempt_fix: (s.attempt_fix || 0) + 1})}];"
+      },
+      "id": "post-fix",
+      "name": "Post-Fix",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7680,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.build_ok}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "fix-ok?",
+      "name": "Fix OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        7920,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'fix';\nrow.decision = 'BLOCKED'; row.reason_code = 'FIX_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "fix-failed-prep",
+      "name": "Fix Failed Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "fix-failed-update",
+      "name": "Fix Failed Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        8161,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Fix Failed Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "fix-failed-restore",
+      "name": "Fix Failed Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8162,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst rec = s.job_record || s.build_job || {};\nreturn [{json: {state: s, data: [{\n  run_id: s.issue.run_id,\n  job_id: rec.job_id || '',\n  attempt_id: rec.attempt_id || '',\n  status: rec.status || '',\n  input_contract: rec.input_contract || '',\n  input_fingerprint: rec.input_fingerprint || '',\n  output_contract: rec.output_contract || '',\n  output_fingerprint: rec.output_fingerprint || '',\n  provider: rec.provider || '',\n  model: rec.model || '',\n  started_at: rec.started_at || '',\n  ended_at: rec.ended_at || '',\n  failure_signature: rec.failure_signature || '',\n  strategy_delta: rec.strategy_delta || '',\n  result_ref: rec.result_ref || ''\n}], returnType: 'all'}}];"
+      },
+      "id": "fix-attempt-prep-attempt",
+      "name": "Fix Attempt Prep Attempt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/5ArfenIk1qhsigL6/rows",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "fix-attempt-insert-attempt",
+      "name": "Fix Attempt Insert Attempt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        8161,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Fix Attempt Prep Attempt').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "fix-attempt-attempt-restore",
+      "name": "Fix Attempt Attempt Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8162,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EVfB7USkDsDlrhEy",
+          "cachedResultName": "90 AutoDev Split"
+        },
+        "mode": "once",
+        "options": {
+          "executeOnce": true
+        }
+      },
+      "id": "run-split-(retry)",
+      "name": "Run Split (Retry)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 4,
+      "position": [
+        6960,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $json;\nconst sp = out.split || {};\nconst s = Object.assign({}, $('Retry Policy').first().json || {});\nreturn [{json: Object.assign({}, s, {split: sp, split_ok: !!sp && !!sp.contract})}];"
+      },
+      "id": "post-split-(retry)",
+      "name": "Post-Split (Retry)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7200,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'SPLIT_REQUIRED';\nrow.current_job = 'split';\nrow.decision = 'SPLIT'; row.reason_code = $json.split.reason_code || 'SPLIT_REQUIRED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "split-retry-state-prep",
+      "name": "Split Retry State Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7440,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "split-retry-state-update",
+      "name": "Split Retry State Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        7441,
+        160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Split Retry State Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "split-retry-state-restore",
+      "name": "Split Retry State Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7442,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'BLOCKED';\nrow.current_job = 'decision';\nrow.decision = 'BLOCKED'; row.reason_code = $json.retry.reason_code || 'RETRY_DENIED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "retry-blocked-prep",
+      "name": "Retry Blocked Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7200,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "retry-blocked-update",
+      "name": "Retry Blocked Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        7201,
+        160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Retry Blocked Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "retry-blocked-restore",
+      "name": "Retry Blocked Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7202,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'REVIEWING';\nrow.current_job = 'review';\nrow.reason_code = 'VERIFY_PASSED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "review-state-prep",
+      "name": "Review State Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6000,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "review-state-update",
+      "name": "Review State Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        6001,
+        160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Review State Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "review-state-restore",
+      "name": "Review State Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6002,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Aq3MeuZ90IsTLxiU",
+          "cachedResultName": "60 AutoDev Review Batch"
+        },
+        "mode": "once",
+        "options": {
+          "executeOnce": true
+        }
+      },
+      "id": "run-review",
+      "name": "Run Review",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 4,
+      "position": [
+        6480,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $json;\nconst r = out.review || {};\nconst s = Object.assign({}, $('Review State Prep').first().json.state || {});\nreturn [{json: Object.assign({}, s, {\n  review: r, review_ok: !!r && !!r.contract})}];"
+      },
+      "id": "post-review",
+      "name": "Post-Review",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6720,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.review && $json.review.blocked === true}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "security-blocked?",
+      "name": "Security Blocked?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        6960,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'BLOCKED';\nrow.current_job = 'review';\nrow.decision = 'BLOCKED'; row.reason_code = 'BLOCKING_HIGH_OR_CRITICAL_FINDING';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "security-blocked-prep",
+      "name": "Security Blocked Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7200,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "security-blocked-update",
+      "name": "Security Blocked Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        7201,
+        160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Security Blocked Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "security-blocked-restore",
+      "name": "Security Blocked Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7202,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "MgP6KArl3oFPgu0j",
+          "cachedResultName": "70 AutoDev Decision"
+        },
+        "mode": "once",
+        "options": {
+          "executeOnce": true
+        }
+      },
+      "id": "run-decision",
+      "name": "Run Decision",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 4,
+      "position": [
+        7200,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $json;\nconst d = out.decision_contract || {};\nconst s = Object.assign({}, $('Review State Prep').first().json.state || {});\nreturn [{json: Object.assign({}, s, {decision: d || null})}];"
+      },
+      "id": "post-decision",
+      "name": "Post-Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7440,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.decision && $json.decision.decision}}",
+              "rightValue": "=DONE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "decision-done?",
+      "name": "Decision DONE?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        7680,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.decision && $json.decision.decision}}",
+              "rightValue": "=FIX",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "decision-fix?",
+      "name": "Decision FIX?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        7920,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.decision && $json.decision.decision}}",
+              "rightValue": "=SPLIT",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "decision-split?",
+      "name": "Decision SPLIT?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        8160,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'DONE';\nrow.current_job = 'terminal';\nrow.decision = 'DONE'; row.reason_code = 'ALL_HARD_GATES_GREEN'; row.result_ref = $json.decision ? ($json.decision.evidence ? $json.decision.evidence.review_ref : '') : '';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "done-state-prep",
+      "name": "Done State Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8400,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "done-state-update",
+      "name": "Done State Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        8401,
+        320
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Done State Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "done-state-restore",
+      "name": "Done State Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8402,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FIX_REQUIRED';\nrow.current_job = 'fix';\nrow.decision = 'FIX'; row.reason_code = $json.decision.reason_code || 'NON_BLOCKING_REVIEW_FINDINGS';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "decision-fix-state-prep",
+      "name": "Decision Fix State Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7920,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "decision-fix-state-update",
+      "name": "Decision Fix State Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        7921,
+        480
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Decision Fix State Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "decision-fix-state-restore",
+      "name": "Decision Fix State Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7922,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "s5MP598olzgUIKql",
+          "cachedResultName": "80 AutoDev Fix"
+        },
+        "mode": "once",
+        "options": {
+          "executeOnce": true
+        }
+      },
+      "id": "run-fix-(decision)",
+      "name": "Run Fix (Decision)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 4,
+      "position": [
+        8400,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $json;\nconst b = out.build_result || {};\nconst s = Object.assign({}, $('Decision Fix State Prep').first().json.state || {});\nreturn [{json: Object.assign({}, s, {\n  build: b, build_job: b.job_record || {},\n  build_ok: !!b && !!b.contract && b.status === 'success',\n  attempt_fix: (s.attempt_fix || 0) + 1})}];"
+      },
+      "id": "post-fix-(decision)",
+      "name": "Post-Fix (Decision)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8640,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.build_ok}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "fix-ok?-(decision)",
+      "name": "Fix OK? (Decision)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        8880,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'fix';\nrow.decision = 'BLOCKED'; row.reason_code = 'FIX_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "decision-fix-failed-prep",
+      "name": "Decision Fix Failed Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9120,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "decision-fix-failed-update",
+      "name": "Decision Fix Failed Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        9121,
+        480
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Decision Fix Failed Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "decision-fix-failed-restore",
+      "name": "Decision Fix Failed Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9122,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst rec = s.job_record || s.build_job || {};\nreturn [{json: {state: s, data: [{\n  run_id: s.issue.run_id,\n  job_id: rec.job_id || '',\n  attempt_id: rec.attempt_id || '',\n  status: rec.status || '',\n  input_contract: rec.input_contract || '',\n  input_fingerprint: rec.input_fingerprint || '',\n  output_contract: rec.output_contract || '',\n  output_fingerprint: rec.output_fingerprint || '',\n  provider: rec.provider || '',\n  model: rec.model || '',\n  started_at: rec.started_at || '',\n  ended_at: rec.ended_at || '',\n  failure_signature: rec.failure_signature || '',\n  strategy_delta: rec.strategy_delta || '',\n  result_ref: rec.result_ref || ''\n}], returnType: 'all'}}];"
+      },
+      "id": "decision-fix-attempt-prep-attemp",
+      "name": "Decision Fix Attempt Prep Attempt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9120,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/5ArfenIk1qhsigL6/rows",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "decision-fix-attempt-insert-atte",
+      "name": "Decision Fix Attempt Insert Attempt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        9121,
+        480
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Decision Fix Attempt Prep Attempt').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "decision-fix-attempt-attempt-res",
+      "name": "Decision Fix Attempt Attempt Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9122,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EVfB7USkDsDlrhEy",
+          "cachedResultName": "90 AutoDev Split"
+        },
+        "mode": "once",
+        "options": {
+          "executeOnce": true
+        }
+      },
+      "id": "run-split-(decision)",
+      "name": "Run Split (Decision)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 4,
+      "position": [
+        8400,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $json;\nconst sp = out.split || {};\nconst s = Object.assign({}, $('Post-Decision').first().json || {});\nreturn [{json: Object.assign({}, s, {split: sp, split_ok: !!sp && !!sp.contract})}];"
+      },
+      "id": "post-split-(decision)",
+      "name": "Post-Split (Decision)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8640,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'SPLIT_REQUIRED';\nrow.current_job = 'split';\nrow.decision = 'SPLIT'; row.reason_code = $json.split.reason_code || 'SPLIT_REQUIRED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "split-decision-state-prep",
+      "name": "Split Decision State Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8880,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "split-decision-state-update",
+      "name": "Split Decision State Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        8881,
+        640
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Split Decision State Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "split-decision-state-restore",
+      "name": "Split Decision State Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8882,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'BLOCKED';\nrow.current_job = 'terminal';\nrow.decision = 'BLOCKED'; row.reason_code = $json.decision.reason_code || 'DECISION_BLOCKED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "decision-blocked-prep",
+      "name": "Decision Blocked Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8640,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "decision-blocked-update",
+      "name": "Decision Blocked Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        8641,
+        640
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Decision Blocked Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "decision-blocked-restore",
+      "name": "Decision Blocked Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8642,
+        640
+      ]
+    }
+  ],
+  "connections": {
+    "Sub-Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Init Run State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baseline State Prep": {
+      "main": [
+        [
+          {
+            "node": "Baseline State Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baseline State Update": {
+      "main": [
+        [
+          {
+            "node": "Baseline State Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Run State": {
+      "main": [
+        [
+          {
+            "node": "Baseline State Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baseline State Restore": {
+      "main": [
+        [
+          {
+            "node": "Run Baseline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baseline Failed Prep": {
+      "main": [
+        [
+          {
+            "node": "Baseline Failed Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baseline Failed Update": {
+      "main": [
+        [
+          {
+            "node": "Baseline Failed Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baseline OK?": {
+      "main": [
+        [
+          {
+            "node": "Research State Prep",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Baseline Failed Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research State Prep": {
+      "main": [
+        [
+          {
+            "node": "Research State Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research State Update": {
+      "main": [
+        [
+          {
+            "node": "Research State Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research State Restore": {
+      "main": [
+        [
+          {
+            "node": "Run Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Failed Prep": {
+      "main": [
+        [
+          {
+            "node": "Research Failed Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Failed Update": {
+      "main": [
+        [
+          {
+            "node": "Research Failed Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research OK?": {
+      "main": [
+        [
+          {
+            "node": "Plan State Prep",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Research Failed Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan State Prep": {
+      "main": [
+        [
+          {
+            "node": "Plan State Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan State Update": {
+      "main": [
+        [
+          {
+            "node": "Plan State Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan State Restore": {
+      "main": [
+        [
+          {
+            "node": "Run Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Blocked Prep": {
+      "main": [
+        [
+          {
+            "node": "Plan Blocked Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Blocked Update": {
+      "main": [
+        [
+          {
+            "node": "Plan Blocked Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Gate?": {
+      "main": [
+        [
+          {
+            "node": "Build State Prep",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Plan Blocked Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Blocked Restore": {
+      "main": [
+        [
+          {
+            "node": "Plan Blocked Artifact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Blocked Artifact": {
+      "main": [
+        [
+          {
+            "node": "Store Plan Blocked",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build State Prep": {
+      "main": [
+        [
+          {
+            "node": "Build State Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build State Update": {
+      "main": [
+        [
+          {
+            "node": "Build State Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build State Restore": {
+      "main": [
+        [
+          {
+            "node": "Run Build",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Failed Prep": {
+      "main": [
+        [
+          {
+            "node": "Build Failed Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Failed Update": {
+      "main": [
+        [
+          {
+            "node": "Build Failed Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build OK?": {
+      "main": [
+        [
+          {
+            "node": "Build Attempt Prep Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Failed Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Attempt Prep Attempt": {
+      "main": [
+        [
+          {
+            "node": "Build Attempt Insert Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Attempt Insert Attempt": {
+      "main": [
+        [
+          {
+            "node": "Build Attempt Attempt Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Attempt Attempt Restore": {
+      "main": [
+        [
+          {
+            "node": "Run Verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Passed?": {
+      "main": [
+        [
+          {
+            "node": "Review State Prep",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retry Policy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fix State Prep": {
+      "main": [
+        [
+          {
+            "node": "Fix State Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fix State Update": {
+      "main": [
+        [
+          {
+            "node": "Fix State Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry FIX?": {
+      "main": [
+        [
+          {
+            "node": "Fix State Prep",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retry SPLIT?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fix State Restore": {
+      "main": [
+        [
+          {
+            "node": "Run Fix",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fix Failed Prep": {
+      "main": [
+        [
+          {
+            "node": "Fix Failed Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fix Failed Update": {
+      "main": [
+        [
+          {
+            "node": "Fix Failed Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fix OK?": {
+      "main": [
+        [
+          {
+            "node": "Fix Attempt Prep Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fix Failed Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fix Attempt Prep Attempt": {
+      "main": [
+        [
+          {
+            "node": "Fix Attempt Insert Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fix Attempt Insert Attempt": {
+      "main": [
+        [
+          {
+            "node": "Fix Attempt Attempt Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fix Attempt Attempt Restore": {
+      "main": [
+        [
+          {
+            "node": "Run Verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry SPLIT?": {
+      "main": [
+        [
+          {
+            "node": "Run Split (Retry)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retry Blocked Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Split (Retry)": {
+      "main": [
+        [
+          {
+            "node": "Post-Split (Retry)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Retry State Prep": {
+      "main": [
+        [
+          {
+            "node": "Split Retry State Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Retry State Update": {
+      "main": [
+        [
+          {
+            "node": "Split Retry State Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post-Split (Retry)": {
+      "main": [
+        [
+          {
+            "node": "Split Retry State Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Blocked Prep": {
+      "main": [
+        [
+          {
+            "node": "Retry Blocked Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Blocked Update": {
+      "main": [
+        [
+          {
+            "node": "Retry Blocked Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review State Prep": {
+      "main": [
+        [
+          {
+            "node": "Review State Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review State Update": {
+      "main": [
+        [
+          {
+            "node": "Review State Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review State Restore": {
+      "main": [
+        [
+          {
+            "node": "Run Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Security Blocked Prep": {
+      "main": [
+        [
+          {
+            "node": "Security Blocked Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Security Blocked Update": {
+      "main": [
+        [
+          {
+            "node": "Security Blocked Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Security Blocked?": {
+      "main": [
+        [
+          {
+            "node": "Security Blocked Prep",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Done State Prep": {
+      "main": [
+        [
+          {
+            "node": "Done State Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Done State Update": {
+      "main": [
+        [
+          {
+            "node": "Done State Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision DONE?": {
+      "main": [
+        [
+          {
+            "node": "Done State Prep",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Decision FIX?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Fix State Prep": {
+      "main": [
+        [
+          {
+            "node": "Decision Fix State Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Fix State Update": {
+      "main": [
+        [
+          {
+            "node": "Decision Fix State Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision FIX?": {
+      "main": [
+        [
+          {
+            "node": "Decision Fix State Prep",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Decision SPLIT?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Fix State Restore": {
+      "main": [
+        [
+          {
+            "node": "Run Fix (Decision)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Fix Failed Prep": {
+      "main": [
+        [
+          {
+            "node": "Decision Fix Failed Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Fix Failed Update": {
+      "main": [
+        [
+          {
+            "node": "Decision Fix Failed Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fix OK? (Decision)": {
+      "main": [
+        [
+          {
+            "node": "Decision Fix Attempt Prep Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Decision Fix Failed Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Fix Attempt Prep Attempt": {
+      "main": [
+        [
+          {
+            "node": "Decision Fix Attempt Insert Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Fix Attempt Insert Attempt": {
+      "main": [
+        [
+          {
+            "node": "Decision Fix Attempt Attempt Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Fix Attempt Attempt Restore": {
+      "main": [
+        [
+          {
+            "node": "Run Verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision SPLIT?": {
+      "main": [
+        [
+          {
+            "node": "Run Split (Decision)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Decision Blocked Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Split (Decision)": {
+      "main": [
+        [
+          {
+            "node": "Post-Split (Decision)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Decision State Prep": {
+      "main": [
+        [
+          {
+            "node": "Split Decision State Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Decision State Update": {
+      "main": [
+        [
+          {
+            "node": "Split Decision State Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post-Split (Decision)": {
+      "main": [
+        [
+          {
+            "node": "Split Decision State Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Blocked Prep": {
+      "main": [
+        [
+          {
+            "node": "Decision Blocked Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Blocked Update": {
+      "main": [
+        [
+          {
+            "node": "Decision Blocked Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post-Baseline": {
+      "main": [
+        [
+          {
+            "node": "Baseline OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post-Research": {
+      "main": [
+        [
+          {
+            "node": "Research OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post-Plan": {
+      "main": [
+        [
+          {
+            "node": "Plan Gate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post-Build": {
+      "main": [
+        [
+          {
+            "node": "Build OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post-Verify": {
+      "main": [
+        [
+          {
+            "node": "Verify Passed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post-Fix": {
+      "main": [
+        [
+          {
+            "node": "Fix OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post-Fix (Decision)": {
+      "main": [
+        [
+          {
+            "node": "Fix OK? (Decision)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post-Review": {
+      "main": [
+        [
+          {
+            "node": "Security Blocked?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post-Decision": {
+      "main": [
+        [
+          {
+            "node": "Decision DONE?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Policy": {
+      "main": [
+        [
+          {
+            "node": "Retry FIX?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Baseline": {
+      "main": [
+        [
+          {
+            "node": "Post-Baseline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Research": {
+      "main": [
+        [
+          {
+            "node": "Post-Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Plan": {
+      "main": [
+        [
+          {
+            "node": "Post-Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Build": {
+      "main": [
+        [
+          {
+            "node": "Post-Build",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Verify": {
+      "main": [
+        [
+          {
+            "node": "Post-Verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Review": {
+      "main": [
+        [
+          {
+            "node": "Post-Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Decision": {
+      "main": [
+        [
+          {
+            "node": "Post-Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Fix": {
+      "main": [
+        [
+          {
+            "node": "Post-Fix",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Fix (Decision)": {
+      "main": [
+        [
+          {
+            "node": "Post-Fix (Decision)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

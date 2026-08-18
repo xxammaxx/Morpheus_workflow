@@ -1,0 +1,519 @@
+{
+  "updatedAt": "2026-07-07T21:33:43.145Z",
+  "createdAt": "2026-07-07T21:33:43.145Z",
+  "id": "kqQsFuz6HJl6OOgH",
+  "name": "MDAL_STEP0_TEST__notification",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "name": "Cron Trigger (every 5 min)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "c5c01db1-88eb-477d-8f45-209903af9f96"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "value": "={{ JSON.stringify() }}",
+              "name": "data"
+            }
+          ]
+        },
+        "keepOnlySet": true
+      },
+      "name": "Read status.json",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ],
+      "id": "96049b0b-0b86-41b7-9f51-7685a68d6e7f"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse and classify status for notification routing\nconst fileData = $input.first().json.data;\nlet statusData;\ntry {\n  statusData = JSON.parse(fileData);\n} catch (e) {\n  return [{ json: { error: 'Failed to parse status.json', overall_status: 'UNKNOWN', route: 'UNKNOWN', severity: 'error' } }];\n}\n\nconst rawStatus = statusData.overall_status;\nconst status = (typeof rawStatus === 'string' && rawStatus.trim().length > 0)\n  ? String(rawStatus).trim().toUpperCase()\n  : 'UNKNOWN';\n\nlet route = 'UNKNOWN';\nlet severity = 'review';\nlet canNotify = false;\nlet notificationTitle = '';\nlet notificationBody = '';\n\nif (status === 'RED_BLOCK') {\n  route = 'BLOCK'; severity = 'critical'; canNotify = true;\n  notificationTitle = '???? CRITICAL: Agent Run BLOCKED';\n  notificationBody = `Project: ${statusData.project || 'mission-driven-agent-loop'}\\nStatus: RED_BLOCK\\nRuns Found: ${statusData.runs_found || 'N/A'}\\nImmediate investigation required.`;\n} else if (status === 'YELLOW_REVIEW' || status === 'NEEDS_VALIDATION') {\n  route = 'REVIEW'; severity = 'warning'; canNotify = true;\n  notificationTitle = status === 'YELLOW_REVIEW' ? '?????? Agent Run Review Required' : '???? Agent Run Needs Validation';\n  notificationBody = `Project: ${statusData.project || 'mission-driven-agent-loop'}\\nStatus: ${status}\\nRuns Found: ${statusData.runs_found || 'N/A'}\\nHuman review required.`;\n} else if (status === 'GREEN_SAFE') {\n  route = 'GREEN'; severity = 'info'; canNotify = false;\n  notificationTitle = '??? Agent Loop ??? GREEN_SAFE';\n  notificationBody = `Project: ${statusData.project || 'mission-driven-agent-loop'}\\nStatus: GREEN_SAFE\\nAll runs passed. No notification needed.`;\n} else if (status === 'TOOL_GAP') {\n  route = 'TOOL_GAP'; severity = 'warning'; canNotify = true;\n  notificationTitle = '???? Tool Gap Detected';\n  notificationBody = `Project: ${statusData.project || 'mission-driven-agent-loop'}\\nStatus: TOOL_GAP\\nRequired tools unavailable.`;\n} else if (status === 'STALE') {\n  route = 'STALE'; severity = 'info'; canNotify = true;\n  notificationTitle = '??? Stale Run Data';\n  notificationBody = `Project: ${statusData.project || 'mission-driven-agent-loop'}\\nStatus: STALE\\nNo recent runs (older than 7 days).`;\n} else {\n  route = 'UNKNOWN'; severity = 'review'; canNotify = true;\n  notificationTitle = '??? Unknown Agent Loop Status';\n  notificationBody = `Project: ${statusData.project || 'mission-driven-agent-loop'}\\nStatus: UNKNOWN\\nManual review required.`;\n}\n\nreturn [{\n  json: {\n    project: statusData.project || 'unknown',\n    overall_status: status,\n    runs_found: statusData.runs_found || 0,\n    route: route,\n    severity: severity,\n    canNotify: canNotify,\n    notification: {\n      title: notificationTitle,\n      body: notificationBody,\n      severity: severity,\n      timestamp: new Date().toISOString()\n    }\n  }\n}];"
+      },
+      "name": "Classify & Prepare Notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ],
+      "notes": "CRITICAL: Explicit === comparisons. NO IF Nodes. See n8n/code-nodes/status-router.js.",
+      "id": "4033cdf2-bbb2-4553-bec6-36fc2454320f"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.route }}",
+                    "operation": "equals",
+                    "value2": "BLOCK"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.route }}",
+                    "operation": "equals",
+                    "value2": "REVIEW"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.route }}",
+                    "operation": "equals",
+                    "value2": "NEEDS_VALIDATION"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.route }}",
+                    "operation": "equals",
+                    "value2": "TOOL_GAP"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.route }}",
+                    "operation": "equals",
+                    "value2": "STALE"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.route }}",
+                    "operation": "equals",
+                    "value2": "UNKNOWN"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.route }}",
+                    "operation": "equals",
+                    "value2": "GREEN"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route by Classification",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        600,
+        0
+      ],
+      "notes": "Switch node used instead of IF. Multi-branch routing by classification value. 7 explicit branches.",
+      "id": "bb3a50a4-fec0-4671-b0ac-2ae283cdf15f"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "notificationType",
+              "value": "critical"
+            },
+            {
+              "name": "notificationTitle",
+              "value": "={{ $json.notification.title }}"
+            },
+            {
+              "name": "notificationBody",
+              "value": "={{ $json.notification.body }}"
+            },
+            {
+              "name": "channel",
+              "value": "placeholder-critical-channel"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "CRITICAL Notification",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        800,
+        -200
+      ],
+      "notes": "RED_BLOCK notification. Placeholder ??? configure real channel (Telegram/Slack/Email) in Phase 3C.",
+      "id": "c5c0d14a-9c75-4ed5-b5a5-d5d45a696990"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "notificationType",
+              "value": "warning"
+            },
+            {
+              "name": "notificationTitle",
+              "value": "={{ $json.notification.title }}"
+            },
+            {
+              "name": "notificationBody",
+              "value": "={{ $json.notification.body }}"
+            },
+            {
+              "name": "channel",
+              "value": "placeholder-warning-channel"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "WARNING Notification",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        800,
+        0
+      ],
+      "notes": "YELLOW_REVIEW / NEEDS_VALIDATION notification. Placeholder.",
+      "id": "9ee65b0d-6c04-468e-98d0-8027af32af02"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "notificationType",
+              "value": "info"
+            },
+            {
+              "name": "notificationTitle",
+              "value": "={{ $json.notification.title }}"
+            },
+            {
+              "name": "notificationBody",
+              "value": "={{ $json.notification.body }}"
+            },
+            {
+              "name": "channel",
+              "value": "placeholder-info-channel"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "INFO Notification",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        800,
+        200
+      ],
+      "notes": "TOOL_GAP / STALE notification. Placeholder.",
+      "id": "8e014eee-9bdf-4112-91ce-bc266d6f1176"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "notificationType",
+              "value": "unknown"
+            },
+            {
+              "name": "notificationTitle",
+              "value": "={{ $json.notification.title }}"
+            },
+            {
+              "name": "notificationBody",
+              "value": "={{ $json.notification.body }}"
+            },
+            {
+              "name": "channel",
+              "value": "placeholder-unknown-channel"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "UNKNOWN Notification",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        800,
+        400
+      ],
+      "notes": "UNKNOWN status notification. Conservative default.",
+      "id": "907c2a13-39b5-4ffd-a122-7d7ddebcbeb8"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "notificationType",
+              "value": "success"
+            },
+            {
+              "name": "notificationTitle",
+              "value": "={{ $json.notification.title }}"
+            },
+            {
+              "name": "notificationBody",
+              "value": "={{ $json.notification.body }}"
+            },
+            {
+              "name": "channel",
+              "value": "placeholder-success-channel"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "GREEN ??? No Notification Needed",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        800,
+        600
+      ],
+      "notes": "GREEN_SAFE ??? optional success notification. No action required.",
+      "id": "e9e11e96-aadc-4198-b70f-4e44e539dc41"
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "logEntry",
+              "value": "={{ $json.notificationType }}: {{ $json.notificationTitle }} ??? {{ $now }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Log Notification",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        200
+      ],
+      "notes": "Logs notification to n8n execution data. All branches converge here.",
+      "id": "ad124d5f-4b80-4220-8d55-8f639f5f6d0f"
+    }
+  ],
+  "connections": {
+    "Cron Trigger (every 5 min)": {
+      "main": [
+        [
+          {
+            "node": "Read status.json",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read status.json": {
+      "main": [
+        [
+          {
+            "node": "Classify & Prepare Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify & Prepare Notification": {
+      "main": [
+        [
+          {
+            "node": "Route by Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Classification": {
+      "main": [
+        [
+          {
+            "node": "CRITICAL Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "WARNING Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "WARNING Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "INFO Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "INFO Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "UNKNOWN Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GREEN ??? No Notification Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRITICAL Notification": {
+      "main": [
+        [
+          {
+            "node": "Log Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WARNING Notification": {
+      "main": [
+        [
+          {
+            "node": "Log Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "INFO Notification": {
+      "main": [
+        [
+          {
+            "node": "Log Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UNKNOWN Notification": {
+      "main": [
+        [
+          {
+            "node": "Log Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GREEN ??? No Notification Needed": {
+      "main": [
+        [
+          {
+            "node": "Log Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "d1b3554f-2758-4bff-8fef-9c97bc222d48",
+  "activeVersionId": null,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-07-07T21:33:43.147Z",
+      "createdAt": "2026-07-07T21:33:43.147Z",
+      "role": "workflow:owner",
+      "workflowId": "kqQsFuz6HJl6OOgH",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

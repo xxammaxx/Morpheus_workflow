@@ -1,0 +1,434 @@
+{
+  "updatedAt": "2026-07-05T04:50:25.506Z",
+  "createdAt": "2026-07-03T05:05:04.646Z",
+  "id": "wWkLqF0FWaJi6XW3",
+  "name": "Blueprint Intake → SpecKit OpenCode Project Builder [EXECUTION GATE FIXED]",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "7b8ce2c2-4b52-4dd9-86c3-00e4903ea077",
+      "name": "Manual Test Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        48,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "blueprint-speckit-opencode-project-builder",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "04ca8779-2730-455a-bf24-ab85312176ae",
+      "name": "Start Pipeline Trigger (Webhook)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        48,
+        768
+      ],
+      "webhookId": "blueprint-speckit-pipeline-start"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "414aec02-697f-4026-8338-1480be4a7692",
+      "name": "Set Safety Flags",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [
+        288,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.dry_run}}",
+              "operation": "true"
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "db835369-9fff-4cd5-9a56-a33438194845",
+      "name": "Dry Run?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        528,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "command": "echo '=== HOST ===' && hostname && echo '=== OPENCODE ===' && opencode --version 2>&1 && echo '=== UV ===' && uv --version 2>&1 && echo '=== PYTHON ===' && python3 --version 2>&1 && echo '=== PROVIDER_ENV ===' && test -f /opt/dev-fabric/secrets/opencode-provider.env && echo 'EXISTS' || echo 'MISSING' && echo '=== PREFlight_COMPLETE ==='"
+      },
+      "id": "267f89f2-59f4-4be6-8eac-89c8b5b32453",
+      "name": "Runner Preflight SSH (REAL)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        528,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// DRY-RUN MODE: Simulate preflight without SSH\n// No real SSH commands executed\n\nreturn [{\n  json: {\n    preflight_ok: true,\n    opencode_ready: true,\n    provider_ready: true,\n    runner_hostname: 'lxc-dev-runner (SIMULATED)',\n    dry_run: true,\n    ssh_preflight_apply: $json.ssh_preflight_apply,\n    blueprint_present: $json.blueprint_present,\n    project_creation_apply: $json.project_creation_apply,\n    speckit_init_apply: $json.speckit_init_apply,\n    opencode_build_apply: $json.opencode_build_apply,\n    raw_output_safe_length: 0,\n    preflight_mode: 'DRY_RUN_SIMULATED'\n  }\n}];"
+      },
+      "id": "ab0404d9-8c89-4136-9693-82794d3a7155",
+      "name": "Dry-Run Preflight (SIMULATED)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const stdout = String($json.stdout || '');\nconst hasOpenCode = /\\d+\\.\\d+\\.\\d+/.test(stdout.match(/opencode.*?((?:\\d+\\.){2}\\d+)/)?.[1] || '');\nconst hasProviderEnv = stdout.includes('provider_env: EXISTS') || stdout.includes('PROVIDER_ENV: EXISTS');\nconst preflightOk = stdout.includes('PREFlight_COMPLETE');\n\nreturn [{\n  json: {\n    preflight_ok: preflightOk,\n    opencode_ready: hasOpenCode,\n    provider_ready: hasProviderEnv,\n    runner_hostname: (stdout.match(/HOST[=: ]*([^\\n]+)/) || ['','unknown'])[1].trim(),\n    dry_run: $json.dry_run,\n    blueprint_present: $json.blueprint_present,\n    project_creation_apply: $json.project_creation_apply,\n    speckit_init_apply: $json.speckit_init_apply,\n    opencode_build_apply: $json.opencode_build_apply,\n    raw_output_safe_length: stdout.length,\n    preflight_mode: 'REAL_SSH'\n  }\n}];"
+      },
+      "id": "69e826cc-d307-48bb-8046-a08d42b3328d",
+      "name": "Evaluate Preflight (REAL)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.project_creation_apply}}",
+              "operation": "true"
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "7d74047e-9179-4144-a612-ed9a394d44ba",
+      "name": "Project Creation Apply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1968,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const slug = $json.project_slug;\nconst rootDir = '/home/runner/SpecKit_Projects';\n\n// DRY-RUN: Only compute paths, do NOT create anything\nreturn [{\n  json: {\n    ...$json,\n    project_root: rootDir,\n    project_dir: `${rootDir}/${slug}`,\n    create_dir_cmd: `mkdir -p ${rootDir}/${slug}/{docs/blueprint,evidence} && echo 'PROJECT_DIR_CREATED' || echo 'PROJECT_DIR_FAILED'`,\n    dry_run_path_computed: true,\n    message: `DRY RUN: Would create ${rootDir}/${slug} but project_creation_apply=false. Path computed only.`\n  }\n}];"
+      },
+      "id": "258732f8-5de2-49ae-946b-d0d10f39ff22",
+      "name": "Prepare Project Dir (DRY RUN)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1968,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "command": "={{$json.create_dir_cmd}}"
+      },
+      "id": "27762ab5-e044-499b-862a-2d42c03de1d7",
+      "name": "Create Project Folder (REAL)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        2208,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Dry-run: project creation not applied. Stop here safely.\nreturn [{\n  json: {\n    ...$json,\n    status: 'DRY_RUN_COMPLETE',\n    message: `Blueprint validated. Project dir would be: ${$json.project_dir}. No folder created (project_creation_apply=false).`,\n    project_dir_computed: $json.project_dir,\n    project_created: false,\n    next_safe_step: 'Set project_creation_apply=true to create project folder'\n  }\n}];"
+      },
+      "id": "0cdcac9e-27e1-48ec-bdfe-9f3bc3657d3d",
+      "name": "STOP: No Project Creation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1968,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "command": "={{`cd ${$json.project_dir} && echo '# ${$json.project_slug}\\n\\nCreated: $(date -u +%Y-%m-%dT%H:%M:%SZ)\\nPipeline: Issue #19\\n\\n## Status\\n- Spec Kit: pending\\n- Git: pending\\n\\n## Blueprint\\n${$json.blueprint_content.slice(0, 500)}' > README.md && echo '${$json.blueprint_content}' > docs/blueprint/BLUEPRINT.raw.md && echo 'FILES_CREATED'`}}"
+      },
+      "id": "0b420417-08a2-4070-861f-1ecabca90808",
+      "name": "Create Initial Files (REAL)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        2448,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "command": "={{`cd ${$json.project_dir} && uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v0.11.4 2>&1 && echo 'SPECIFY_INSTALLED' && specify --version && specify init . --integration opencode --force --ignore-agent-tools 2>&1 && echo 'SPECKIT_INIT_DONE'`}}"
+      },
+      "id": "156c0a58-e3c0-4c96-9f4d-88e5eac3fdfc",
+      "name": "Spec Kit Init (REAL)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        2688,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "command": "={{`cd ${$json.project_dir} && git init && git add -A && git commit -m 'feat: initialize project from blueprint' 2>&1 && echo 'GIT_INIT_DONE'`}}"
+      },
+      "id": "35691112-7c55-42e0-8816-571b10ff4759",
+      "name": "Git Init (REAL)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        2928,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "command": "={{`cd ${$json.project_dir} && source /opt/dev-fabric/secrets/opencode-provider.env && opencode --version && echo 'OPENCODE_READY' && echo 'Run Speckit phases manually:\\n1. /speckit.constitution\\n2. /speckit.specify\\n3. /speckit.clarify\\n4. /speckit.plan\\n5. /speckit.tasks\\n6. /speckit.analyze\\n7. /speckit.implement' > evidence/next-steps.md && echo 'OPENCODE_PHASE_READY'`}}"
+      },
+      "id": "034ffc24-0f6b-4b76-adb4-cd672ca37342",
+      "name": "OpenCode Setup (REAL)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        3168,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.preflight_ok}}",
+              "operation": "true"
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "ca8b490a-56d9-497c-8d51-c6e601eee295",
+      "name": "Runner Ready?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    status: 'RUNNER_NOT_READY',\n    message: 'Preflight checks failed. Check runner SSH, OpenCode, and provider env.',\n    preflight_result: $json\n  }\n}];"
+      },
+      "id": "8846cd0f-6995-4951-9548-f28c6b7e6f62",
+      "name": "STOP: Runner Not Ready1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// WAIT_FOR_BLUEPRINT Gate (dry-run compatible)\n// In dry-run mode with blueprint_present=false, this is the target stop point.\n// In real mode, this waits for a webhook callback with blueprint data.\n\nif ($json.dry_run === true && $json.blueprint_present === false) {\n  // MODE A: No blueprint, stop here\n  return [{\n    json: {\n      status: 'WAIT_FOR_BLUEPRINT',\n      gate_reached: true,\n      message: 'Workflow reached WAIT_FOR_BLUEPRINT gate. No blueprint provided. Stopping safely.',\n      dry_run: true,\n      blueprint_present: false,\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\n// In dry-run mode with blueprint_present=true, pass through to validation\nif ($json.dry_run === true && $json.blueprint_present === true) {\n  // MODE B: Blueprint present, continue to validation\n  return [{\n    json: {\n      ...$json,\n      status: 'WAIT_FOR_BLUEPRINT',\n      gate_reached: true,\n      message: 'Workflow passed WAIT_FOR_BLUEPRINT gate. Blueprint present, proceeding to validation.',\n      // Test blueprint data for dry-run\n      body: {\n        blueprint: 'Mini Task Tracker - A minimal task management application\\n\\nGoal: Create a simple task tracker with CRUD operations.\\n\\nFeatures:\\n- Create tasks with title and description\\n- List all tasks\\n- Mark tasks as complete\\n- Delete tasks\\n\\nExpected Outcome: A working CLI-based task tracker.\\n\\nRequirements:\\n- Python 3.10+\\n- SQLite database\\n- Command-line interface\\n\\nAcceptance Criteria:\\n- User can add a task\\n- User can list all tasks\\n- User can mark a task as done\\n- User can delete a task'\n      }\n    }\n  }];\n}\n\n// Real mode: pass through to WAIT node (original behavior)\nreturn [$json];"
+      },
+      "id": "0501e47e-8949-407d-8c38-b77e8ed0a34d",
+      "name": "WAIT FOR BLUEPRINT1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const blueprint = String($json.body?.blueprint || $json.blueprint || $json.body || '').trim();\n\n// Secret detection\nconst secretPatterns = [\n  /sk-[A-Za-z0-9]{20,}/,\n  /ghp_[A-Za-z0-9_]{20,}/,\n  /github_pat_[A-Za-z0-9_]{20,}/,\n  /Bearer\\s+[A-Za-z0-9._\\-]{20,}/,\n  /-----BEGIN\\s+[A-Z\\s]+PRIVATE\\s+KEY-----/,\n  /eyJ[A-Za-z0-9_\\-]{50,}/,\n  /api_key\\s*[=:]\\s*[A-Za-z0-9]{20,}/i\n];\n\nconst hasSecret = secretPatterns.some(p => p.test(blueprint));\n\n// Content validation\nconst hasGoal = /(?:goal|ziel|problem|purpose|intent|objective)/i.test(blueprint);\nconst hasFunction = /(?:function|feature|software|application|app|program|tool|service|system)/i.test(blueprint);\nconst hasOutcome = /(?:outcome|result|expect|deliver|output|success)/i.test(blueprint);\nconst hasRequirements = /(?:requirement|story|need|must|should|shall|user|acceptance)/i.test(blueprint);\nconst contentLength = blueprint.length;\nconst contentSections = [hasGoal, hasFunction, hasOutcome, hasRequirements].filter(Boolean).length;\n\nlet status = 'BLUEPRINT_VALID';\nif (hasSecret) status = 'RED_BLUEPRINT_SECRET';\nelse if (contentLength < 100) status = 'BLUEPRINT_EMPTY';\nelse if (contentSections < 3) status = 'BLUEPRINT_INCOMPLETE';\nelse if (contentSections < 5) status = 'BLUEPRINT_PARTIAL';\n\n// Derive project slug\nconst firstLine = blueprint.split('\\n')[0].replace(/^#+\\s*/, '').trim();\nconst slug = firstLine\n  .toLowerCase()\n  .replace(/[^a-z0-9\\s-]/g, '')\n  .replace(/\\s+/g, '-')\n  .replace(/-+/g, '-')\n  .replace(/^-|-$/g, '')\n  .slice(0, 50) || 'blueprint-project';\n\nreturn [{\n  json: {\n    ...$json,\n    status: status,\n    project_slug: slug,\n    blueprint_length: contentLength,\n    sections_found: contentSections,\n    has_secret: hasSecret,\n    blueprint_content: status === 'RED_BLUEPRINT_SECRET' ? '[REDACTED - SECRETS DETECTED]' : blueprint\n  }\n}];"
+      },
+      "id": "c7046395-e423-40f5-b938-a418b6859781",
+      "name": "Validate Blueprint1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.status}}",
+              "operation": "equals",
+              "value2": "BLUEPRINT_VALID"
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "d6e00a5b-f3df-4b02-bf3a-aa9836ab51e4",
+      "name": "Blueprint Valid?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    status: $json.status,\n    message: `Blueprint validation failed: ${$json.status}`,\n    error: $json.status === 'RED_BLUEPRINT_SECRET' ? 'Secrets detected in blueprint. STOP.' : 'Blueprint incomplete. Resubmit with more detail.'\n  }\n}];"
+      },
+      "id": "6181e8f5-826f-4cc9-9587-828ca2137418",
+      "name": "STOP: Invalid Blueprint1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    status: 'PIPELINE_COMPLETE',\n    project_dir: $json.project_dir,\n    project_slug: $json.project_slug,\n    phases_completed: [\n      'Runner Preflight',\n      'WAIT_FOR_BLUEPRINT',\n      'Blueprint Validation',\n      'Project Folder Creation',\n      'Spec Kit Init',\n      'Git Init',\n      'OpenCode Setup'\n    ],\n    next_steps: 'Run OpenCode Speckit phases in project directory',\n    issue: '#19',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "2bbd6e00-e690-498e-a792-07f98a6b1b0b",
+      "name": "Final Report1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3408,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "09ff6b95-76be-4964-a225-3c47c70e88ad",
+      "name": "Respond To Webhook1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        3648,
+        672
+      ]
+    }
+  ],
+  "connections": {},
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "498524ae-0ad9-4ca7-94ad-a9949a0cf7e5",
+  "activeVersionId": null,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-07-03T05:05:04.649Z",
+      "createdAt": "2026-07-03T05:05:04.649Z",
+      "role": "workflow:owner",
+      "workflowId": "wWkLqF0FWaJi6XW3",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": [
+    {
+      "updatedAt": "2026-07-03T05:05:03.099Z",
+      "createdAt": "2026-07-03T05:05:03.099Z",
+      "id": "4LHx6hxLGGNO0Kkk",
+      "name": "draft"
+    },
+    {
+      "updatedAt": "2026-07-03T05:05:03.088Z",
+      "createdAt": "2026-07-03T05:05:03.088Z",
+      "id": "BfYdSLG37aiIFsdH",
+      "name": "blueprint"
+    },
+    {
+      "updatedAt": "2026-07-03T05:05:03.097Z",
+      "createdAt": "2026-07-03T05:05:03.097Z",
+      "id": "HNUZciFq3ambveYp",
+      "name": "spec-kit"
+    },
+    {
+      "updatedAt": "2026-07-05T04:48:35.846Z",
+      "createdAt": "2026-07-05T04:48:35.846Z",
+      "id": "YMqTmzYjMoSPN79J",
+      "name": "execution-gate-fixed"
+    },
+    {
+      "updatedAt": "2026-07-03T05:05:03.095Z",
+      "createdAt": "2026-07-03T05:05:03.095Z",
+      "id": "wXPZFzgSdzidqpoS",
+      "name": "opencode"
+    },
+    {
+      "updatedAt": "2026-07-05T04:48:35.853Z",
+      "createdAt": "2026-07-05T04:48:35.853Z",
+      "id": "xKLTCc1uKpRRnO1i",
+      "name": "dry-run-safe"
+    }
+  ]
+}

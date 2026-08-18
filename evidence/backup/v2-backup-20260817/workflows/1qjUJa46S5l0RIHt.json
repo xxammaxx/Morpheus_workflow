@@ -1,0 +1,600 @@
+{
+  "updatedAt": "2026-07-29T07:28:01.946Z",
+  "createdAt": "2026-07-29T07:28:01.946Z",
+  "id": "1qjUJa46S5l0RIHt",
+  "name": "GHIW-01 — Ensure Project Builder",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ghiw01-ensure-project-builder",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ghiw01-webhook",
+      "name": "GHIW-01 Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2200,
+        400
+      ],
+      "webhookId": "ghiw01-ensure-project-builder"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Phase 1: Normalize Request\n// Validates all required fields and normalizes project identity.\n// ============================================================\n\nconst body = $input.first().json.body || $input.first().json;\n\nconst REQUIRED = [\n  'request_id','correlation_id','idempotency_key',\n  'project_id','template_id','template_version',\n  'target_node','target_storage','clone_mode',\n  'requested_by','approval_id'\n];\n\nconst SERVERSIDE = {\n  template_id: 109,\n  template_version: 'v1.0.0',\n  target_node: 'pve',\n  target_storage: 'sata-local',\n  clone_mode: 'linked'\n};\n\nconst errors = [];\n\nfor (const field of REQUIRED) {\n  if (!(field in body)) {\n    errors.push({field, code: 'MISSING_REQUIRED_FIELD', message: `Required field '${field}' is missing.`});\n  }\n}\n\nfor (const [field, expected] of Object.entries(SERVERSIDE)) {\n  if (field in body && body[field] !== expected) {\n    errors.push({field, code: 'SERVERSIDE_CONSTANT_VIOLATION',\n      message: `Field '${field}' must be ${JSON.stringify(expected)}, got ${JSON.stringify(body[field])}.`});\n  }\n}\n\nconst FORBIDDEN = ['ctid','ssh_target_host','ssh_user','ssh_key','rootfs_backend',\n  'proxmox_node_override','storage_override','template_override','clone_mode_override'];\nfor (const field of FORBIDDEN) {\n  if (field in body) {\n    errors.push({field, code: 'FORBIDDEN_FIELD', message: `Field '${field}' is not user-configurable.`});\n  }\n}\n\nconst DANGEROUS = ['/etc/passwd','../','pct destroy','qm destroy','rm -rf',\n  '$()','||','&&','2>&1','%00'];\nconst bodyStr = JSON.stringify(body);\nfor (const pattern of DANGEROUS) {\n  if (bodyStr.includes(pattern)) {\n    errors.push({code: 'DANGEROUS_PATTERN', message: `Request contains dangerous pattern: '${pattern}'.`});\n    break;\n  }\n}\n\nif (body.project_id) {\n  const pid = String(body.project_id);\n  if (pid.length < 3 || pid.length > 64) {\n    errors.push({field: 'project_id', code: 'INVALID_PROJECT_ID', message: 'project_id must be 3-64 chars.'});\n  } else if (!/^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/.test(pid)) {\n    errors.push({field: 'project_id', code: 'INVALID_PROJECT_ID', message: 'project_id contains invalid characters.'});\n  }\n}\n\nif (body.idempotency_key && (!/^[a-fA-F0-9]{64}$/.test(body.idempotency_key))) {\n  errors.push({field: 'idempotency_key', code: 'INVALID_IDEMPOTENCY_KEY', message: 'idempotency_key must be 64 hex chars.'});\n}\n\nif (body.correlation_id && (!/^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/.test(body.correlation_id))) {\n  errors.push({field: 'correlation_id', code: 'INVALID_CORRELATION_ID', message: 'correlation_id must be UUID v4.'});\n}\n\nconst isDryRun = body.dry_run === true;\n\nif (errors.length > 0) {\n  return [{\n    json: {\n      route: 'INVALID_REQUEST',\n      status: 'INVALID_REQUEST',\n      correlation_id: body.correlation_id || 'unknown',\n      timestamp: new Date().toISOString(),\n      request_id: body.request_id,\n      errors: errors,\n      is_dry_run: isDryRun\n    }\n  }];\n}\n\nconst projectKey = body.project_id.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-|-$/g, '');\nconst shortHash = require('crypto').createHash('sha256').update(body.project_id).digest('hex').slice(0, 7);\nconst hostname = `ghiw-bld-${projectKey.slice(0, 45)}-${shortHash}`;\n\nreturn [{\n  json: {\n    route: 'VALID',\n    request_id: body.request_id,\n    correlation_id: body.correlation_id,\n    idempotency_key: body.idempotency_key,\n    project_id: body.project_id,\n    project_key: projectKey,\n    hostname: hostname,\n    approval_id: body.approval_id,\n    requested_by: body.requested_by,\n    template_id: 109,\n    template_version: 'v1.0.0',\n    target_node: 'pve',\n    target_storage: 'sata-local',\n    clone_mode: 'linked',\n    is_dry_run: isDryRun\n  }\n}];"
+      },
+      "id": "normalize-request",
+      "name": "Normalize & Validate Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1960,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Phase 2: Classify Request\n// Determines: NEW, EXISTING_BUILDER, IN_PROGRESS, CACHED_REPLAY, DRY_RUN\n// ============================================================\n\nconst data = $input.first().json;\n\nif (data.route === 'INVALID_REQUEST') {\n  data.route = 'RESPOND_ERROR';\n  return [{json: data}];\n}\n\nif (data.is_dry_run === true) {\n  data.route = 'DRY_RUN';\n  data.dry_run_result = 'DRY_RUN_APPROVED';\n  return [{json: data}];\n}\n\n// Proceed to idempotency check first\n// For now, set route to CHECK_IDEMPOTENCY\n// This will be followed by SSH node to check registry\ndata.route = 'CHECK_IDEMPOTENCY';\nreturn [{\n  json: {\n    ...data,\n    command: `check-idempotency ${data.idempotency_key}`\n  }\n}];"
+      },
+      "id": "classify-request",
+      "name": "Classify Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1720,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Phase 3: Evaluate Idempotency Result\n// Parses registry CLI output and determines next action.\n// ============================================================\n\nconst data = $input.first().json;\nconst stdout = String($input.first().json.stdout || '');\nlet registryResult = {};\ntry { registryResult = JSON.parse(stdout); } catch(e) {}\n\nif (registryResult.status === 'CACHED') {\n  // Idempotent replay - return cached result\n  return [{\n    json: {\n      route: 'IDEMPOTENT_REPLAY',\n      status: registryResult.result_status || 'IDEMPOTENT_REPLAY',\n      correlation_id: data.correlation_id,\n      project_id: registryResult.project_id || data.project_id,\n      request_id: data.request_id,\n      builder_id: registryResult.result_builder_id,\n      cached: true,\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\n// NEW request - continue to check if project already exists\n// Read project state from registry\nconst ensureCmd = `ensure-project ${data.project_id} ${data.request_id} ${data.correlation_id} ${data.idempotency_key} ${data.approval_id} ${data.requested_by} GHIW01-RUN`;\n\nreturn [{\n  json: {\n    ...data,\n    route: 'ENSURE_PROJECT',\n    command: ensureCmd\n  }\n}];"
+      },
+      "id": "eval-idempotency",
+      "name": "Evaluate Idempotency Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1240,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Phase 4: Analyze Project State & Decide Path\n// After ensure-project call, determine: acquire lock, reuse, or error\n// ============================================================\n\nconst data = $input.first().json;\nconst stdout = String($input.first().json.stdout || '');\nlet result = {};\ntry { result = JSON.parse(stdout); } catch(e) {}\n\nif (result.status === 'EXISTING') {\n  // Project already exists in registry\n  if (result.active_builder_id && result.current_state === 'BUILDER_READY') {\n    return [{\n      json: {\n        route: 'ALREADY_EXISTS',\n        status: 'BUILDER_READY',\n        builder_id: result.active_builder_id,\n        project_id: result.project_id,\n        project_key: result.project_key,\n        hostname: result.hostname,\n        correlation_id: data.correlation_id,\n        request_id: data.request_id,\n        current_state: result.current_state,\n        node: data.target_node,\n        storage: data.target_storage,\n        template_id: data.template_id,\n        template_version: data.template_version,\n        clone_mode: data.clone_mode,\n        timestamp: new Date().toISOString()\n      }\n    }];\n  }\n\n  if (['CLONE_PLANNED','CLONING','CLONED','INITIALIZING','STARTING','VERIFYING'].includes(result.current_state)) {\n    return [{\n      json: {\n        route: 'IN_PROGRESS',\n        status: 'IN_PROGRESS',\n        project_id: result.project_id,\n        correlation_id: data.correlation_id,\n        request_id: data.request_id,\n        current_state: result.current_state,\n        timestamp: new Date().toISOString()\n      }\n    }];\n  }\n\n  return [{\n    json: {\n      route: 'REGISTRY_CONFLICT',\n      status: 'FAILED_PRE_READY',\n      error_code: 'REGISTRY_STATE_UNEXPECTED',\n      project_id: data.project_id,\n      correlation_id: data.correlation_id,\n      request_id: data.request_id,\n      current_state: result.current_state,\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\nif (result.status === 'CREATED') {\n  // New project created - proceed to acquire lock\n  return [{\n    json: {\n      ...data,\n      route: 'ACQUIRE_LOCK',\n      builder_id: `${data.project_key}-${data.request_id.slice(0, 8)}`,\n      created: true\n    }\n  }];\n}\n\n// Error from registry\nreturn [{\n  json: {\n    route: 'RESPOND_ERROR',\n    status: 'FAILED_PRE_READY',\n    error_code: result.code || 'REGISTRY_ERROR',\n    error_message: result.error || 'Unknown registry error',\n    project_id: data.project_id,\n    correlation_id: data.correlation_id,\n    request_id: data.request_id,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "evaluate-ensure-project",
+      "name": "Evaluate Ensure Project Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1000,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Phase 5: Response Router\n// Routes all final states to appropriate response nodes.\n// All critical decisions were made in previous Code nodes.\n// ============================================================\n\nconst data = $input.first().json;\nconst route = data.route || 'UNKNOWN';\n\n// Build standard response\nconst response = {\n  ...data,\n  timestamp: data.timestamp || new Date().toISOString()\n};\n\n// For ALREADY_EXISTS, IDEMPOTENT_REPLAY, DRY_RUN - respond immediately\nif (['ALREADY_EXISTS','IDEMPOTENT_REPLAY','DRY_RUN'].includes(route)) {\n  response.route = 'RESPOND_SUCCESS';\n  return [{json: response}];\n}\n\n// For IN_PROGRESS - respond with 202\nif (route === 'IN_PROGRESS') {\n  response.route = 'RESPOND_ACCEPTED';\n  response.status = 'ACCEPTED';\n  return [{json: response}];\n}\n\n// For errors - respond with error\nif (['INVALID_REQUEST','RESPOND_ERROR','REGISTRY_CONFLICT','REGISTRY_ERROR'].includes(route)) {\n  response.route = 'RESPOND_ERROR';\n  return [{json: response}];\n}\n\n// For ACQUIRE_LOCK - continue the provisioning flow\nif (route === 'ACQUIRE_LOCK') {\n  response.route = 'CONTINUE_PROVISION';\n  return [{json: response}];\n}\n\n// Default: respond with error\nresponse.route = 'RESPOND_ERROR';\nresponse.error_code = 'UNKNOWN_ROUTE';\nreturn [{json: response}];"
+      },
+      "id": "response-router",
+      "name": "Response Router",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -760,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Provisioning Phase: Acquire Lock\n// Calls ghiw-lockctl via SSH to acquire project lock.\n// ============================================================\n\nconst data = $input.first().json;\nconst projectKey = data.project_key;\nconst lockKey = `project-builder:${projectKey}`;\n\n// Build lock acquire command for ghiw-lockctl\nconst command = `/usr/local/sbin/ghiw-lockctl acquire ${lockKey} 600`;\n\ndata.route = 'ACQUIRE_LOCK_SSH';\ndata.command = command;\n\nreturn [{json: data}];"
+      },
+      "id": "prepare-lock",
+      "name": "Prepare Lock Acquisition",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -520,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Provisioning: Evaluate Lock Result\n// Parses lockctl output for fencing token and generation.\n// ============================================================\n\nconst data = $input.first().json;\nconst stdout = String($input.first().json.stdout || '');\nlet lockResult = {};\ntry { lockResult = JSON.parse(stdout); } catch(e) {}\n\nif (lockResult.status === 'ACQUIRED' || lockResult.fencing_token) {\n  const fencingToken = lockResult.fencing_token || '';\n  const generation = lockResult.generation || 0;\n\n  // Now create builder in registry\n  const createBuilderCmd = `create-builder ${data.project_id} ${data.builder_id} ${data.hostname} GHIW01-RUN ${fencingToken}`;\n\n  return [{\n    json: {\n      ...data,\n      route: 'CREATE_BUILDER_REGISTRY',\n      fencing_token: fencingToken,\n      generation: generation,\n      command: createBuilderCmd\n    }\n  }];\n}\n\n// Lock acquisition failed - maybe locked by another worker\nreturn [{\n  json: {\n    route: 'RESPOND_ERROR',\n    status: 'LOCK_FAILED',\n    error_code: 'LOCK_ACQUISITION_FAILED',\n    error_message: lockResult.error || 'Failed to acquire lock',\n    project_id: data.project_id,\n    correlation_id: data.correlation_id,\n    request_id: data.request_id,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "evaluate-lock",
+      "name": "Evaluate Lock Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -40,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Provisioning: Evaluate Builder Creation & Reserve CTID\n// ============================================================\n\nconst data = $input.first().json;\nconst stdout = String($input.first().json.stdout || '');\nlet result = {};\ntry { result = JSON.parse(stdout); } catch(e) {}\n\nif (result.status === 'CREATED') {\n  // Builder created in registry - now reserve CTID\n  const reserveCmd = `reserve-ctid ${data.builder_id} ${data.project_id}`;\n\n  return [{\n    json: {\n      ...data,\n      route: 'RESERVE_CTID',\n      command: reserveCmd\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    route: 'RESPOND_ERROR',\n    status: 'FAILED_PRE_READY',\n    error_code: result.code || 'BUILDER_CREATE_FAILED',\n    error_message: result.error || 'Failed to create builder',\n    project_id: data.project_id,\n    correlation_id: data.correlation_id,\n    request_id: data.request_id,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "evaluate-create-builder",
+      "name": "Evaluate Builder Creation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Provisioning: Evaluate CTID Reservation & Prepare Clone\n// ============================================================\n\nconst data = $input.first().json;\nconst stdout = String($input.first().json.stdout || '');\nlet result = {};\ntry { result = JSON.parse(stdout); } catch(e) {}\n\nif (result.status === 'RESERVED') {\n  const ctid = result.ctid;\n\n  // Prepare Proxmox clone API call via assign-ctid + HTTP\n  // Update builder with CTID in registry\n  const assignCmd = `assign-ctid ${data.builder_id} ${ctid}`;\n\n  return [{\n    json: {\n      ...data,\n      route: 'ASSIGN_CTID',\n      ctid: ctid,\n      command: assignCmd\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    route: 'RESPOND_ERROR',\n    status: 'FAILED_PRE_READY',\n    error_code: result.code || 'CTID_RESERVATION_FAILED',\n    error_message: result.error || 'Failed to reserve CTID',\n    project_id: data.project_id,\n    correlation_id: data.correlation_id,\n    request_id: data.request_id,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "evaluate-ctid-reservation",
+      "name": "Evaluate CTID Reservation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Provisioning: Prepare Clone API Call\n// Builds Proxmox API parameters for linked clone from CT 109.\n// ============================================================\n\nconst data = $input.first().json;\n\n// Proxmox API clone endpoint: POST /api2/json/nodes/{node}/lxc/{vmid}/clone\nconst cloneParams = {\n  newid: data.ctid,\n  hostname: data.hostname,\n  storage: 'sata-local',\n  full: 0,\n  description: JSON.stringify({\n    project_id: data.project_id,\n    builder_id: data.builder_id,\n    managed_by: 'n8n-ghiw',\n    role: 'opencode-builder',\n    template_source: 109,\n    template_version: 'v1.0.0',\n    clone_mode: 'linked',\n    schema: 'ghiw01-v1'\n  }),\n  tags: `managed-by=n8n-ghiw;role=opencode-builder;project=${data.project_key}`\n};\n\nreturn [{\n  json: {\n    ...data,\n    route: 'CLONE_CONTAINER',\n    clone_url: `/api2/json/nodes/${data.target_node}/lxc/109/clone`,\n    clone_params: cloneParams,\n    clone_method: 'POST'\n  }\n}];"
+      },
+      "id": "prepare-clone",
+      "name": "Prepare Clone API Call",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Provisioning: Verify Clone Result\n// Checks that the clone was successful and is a linked clone.\n// ============================================================\n\nconst data = $input.first().json;\n\n// In a real implementation, parse the Proxmox API response\n// Check: status code, task UPID, wait for task completion\n\n// For now, set state to CLONED and proceed to confirmation\n// The actual clone was done by the HTTP node\n\nconst stdout = String($input.first().json.stdout || $input.first().json.body || '');\nlet cloneResult = {};\ntry { cloneResult = typeof stdout === 'string' ? JSON.parse(stdout) : stdout; } catch(e) {}\n\n// Verify clone was linked (not full)\n// Check rootfs is on sata-local\n\nconst transCmd = `transition-state ${data.builder_id} CLONED ${data.request_id} ${data.fencing_token} ${data.generation}`;\n\nreturn [{\n  json: {\n    ...data,\n    route: 'TRANSITION_CLONED',\n    command: transCmd,\n    clone_verified: true\n  }\n}];"
+      },
+      "id": "verify-clone",
+      "name": "Verify Linked Clone",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Provisioning: Prepare Initialization\n// Transitions state and prepares SSH init commands.\n// ============================================================\n\nconst data = $input.first().json;\n\nconst initCmd = `transition-state ${data.builder_id} INITIALIZING ${data.request_id} ${data.fencing_token} ${data.generation}`;\n\nreturn [{\n  json: {\n    ...data,\n    route: 'TRANSITION_INITIALIZING',\n    command: initCmd\n  }\n}];"
+      },
+      "id": "prepare-initialize",
+      "name": "Prepare Initialization",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1640,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Provisioning: Write Project Identity Marker\n// Creates identity files on the builder via SSH.\n// ============================================================\n\nconst data = $input.first().json;\n\nconst markerContent = JSON.stringify({\n  project_id: data.project_id,\n  project_key: data.project_key,\n  builder_id: data.builder_id,\n  ctid: data.ctid,\n  source_template_id: 109,\n  source_template_version: 'v1.0.0',\n  created_by_run_id: 'GHIW01-RUN',\n  target_storage: 'sata-local',\n  clone_mode: 'linked',\n  created_at: new Date().toISOString()\n});\n\nconst writeCmd = `cat > /etc/ghiw-identity.json << 'MARKER_EOF'\\n${markerContent}\\nMARKER_EOF && chmod 400 /etc/ghiw-identity.json && echo 'MARKER_OK'`;\n\nreturn [{\n  json: {\n    ...data,\n    route: 'WRITE_MARKER',\n    command: writeCmd\n  }\n}];"
+      },
+      "id": "write-identity-marker",
+      "name": "Write Identity Marker",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1880,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Provisioning: Create Workspace\n// Creates project workspace directory on the builder.\n// ============================================================\n\nconst data = $input.first().json;\n\nconst wsCmd = `mkdir -p /srv/ghiw/workspaces/${data.project_key} && chown -R ghiw-runner:ghiw-runner /srv/ghiw/workspaces/${data.project_key} && chmod 750 /srv/ghiw/workspaces/${data.project_key} && echo 'WORKSPACE_OK'`;\n\nreturn [{\n  json: {\n    ...data,\n    route: 'CREATE_WORKSPACE',\n    command: wsCmd\n  }\n}];"
+      },
+      "id": "create-workspace",
+      "name": "Create Workspace",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2120,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Provisioning: Start Builder Container\n// Builds Proxmox API call to start the container.\n// ============================================================\n\nconst data = $input.first().json;\n\nreturn [{\n  json: {\n    ...data,\n    route: 'START_CONTAINER',\n    start_url: `/api2/json/nodes/${data.target_node}/lxc/${data.ctid}/status/start`,\n    start_method: 'POST'\n  }\n}];"
+      },
+      "id": "start-builder",
+      "name": "Start Builder Container",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2360,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Provisioning: Readiness Check\n// Verifies builder is ready via SSH preflight.\n// ============================================================\n\nconst data = $input.first().json;\n\nconst readinessCmd = `id ghiw-runner && test -d /srv/ghiw/workspaces/${data.project_key} && test -f /etc/ghiw-identity.json && ls -la /srv/ghiw/workspaces/ && echo 'READINESS_OK'`;\n\nreturn [{\n  json: {\n    ...data,\n    route: 'READINESS_CHECK',\n    command: readinessCmd\n  }\n}];"
+      },
+      "id": "readiness-check",
+      "name": "Readiness Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Provisioning: Set BUILDER_READY\n// Updates registry state to BUILDER_READY and releases lock.\n// ============================================================\n\nconst data = $input.first().json;\nconst stdout = String($input.first().json.stdout || '');\nconst readinessOk = stdout.includes('READINESS_OK');\n\nif (readinessOk) {\n  const setReadyCmd = `transition-state ${data.builder_id} BUILDER_READY ${data.request_id} ${data.fencing_token} ${data.generation}`;\n\n  return [{\n    json: {\n      ...data,\n      route: 'SET_BUILDER_READY',\n      command: setReadyCmd,\n      readiness_passed: true\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    route: 'RESPOND_ERROR',\n    status: 'FAILED_PRE_READY',\n    error_code: 'READINESS_FAILED',\n    error_message: 'Builder readiness check failed.',\n    project_id: data.project_id,\n    correlation_id: data.correlation_id,\n    request_id: data.request_id,\n    builder_id: data.builder_id,\n    ctid: data.ctid,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "set-builder-ready",
+      "name": "Set BUILDER_READY",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2840,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01 Provisioning: Complete Request and Release Lock\n// ============================================================\n\nconst data = $input.first().json;\n\nconst completeCmd = `complete-request ${data.request_id} BUILDER_READY ${data.builder_id}`;\n\n// After this, release the lock\nconst projectKey = data.project_key;\nconst lockKey = `project-builder:${projectKey}`;\nconst releaseCmd = `/usr/local/sbin/ghiw-lockctl release ${lockKey} ${data.fencing_token}`;\n\nreturn [{\n  json: {\n    ...data,\n    route: 'COMPLETE_AND_RELEASE',\n    command: `${completeCmd} && ${releaseCmd}`\n  }\n}];"
+      },
+      "id": "complete-and-release",
+      "name": "Complete & Release Lock",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01: Final Success Response\n// Builds the BUILDER_READY response.\n// ============================================================\n\nconst data = $input.first().json;\n\nreturn [{\n  json: {\n    status: 'BUILDER_READY',\n    project_id: data.project_id,\n    project_key: data.project_key,\n    builder_id: data.builder_id,\n    ctid: data.ctid,\n    hostname: data.hostname,\n    node: data.target_node,\n    storage: data.target_storage,\n    template_id: data.template_id,\n    template_version: data.template_version,\n    clone_mode: data.clone_mode,\n    readiness_timestamp: new Date().toISOString(),\n    correlation_id: data.correlation_id,\n    request_id: data.request_id\n  }\n}];"
+      },
+      "id": "final-success-response",
+      "name": "Final Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3320,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01: Error Response\n// Builds the structured error response.\n// ============================================================\n\nconst data = $input.first().json;\n\nreturn [{\n  json: {\n    status: data.status || 'FAILED_PRE_READY',\n    error_code: data.error_code || 'UNKNOWN_ERROR',\n    error_message: data.error_message || 'An error occurred.',\n    project_id: data.project_id || 'unknown',\n    request_id: data.request_id || 'unknown',\n    correlation_id: data.correlation_id || 'unknown',\n    timestamp: data.timestamp || new Date().toISOString()\n  }\n}];"
+      },
+      "id": "error-response",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -760,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GHIW-01: Accepted Response (HTTP 202)\n// ============================================================\n\nconst data = $input.first().json;\n\nreturn [{\n  json: {\n    status: 'ACCEPTED',\n    request_id: data.request_id,\n    correlation_id: data.correlation_id,\n    project_id: data.project_id,\n    state: data.current_state || 'REQUESTED'\n  }\n}];"
+      },
+      "id": "accepted-response",
+      "name": "Accepted Response (202)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3320,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "respondMode": "json",
+        "options": {}
+      },
+      "id": "respond-webhook-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        3560,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "respondMode": "json",
+        "options": {}
+      },
+      "id": "respond-webhook-error",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        3560,
+        680
+      ]
+    }
+  ],
+  "connections": {
+    "GHIW-01 Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Validate Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Validate Request": {
+      "main": [
+        [
+          {
+            "node": "Classify Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Request": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Idempotency Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Idempotency Result": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Ensure Project Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Ensure Project Result": {
+      "main": [
+        [
+          {
+            "node": "Response Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Response Router": {
+      "main": [
+        [
+          {
+            "node": "Prepare Lock Acquisition",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Lock Acquisition": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Lock Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Lock Result": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Builder Creation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Builder Creation": {
+      "main": [
+        [
+          {
+            "node": "Evaluate CTID Reservation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate CTID Reservation": {
+      "main": [
+        [
+          {
+            "node": "Prepare Clone API Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Clone API Call": {
+      "main": [
+        [
+          {
+            "node": "Verify Linked Clone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Linked Clone": {
+      "main": [
+        [
+          {
+            "node": "Prepare Initialization",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Initialization": {
+      "main": [
+        [
+          {
+            "node": "Write Identity Marker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Identity Marker": {
+      "main": [
+        [
+          {
+            "node": "Create Workspace",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Workspace": {
+      "main": [
+        [
+          {
+            "node": "Start Builder Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Builder Container": {
+      "main": [
+        [
+          {
+            "node": "Readiness Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Readiness Check": {
+      "main": [
+        [
+          {
+            "node": "Set BUILDER_READY",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set BUILDER_READY": {
+      "main": [
+        [
+          {
+            "node": "Complete & Release Lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Complete & Release Lock": {
+      "main": [
+        [
+          {
+            "node": "Final Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Success Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accepted Response (202)": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "b24479e1-c287-4fcf-bd26-86c0a3f6dcfe",
+  "activeVersionId": null,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-07-29T07:28:01.952Z",
+      "createdAt": "2026-07-29T07:28:01.952Z",
+      "role": "workflow:owner",
+      "workflowId": "1qjUJa46S5l0RIHt",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

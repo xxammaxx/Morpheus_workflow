@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autodev.finding.v1",
+  "title": "AutoDev Finding Contract v1",
+  "description": "A single structured review finding. Severity/confidence are categorical; no artificial percentages.",
+  "type": "object",
+  "required": ["category", "severity", "confidence", "blocking", "rule", "evidence", "recommendation"],
+  "properties": {
+    "category": { "enum": ["correctness", "security", "quality"] },
+    "severity": { "enum": ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+    "confidence": { "enum": ["LOW", "MEDIUM", "HIGH"] },
+    "blocking": { "type": "boolean" },
+    "rule": { "type": "string", "minLength": 3, "maxLength": 64 },
+    "evidence": {
+      "type": "object",
+      "required": ["file"],
+      "properties": {
+        "file": { "type": "string", "maxLength": 256 },
+        "symbol": { "type": "string", "maxLength": 128 },
+        "line_range": { "type": "string", "maxLength": 64 }
+      },
+      "additionalProperties": false
+    },
+    "recommendation": { "type": "string", "maxLength": 1000 }
+  },
+  "additionalProperties": false
+}

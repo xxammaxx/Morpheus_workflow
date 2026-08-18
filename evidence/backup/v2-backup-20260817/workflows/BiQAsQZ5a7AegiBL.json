@@ -1,0 +1,238 @@
+{
+  "updatedAt": "2026-06-29T14:22:32.501Z",
+  "createdAt": "2026-06-29T11:28:01.973Z",
+  "id": "BiQAsQZ5a7AegiBL",
+  "name": "DocVault-AI M6 Intake (Dummy)",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "f3472146-a766-41e4-b6af-ed245dc3de34",
+      "name": "Manual Trigger (Dummy)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "ee09be14-f0ae-4ad5-9178-f8e3c1c6b517",
+      "name": "Set Dummy Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [
+        256,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "sha256sum /srv/docvault/tests/dummy-input/test.txt"
+      },
+      "id": "14356dff-8b7a-47b0-8d96-99c1049b519f",
+      "name": "SSH: Compute SHA256 (placeholder)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        512,
+        0
+      ],
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "bXlNIsMcFMFvldyX",
+          "name": "CT107 n8n-docbot"
+        }
+      },
+      "notes": "REQUIRES: SSH Credential to CT107 as n8n-docbot.\nCredential NOT stored in repo — set manually in n8n UI.\nHost: 192.168.1.160, User: n8n-docbot, Auth: SSH Key.\nPlaceholder for M6 testing."
+    },
+    {
+      "parameters": {
+        "jsCode": "// DocVault-AI M6: Create dummy manifest JSON with routing & naming\n// \n// UMLAUT POLICY (M6):\n// - Safe filenames: ASCII only (Anhoerung, Buergergeld, Pfaendung)\n// - Display titles: Umlauts allowed (Anhörung, Bürgergeld)\n// - Evidence quotes: Original OCR umlauts preserved unchanged\n// - JSON encoding: UTF-8 with ensure_ascii=False\n// - Paperless tags: ASCII-stable (doc_type:anhoerung)\n// - No real documents, no secrets, no paperless upload\n\nconst config = $input.first().json;\nconst checksumLine = $items('SSH: Compute SHA256 (placeholder)')[0]?.json?.stdout || '';\nconst sha256 = checksumLine.split(/\\s+/)[0] || 'M6_DUMMY_HASH_NOT_COMPUTED';\n\nconst manifest = {\n  manifest_version: '1.0',\n  docvault_id: 'M6-DUMMY-' + Date.now(),\n  source: {\n    method: 'dummy',\n    scanner_model: null,\n    original_filename: 'test.txt',\n    file_sha256: sha256,\n    file_size_bytes: 88,\n    content_type: 'text/plain'\n  },\n  processing: {\n    ocr_engine: 'tesseract_local',\n    ocr_confidence_avg: null,\n    page_count: 1,\n    text_length: 88,\n    language_detected: 'de',\n    processing_timestamp: new Date().toISOString()\n  },\n  classification: {\n    document_type: 'Dummy',\n    sender: 'DocVault M6 Test Suite',\n    date_on_document: new Date().toISOString().split('T')[0],\n    has_deadline: false,\n    deadline_date: null,\n    is_official_letter: false,\n    contains_legal_remedy_instruction: false,\n    contains_payment_demand: false,\n    is_hearing: false,\n    case_category: 'Unbekannt',\n    keywords: ['dummy', 'm6', 'docvault', 'test'],\n    llm_model: null,\n    llm_confidence: null\n  },\n  risk_class: 'GREEN_SAFE',\n  review: {\n    status: 'PENDING',\n    assigned_to: null,\n    reviewed_at: null,\n    reviewer_notes: null\n  },\n  evidence: {\n    ingestion_timestamp: new Date().toISOString(),\n    pipeline_version: '0.6.0-m6',\n    processing_host: 'ct107',\n    raw_ocr_valid: true,\n    llm_response_valid: false,\n    manual_override: false,\n    notes: [\n      'M6 Dummy Workflow — No real documents, no paperless upload',\n      'Naming: ASCII-stable filenames, umlauts in display titles',\n      'JSON: UTF-8 encoding, ensure_ascii=False'\n    ]\n  },\n  paperless: {\n    paperless_document_id: null,\n    paperless_upload_task_id: null,\n    upload_status: 'not_uploaded',\n    uploaded_at: null,\n    custom_fields: {\n      paperless_mode: 'dryrun',\n      upload_attempted: false\n    }\n  },\n  project_views: {\n    rag: { chunk_count: 0, embedding_model: null, index_updated_at: null },\n    rac: { case_folder: 'Unbekannt', related_documents: [], case_summary: null }\n  },\n  // M4/M6 Routing and Naming extensions\n  classification_detail: {\n    deterministic_domain: 'Unbekannt',\n    deterministic_document_type: 'Unbekannt',\n    llm_domain: null,\n    llm_document_type: null,\n    final_domain: 'Unbekannt',\n    final_document_type: 'Unbekannt',\n    // M6: display fields with umlauts for human readability\n    display_domain: 'Unbekannt',\n    display_document_type: 'Unbekannt',\n    confidence: 0.0,\n    matched_domain_keywords: ['dummy'],\n    matched_type_keywords: ['dummy'],\n    has_risk_terms: false,\n    risk_terms_found: [],\n    notes: ['M6 Dummy Routing']\n  },\n  naming_detail: {\n    // M6: safe_filename is ASCII-stable — NO umlauts\n    safe_filename: 'unknown-date__Unbekannt__Unbekannt__Unbekannt__sha256-000000000000.pdf',\n    sha256_suffix: '000000000000',\n    sanitizer_version: 'naming-v1',\n    // M6: display_title may contain umlauts for human readability\n    display_title: 'Unbekannt'\n  },\n  routing_detail: {\n    route_version: 'routing-v1',\n    canonical_filename: 'unknown-date__Unbekannt__Unbekannt__Unbekannt__sha256-000000000000.pdf',\n    target_relative_path: 'tests/routing_dryrun/Unbekannt',\n    case_folder: 'cases/Unbekannt/Unbekannt/Unbekannt',\n    target_policy: 'tests',\n    move_allowed: false,\n    requires_human_review: true,\n    evidence: []\n  },\n  created_at: new Date().toISOString(),\n  updated_at: new Date().toISOString()\n};\nreturn [{ json: { manifest_json: JSON.stringify(manifest, null, 2) } }];"
+      },
+      "id": "ad311856-d2d0-479b-aced-88a42225144d",
+      "name": "Code: Create Manifest JSON (M6)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "cat > /srv/docvault/tests/dummy-output/m6_dummy_manifest.json << 'MANIFEST_EOF'\n{{ $json.manifest_json }}\nMANIFEST_EOF"
+      },
+      "id": "2c130dec-eab6-47f1-b7c5-63a9833a2779",
+      "name": "SSH: Write Manifest (placeholder)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        1008,
+        0
+      ],
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "bXlNIsMcFMFvldyX",
+          "name": "CT107 n8n-docbot"
+        }
+      },
+      "notes": "Writes manifest to CT107 /srv/docvault/tests/dummy-output/.\nRequires SSH credential: n8n-docbot@192.168.1.160.\nM6: Manifest includes display_* fields with umlauts, ASCII-stable filenames."
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "abd05ef2-5d44-4faa-ac60-d6c81a5af822",
+      "name": "Set Paperless Dryrun Result (M6)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [
+        1264,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// M6 Final Summary: Compile evidence report with umlaut policy check\nconst items = $input.all();\nconst summary = {\n  workflow: 'DocVault-AI M6 Intake (Dummy)',\n  status: 'completed',\n  real_documents_allowed: false,\n  paperless_mode: 'dryrun',\n  ollama_used: false,\n  manifest_created: true,\n  manifest_written_to: '/srv/docvault/tests/dummy-output/m6_dummy_manifest.json',\n  files_processed: items.length,\n  risk_class: 'GREEN_SAFE',\n  umlaut_policy: {\n    enforced: true,\n    filenames_ascii_only: true,\n    display_titles_umlauts: true,\n    json_utf8: true\n  },\n  timestamp: new Date().toISOString(),\n  notes: [\n    'M6 Dummy Workflow completed.',\n    'No real documents, no paperless upload, no Ollama LAN.',\n    'Umlaut policy: ASCII-stable filenames, umlauts in display titles, UTF-8 JSON.'\n  ]\n};\nreturn [{ json: summary }];"
+      },
+      "id": "c562d0a2-5fb8-4e06-bcc6-e3217339e2f7",
+      "name": "Code: Final Summary (M6)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger (Dummy)": {
+      "main": [
+        [
+          {
+            "node": "Set Dummy Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Dummy Config": {
+      "main": [
+        [
+          {
+            "node": "SSH: Compute SHA256 (placeholder)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: Compute SHA256 (placeholder)": {
+      "main": [
+        [
+          {
+            "node": "Code: Create Manifest JSON (M6)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Create Manifest JSON (M6)": {
+      "main": [
+        [
+          {
+            "node": "SSH: Write Manifest (placeholder)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: Write Manifest (placeholder)": {
+      "main": [
+        [
+          {
+            "node": "Set Paperless Dryrun Result (M6)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Paperless Dryrun Result (M6)": {
+      "main": [
+        [
+          {
+            "node": "Code: Final Summary (M6)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "248cb21d-e0fa-4a3d-b447-9d77627cda35",
+  "activeVersionId": null,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-06-29T11:28:01.978Z",
+      "createdAt": "2026-06-29T11:28:01.978Z",
+      "role": "workflow:owner",
+      "workflowId": "BiQAsQZ5a7AegiBL",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": [
+    {
+      "updatedAt": "2026-06-29T11:28:00.402Z",
+      "createdAt": "2026-06-29T11:28:00.402Z",
+      "id": "CE9a2uIVJFdlBwY2",
+      "name": "dummy"
+    },
+    {
+      "updatedAt": "2026-06-29T11:28:00.378Z",
+      "createdAt": "2026-06-29T11:28:00.378Z",
+      "id": "YAJTRmsj41KNSj1T",
+      "name": "docvault"
+    },
+    {
+      "updatedAt": "2026-06-29T11:28:00.410Z",
+      "createdAt": "2026-06-29T11:28:00.410Z",
+      "id": "d90197wTMYXt5Rdr",
+      "name": "umlaut-policy"
+    },
+    {
+      "updatedAt": "2026-06-29T11:28:00.397Z",
+      "createdAt": "2026-06-29T11:28:00.397Z",
+      "id": "ozkbHq23QP4PT8q0",
+      "name": "m6"
+    },
+    {
+      "updatedAt": "2026-06-29T11:28:00.407Z",
+      "createdAt": "2026-06-29T11:28:00.407Z",
+      "id": "vSgf5uxqoc90YOUt",
+      "name": "disabled"
+    }
+  ]
+}

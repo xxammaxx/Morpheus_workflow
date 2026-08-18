@@ -1,0 +1,53 @@
+{
+  "workflow_count_now": 41,
+  "protected": {
+    "ghiw-10-issue-intake-firewall-auth": {
+      "exists": true,
+      "name": "GHIW-10 \u2014 Issue Intake Firewall (AUTHORITATIVE) + v3 Builder Lifecycle",
+      "active": true,
+      "node_count": 36,
+      "webhooks": [
+        "ghiw-e7-runtime-canary"
+      ],
+      "ok": true
+    },
+    "ghiw-blueprint-intake-dryrun": {
+      "exists": true,
+      "name": "GHIW Blueprint Intake (DRY RUN)",
+      "active": false,
+      "node_count": 9,
+      "webhooks": [
+        "blueprint-intake"
+      ],
+      "ok": true
+    },
+    "ghiw-70-release-canary-orchestrator": {
+      "exists": true,
+      "name": "GHIW-70 \u2014 Release / Canary Orchestrator",
+      "active": false,
+      "node_count": 4,
+      "webhooks": [],
+      "ok": true
+    },
+    "n8n-ops-03-release-notes-docs": {
+      "exists": true,
+      "name": "N8N-OPS-03 \u2014 Release Notes & Documentation Sync",
+      "active": false,
+      "node_count": 4,
+      "webhooks": [],
+      "ok": true
+    }
+  },
+  "credential_count": 10,
+  "new_workflow": {
+    "id": "NdM7vcGvA4wkYswp",
+    "name": "AutoDev Harness - Graph Orchestrator v1",
+    "active": true,
+    "node_count": 39,
+    "webhooks": [
+      "autodev-harness"
+    ]
+  }
+}
+PROTECTED_OK True
+COUNT_CHECK 41

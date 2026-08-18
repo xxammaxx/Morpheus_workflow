@@ -1,0 +1,308 @@
+{
+  "name": "02 AutoDev API Status",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "autodev/status",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "status-webhook",
+      "name": "Status Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "bNrV3DszwdD7hXuY",
+          "name": "autodev-api-auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const runId = String(($json.query && $json.query.run_id) || '').trim();\nif (!runId) return [{json: {run_id: '', found: false, error: 'MISSING_RUN_ID'}}];\nconst filter = JSON.stringify({filters: [{columnName: 'run_id', condition: 'eq', value: runId}]});\nreturn [{json: {run_id: runId, filter_raw: filter}}];"
+      },
+      "id": "parse-query",
+      "name": "Parse Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": false,
+        "specifyBody": "json",
+        "jsonBody": "={{ {} }}",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filter",
+              "value": "={{ $json.filter_raw }}"
+            }
+          ]
+        }
+      },
+      "id": "fetch-run-row",
+      "name": "Fetch Run Row",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        480,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = ($json.data || []);\nconst runId = $('Parse Query').first().json.run_id || '';\nif (!rows.length) return [{json: {run_id: runId, found: false, row: null}}];\nreturn [{json: {run_id: runId, found: true, row: rows[0]}}];"
+      },
+      "id": "check-run-found",
+      "name": "Check Run Found",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.found}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "run-found?",
+      "name": "Run Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', code: 'RUN_NOT_FOUND', run_id: $json.run_id }) }}"
+      },
+      "id": "respond-404",
+      "name": "Respond 404",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst filter = JSON.stringify({filters: [{columnName: 'run_id', condition: 'eq', value: s.run_id}]});\nreturn [{json: {run_id: s.run_id, row: s.row, filter_raw: filter}}];"
+      },
+      "id": "prep-attempt-query",
+      "name": "Prep Attempt Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/5ArfenIk1qhsigL6/rows",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": false,
+        "specifyBody": "json",
+        "jsonBody": "={{ {} }}",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filter",
+              "value": "={{ $json.filter_raw }}"
+            }
+          ]
+        }
+      },
+      "id": "fetch-attempt-count",
+      "name": "Fetch Attempt Count",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1200,
+        160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $('Prep Attempt Query').first().json.row || {};\nconst attempts = ($json.data || []).length;\nreturn [{json: {\n  run_id: row.run_id, state: row.state, current_job: row.current_job || '',\n  attempt: attempts, decision: row.decision || null, reason_code: row.reason_code || null,\n  result_ref: row.result_ref || null, updated_at: row.updated_at || null\n}}];"
+      },
+      "id": "build-status",
+      "name": "Build Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-200",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        160
+      ]
+    }
+  ],
+  "connections": {
+    "Status Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Query": {
+      "main": [
+        [
+          {
+            "node": "Fetch Run Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Run Row": {
+      "main": [
+        [
+          {
+            "node": "Check Run Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Run Found": {
+      "main": [
+        [
+          {
+            "node": "Run Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Found?": {
+      "main": [
+        [
+          {
+            "node": "Prep Attempt Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 404",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Attempt Query": {
+      "main": [
+        [
+          {
+            "node": "Fetch Attempt Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Attempt Count": {
+      "main": [
+        [
+          {
+            "node": "Build Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Status": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

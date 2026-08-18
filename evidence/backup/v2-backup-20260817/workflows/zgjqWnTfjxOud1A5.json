@@ -1,0 +1,139 @@
+{
+  "updatedAt": "2026-08-03T13:04:53.848Z",
+  "createdAt": "2026-08-03T13:04:53.848Z",
+  "id": "zgjqWnTfjxOud1A5",
+  "name": "GHIW-02 v1 — GitHub Issue to Build Canary",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "trig-ghiw02-001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "init-ghiw02-001",
+      "name": "Initialize State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// Initialize state machine\nconst input = $input.first().json;\nconst state = {\n  run_id: $execution.id,\n  correlation_id: input.correlation_id || 'UNKNOWN',\n  state: 'RECEIVED',\n  previous_state: null,\n  reason_code: 'INIT',\n  timestamp: new Date().toISOString(),\n  workflow_id: $workflow.id,\n  execution_id: $execution.id,\n  repository: null,\n  issue_number: null,\n  lock_generation: null,\n  builder_ctid: 8001,\n  task_id: 'ghiw_source_manifest_v1',\n  artifact_sha256: null,\n  mutation_approval_id: null\n};\nreturn {json: state};"
+      }
+    },
+    {
+      "id": "validate-ghiw02-001",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// Input validation with forbidden field detection\nconst ALLOWED_SCHEMA_VERSION = '1.0';\nconst ALLOWED_OPERATIONS = ['contract-check', 'process-canary-issue'];\nconst ALLOWLISTED_REPOS = ['xxammaxx/n8n-blueprint-workflow'];\nconst SERVER_BUILDER_CTID = 8001;\nconst SERVER_BUILDER_ID = 'e3r6-canary-001';\nconst SERVER_TASK_ID = 'ghiw_source_manifest_v1';\nconst FORBIDDEN_FIELDS = [\n  'url', 'repository_url', 'command', 'commands', 'shell', 'script',\n  'args', 'argv', 'env', 'environment', 'credential', 'credential_id',\n  'token', 'api_key', 'ssh_key', 'ctid', 'builder_ctid', 'builder_id',\n  'workspace', 'path', 'working_directory', 'dry_run', 'max_fix_loops',\n  'branch', 'commit', 'pull_request'\n];\nconst KNOWN_FIELDS = ['schema_version', 'operation', 'repository', 'issue_number',\n                      'correlation_id', 'mutation_approval_id', 'task_id'];\nconst state = $input.first().json;\nconst input = state.raw_input || $input.first().json;\n\nfor (const field of FORBIDDEN_FIELDS) {\n  if (field in input) {\n    state.state = 'REJECTED';\n    state.reason_code = 'FORBIDDEN_FIELD';\n    state.reason_detail = 'Field ' + field + ' is forbidden';\n    return {json: state};\n  }\n}\n\nfor (const key of Object.keys(input)) {\n  if (!KNOWN_FIELDS.includes(key)) {\n    state.state = 'REJECTED';\n    state.reason_code = 'UNKNOWN_FIELD';\n    state.reason_detail = 'Unknown field: ' + key;\n    return {json: state};\n  }\n}\n\nif (!input.schema_version) {\n  state.state = 'REJECTED'; state.reason_code = 'MISSING_SCHEMA_VERSION'; return {json: state};\n}\nif (input.schema_version !== ALLOWED_SCHEMA_VERSION) {\n  state.state = 'REJECTED'; state.reason_code = 'INVALID_SCHEMA_VERSION'; return {json: state};\n}\nif (!input.operation) {\n  state.state = 'REJECTED'; state.reason_code = 'MISSING_OPERATION'; return {json: state};\n}\nif (!ALLOWED_OPERATIONS.includes(input.operation)) {\n  state.state = 'REJECTED'; state.reason_code = 'UNKNOWN_OPERATION'; return {json: state};\n}\nif (!input.repository) {\n  state.state = 'REJECTED'; state.reason_code = 'MISSING_REPOSITORY'; return {json: state};\n}\nif (!ALLOWLISTED_REPOS.includes(input.repository)) {\n  state.state = 'REJECTED'; state.reason_code = 'REPOSITORY_NOT_ALLOWLISTED'; return {json: state};\n}\nif (input.issue_number !== undefined) {\n  if (!Number.isInteger(input.issue_number) || input.issue_number < 1) {\n    state.state = 'REJECTED'; state.reason_code = 'INVALID_ISSUE_NUMBER'; return {json: state};\n  }\n}\nif (!input.correlation_id) {\n  state.state = 'REJECTED'; state.reason_code = 'MISSING_CORRELATION_ID'; return {json: state};\n}\nif (!/^GHIW-E4-[A-Za-z0-9_-]+$/.test(input.correlation_id)) {\n  state.state = 'REJECTED'; state.reason_code = 'INVALID_CORRELATION_ID'; return {json: state};\n}\nif (!input.mutation_approval_id) {\n  state.state = 'REJECTED'; state.reason_code = 'MISSING_MUTATION_APPROVAL_ID'; return {json: state};\n}\nif (input.task_id && input.task_id !== SERVER_TASK_ID) {\n  state.state = 'REJECTED'; state.reason_code = 'INVALID_TASK_ID'; return {json: state};\n}\n\nstate.state = 'INPUT_VALIDATED';\nstate.reason_code = 'VALIDATION_PASSED';\nstate.builder_ctid = SERVER_BUILDER_CTID;\nstate.builder_id = SERVER_BUILDER_ID;\nstate.task_id = SERVER_TASK_ID;\nstate.repository = input.repository;\nstate.issue_number = input.issue_number;\nstate.correlation_id = input.correlation_id;\nstate.mutation_approval_id = input.mutation_approval_id;\nstate.raw_input = input;\n\nreturn {json: state};"
+      }
+    },
+    {
+      "id": "decide-ghiw02-001",
+      "name": "Contract Check Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Path decision: contract-check vs process-canary-issue\nconst state = $input.first().json;\nif (state.state !== 'INPUT_VALIDATED') {\n  state.state = 'FAILED';\n  state.reason_code = 'UNEXPECTED_STATE';\n  return {json: state};\n}\nconst operation = state.raw_input?.operation;\nif (operation === 'contract-check') {\n  state.state = 'CONTRACT_CHECK_COMPLETED';\n  state.reason_code = 'CONTRACT_CHECK_PASSED';\n  state.contract_check_result = {\n    schema_version: '1.0',\n    operation: 'contract-check',\n    allowed_operations: ['contract-check', 'process-canary-issue'],\n    builder_ctid: state.builder_ctid,\n    builder_id: state.builder_id,\n    task_id: state.task_id,\n    allowlisted_repos: ['xxammaxx/n8n-blueprint-workflow'],\n    canary_execution_authorized: false,\n    contract_valid: true,\n    checked_at: new Date().toISOString()\n  };\n} else if (operation === 'process-canary-issue') {\n  state.state = 'INPUT_VALIDATED';\n  state.reason_code = 'READY_FOR_CANARY_E4_R3';\n  state.canary_authorized = false;\n} else {\n  state.state = 'REJECTED';\n  state.reason_code = 'UNKNOWN_OPERATION';\n}\nreturn {json: state};"
+      }
+    },
+    {
+      "id": "output-ghiw02-001",
+      "name": "Assemble Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {
+        "jsCode": "const state = $input.first().json;\nreturn {json: {\n  run_id: state.run_id,\n  correlation_id: state.correlation_id,\n  final_state: state.state,\n  reason_code: state.reason_code,\n  operation: state.raw_input?.operation,\n  repository: state.repository,\n  issue_number: state.issue_number,\n  builder_ctid: state.builder_ctid,\n  builder_id: state.builder_id,\n  task_id: state.task_id,\n  contract_check_result: state.contract_check_result || null,\n  mutation_approval_id: state.mutation_approval_id,\n  completed_at: new Date().toISOString()\n}};"
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Initialize State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize State": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Contract Check Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contract Check Decision": {
+      "main": [
+        [
+          {
+            "node": "Assemble Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "7590b6b5-417d-49db-8f13-31e1f70270ad",
+  "activeVersionId": null,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-08-03T13:04:53.853Z",
+      "createdAt": "2026-08-03T13:04:53.853Z",
+      "role": "workflow:owner",
+      "workflowId": "zgjqWnTfjxOud1A5",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

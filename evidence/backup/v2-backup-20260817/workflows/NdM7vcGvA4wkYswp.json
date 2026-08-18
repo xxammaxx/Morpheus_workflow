@@ -1,0 +1,2720 @@
+{
+  "updatedAt": "2026-08-16T20:14:59.284Z",
+  "createdAt": "2026-08-16T16:07:20.767Z",
+  "id": "NdM7vcGvA4wkYswp",
+  "name": "AutoDev Harness - Graph Orchestrator v1",
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "autodev-harness",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "63b7a784-32ff-4d90-81f4-3402c5dc5d1c",
+      "name": "Webhook Intake",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "054f29d8-39a9-4fbd-8cab-fb2d911b739d"
+    },
+    {
+      "parameters": {},
+      "id": "89b5da09-8e66-4645-a734-5815def45445",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const demo = {\n  task: \"Canary: implement greet() function with unit tests (demo)\",\n  repository: \"local-canary/greeter\",\n  execution_backend: \"embedded\",\n  max_attempts: 2\n};\nreturn [{ json: demo }];"
+      },
+      "id": "b3b62231-12ea-48da-af50-9bceb4ee8f4c",
+      "name": "Demo Task",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first()?.json ?? {};\nconst raw = (input.body && typeof input.body === 'object') ? input.body : input;\nconst task = raw.task ?? raw.issue ?? raw.description;\nif (task === undefined || task === null || String(task).trim() === '') {\n  return [{\n    json: {\n      contract: \"harness.issue.v1\",\n      run_id: null,\n      status: \"INTAKE_INVALID\",\n      intake_valid: false,\n      error: \"INTAKE_INVALID\",\n      trace: { started_at: new Date().toISOString() }\n    }\n  }];\n}\nconst runId = 'run-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);\nreturn [{\n  json: {\n    contract: \"harness.issue.v1\",\n    run_id: runId,\n    task: String(task),\n    repository: raw.repository ?? \"local-canary/greeter\",\n    attempt: 1,\n    max_attempts: Number(raw.max_attempts ?? 2),\n    fixture: raw.fixture ?? null,\n    execution_backend: raw.execution_backend ?? \"embedded\",\n    intake_valid: true,\n    status: \"OK\",\n    config: {\n      adapter_base_url: raw.adapter_base_url ?? \"http://192.168.1.136:8080\"\n    },\n    trace: { started_at: new Date().toISOString() }\n  }\n}];"
+      },
+      "id": "24adc860-eed1-415c-9399-4e6557ea7f8e",
+      "name": "Normalize Intake",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.intake_valid }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "7a3df1b7-0f38-44fd-831f-2ba2ef345fbc",
+      "name": "Intake Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.adapter_base_url }}/baseline",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Harness-Token",
+              "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, max_attempts: $json.max_attempts, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "e68a0384-392c-4280-b948-53deaa69b08b",
+      "name": "Baseline Adapter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        860,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.adapter_base_url }}/research/code",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Harness-Token",
+              "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, research_focus: 'code', config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "1b449b1d-be9b-4735-b917-3e9706afabfc",
+      "name": "Research Code",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1080,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.adapter_base_url }}/research/docs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Harness-Token",
+              "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, research_focus: 'docs', config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "d95fd059-3465-4f69-a4c1-5e3d2d84e59c",
+      "name": "Research Docs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1080,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.adapter_base_url }}/research/tests",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Harness-Token",
+              "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, research_focus: 'tests', config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "fa8dba46-fb04-40fc-836a-e7c406b8ca32",
+      "name": "Research Tests",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1080,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      },
+      "id": "18608a8f-60f9-4ef7-a2c3-04e6b37f85fc",
+      "name": "Merge Research A+B",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1300,
+        -70
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      },
+      "id": "5ab43034-74a5-4cb1-81f0-4e1ed04c1584",
+      "name": "Merge Research +C",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(i => i.json);\nconst research = items.filter(i => i && i.contract === \"harness.research.v1\");\nconst first = items.find(i => i && i.run_id) || {};\nconst empty = research.length === 0 || research.every(r => r.empty);\nreturn [{\n  json: {\n    contract: \"harness.research.v1\",\n    run_id: first.run_id,\n    task: first.task,\n    repository: first.repository,\n    fixture: first.fixture,\n    execution_backend: first.execution_backend,\n    attempt: first.attempt ?? 1,\n    max_attempts: first.max_attempts ?? 2,\n    config: first.config ?? {},\n    research,\n    research_empty: empty,\n    trace: first.trace ?? {}\n  }\n}];"
+      },
+      "id": "dc2e4c36-4f44-4fb5-a4a9-70acc1d139fc",
+      "name": "Research Contract",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1740,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.adapter_base_url }}/plan",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Harness-Token",
+              "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, research: $json.research, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "3f71d468-0fcd-42d0-908f-2d0d08d8584e",
+      "name": "Plan Adapter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1960,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst plan = d.plan ?? null;\nconst errors = [];\nif (!plan) errors.push(\"PLAN_MISSING\");\nif (!plan || !Array.isArray(plan.acceptance_criteria) || plan.acceptance_criteria.length === 0) errors.push(\"ACCEPTANCE_CRITERIA_MISSING\");\nif (!plan || !plan.build_scope) errors.push(\"BUILD_SCOPE_MISSING\");\nif (!plan || !Array.isArray(plan.required_tests)) errors.push(\"REQUIRED_TESTS_INVALID\");\nconst approved = errors.length === 0;\nreturn [{ json: { ...d, plan_gate: { approved, errors, checked_at: new Date().toISOString() } } }];"
+      },
+      "id": "c37d4aa0-325a-49e4-8743-fa20c4ded075",
+      "name": "Plan Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2180,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.plan_gate.approved }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "28877680-8fab-41e8-99bf-546a4ad9695f",
+      "name": "Plan Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst reason = d.intake_valid === false\n  ? \"INTAKE_INVALID\"\n  : ((d.plan_gate?.errors ?? []).join(\",\") || \"PLAN_GATE_REJECTED\");\nreturn [{\n  json: {\n    contract: \"harness.terminal.v1\",\n    run_id: d.run_id ?? null,\n    decision: \"BLOCKED\",\n    reason_code: reason,\n    next_path: \"HUMAN_OR_POLICY_INTERVENTION\",\n    plan_gate: d.plan_gate ?? null,\n    status: \"BLOCKED\"\n  }\n}];"
+      },
+      "id": "d56b6ce0-2024-4b1a-a09f-6e00f2c38614",
+      "name": "Final BLOCKED - Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.adapter_base_url }}/build",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Harness-Token",
+              "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, attempt: $json.attempt, plan: $json.plan, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "12056425-5175-4889-8cd2-5c8343b0a666",
+      "name": "Build Adapter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2620,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.adapter_base_url }}/verify",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Harness-Token",
+              "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, attempt: $json.attempt, plan: $json.plan, build: $json.build, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "295b0141-f638-4eb5-a524-ed524068ff03",
+      "name": "Verify Adapter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2840,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.verification.passed }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "4b95bcd5-c027-4922-9632-a0fe6bcf5869",
+      "name": "Verification Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3060,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst v = d.verification ?? {};\nconst attempt = Number(d.attempt ?? 1);\nconst maxAttempts = Number(d.max_attempts ?? 2);\nconst hasSig = typeof v.failure_signature === \"string\" && v.failure_signature.length > 0;\nconst hasDelta = typeof v.strategy_delta === \"string\" && v.strategy_delta.length > 0;\nlet allowed = false;\nlet reason_code;\nif (!hasSig) reason_code = \"RETRY_DENIED_NO_FAILURE_SIGNATURE\";\nelse if (!hasDelta) reason_code = \"RETRY_DENIED_NO_STRATEGY_DELTA\";\nelse if (attempt >= maxAttempts) reason_code = \"RETRY_DENIED_ATTEMPT_LIMIT\";\nelse { allowed = true; reason_code = \"RETRY_ALLOWED_WITH_STRATEGY_DELTA\"; }\nreturn [{ json: { ...d, attempt, max_attempts: maxAttempts, retry_policy: { allowed, reason_code, attempt, max_attempts: maxAttempts, checked_at: new Date().toISOString() } } }];"
+      },
+      "id": "0262dce9-ddfb-4d7d-81ad-089ce486eb53",
+      "name": "Retry Policy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3060,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.retry_policy.allowed }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "746c0bf1-f8eb-46e4-96ac-cfc765b5b0e0",
+      "name": "Retry Allowed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3280,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.adapter_base_url }}/fix",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Harness-Token",
+              "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, attempt: $json.attempt + 1, max_attempts: $json.max_attempts, strategy_delta: $json.verification.strategy_delta, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "97953d13-e1da-45a5-aac2-bbd37e1a89ef",
+      "name": "Fix Adapter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3500,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.adapter_base_url }}/verify",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Harness-Token",
+              "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, attempt: $json.fix.attempt, max_attempts: $json.max_attempts, plan: $json.plan, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "25d860ce-88d2-4acc-8d0c-5d02bdfde1f4",
+      "name": "Verify Retry Adapter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3720,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.verification.passed }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "c75fd6c0-b9e6-4e0c-ae10-27ef4bd007cf",
+      "name": "Retry Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3940,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nlet reason = d.retry_policy?.reason_code ?? null;\nif (!reason) {\n  const v = d.verification ?? {};\n  const attempt = Number(d.attempt ?? 1);\n  const maxAttempts = Number(d.max_attempts ?? 2);\n  const hasSig = typeof v.failure_signature === \"string\" && v.failure_signature.length > 0;\n  const hasDelta = typeof v.strategy_delta === \"string\" && v.strategy_delta.length > 0;\n  if (!hasSig) reason = \"RETRY_DENIED_NO_FAILURE_SIGNATURE\";\n  else if (!hasDelta) reason = \"RETRY_DENIED_NO_STRATEGY_DELTA\";\n  else if (attempt >= maxAttempts) reason = \"RETRY_DENIED_ATTEMPT_LIMIT\";\n  else reason = \"RETRY_EXHAUSTED\";\n}\nreturn [{\n  json: {\n    contract: \"harness.terminal.v1\",\n    run_id: d.run_id ?? null,\n    decision: \"SPLIT\",\n    reason_code: reason,\n    next_path: \"DECOMPOSE_INTO_SUBTASKS\",\n    retry_policy: d.retry_policy ?? null,\n    status: \"SPLIT\"\n  }\n}];"
+      },
+      "id": "733c1f04-1af7-43ec-97be-e5b720eed739",
+      "name": "Final SPLIT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3500,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      },
+      "id": "78746403-383d-46cb-9be3-603343a40037",
+      "name": "Merge Verify Paths",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3060,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.adapter_base_url }}/review/correctness",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Harness-Token",
+              "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, attempt: $json.attempt, verification: $json.verification, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "671d4623-6b8c-4585-8be1-32651f564d8b",
+      "name": "Review Correctness",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3280,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.adapter_base_url }}/review/security",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Harness-Token",
+              "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, attempt: $json.attempt, verification: $json.verification, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "071462e9-4d8d-403e-b375-599decb34a42",
+      "name": "Review Security",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3280,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.adapter_base_url }}/review/quality",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Harness-Token",
+              "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, attempt: $json.attempt, verification: $json.verification, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "1e388b6f-2631-4fcf-afaa-a4f03958477c",
+      "name": "Review Quality",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3280,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      },
+      "id": "95f4f61d-e6b5-4e6d-92a2-912eaeabe821",
+      "name": "Merge Reviews A+B",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3500,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      },
+      "id": "ad8024ba-7b9f-4ba6-ae32-cd27849ed96f",
+      "name": "Merge Reviews +C",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3720,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(i => i.json);\nconst reviews = items.filter(i => i && i.review);\nconst first = items.find(i => i && i.run_id) || {};\nconst sevRank = { INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 };\nlet decision = \"DONE\";\nlet reason_code = \"ALL_HARD_GATES_GREEN\";\nconst hardBlock = reviews.some(r => r.review.blocking === true && (sevRank[r.review.severity] ?? 0) >= sevRank.HIGH);\nif (hardBlock) {\n  decision = \"BLOCKED\";\n  reason_code = \"BLOCKING_HIGH_OR_CRITICAL_FINDING\";\n} else if (reviews.some(r => r.review.recommendation === \"SPLIT\")) {\n  decision = \"SPLIT\";\n  reason_code = \"REVIEW_REQUESTED_SPLIT\";\n} else if (reviews.some(r => ![\"PASS\", \"OK\", \"APPROVED\"].includes(r.review.status))) {\n  decision = \"FIX\";\n  reason_code = \"NON_BLOCKING_REVIEW_FINDINGS\";\n}\nlet maxSeverity = \"INFO\";\nfor (const r of reviews) {\n  if ((sevRank[r.review.severity] ?? 0) > (sevRank[maxSeverity] ?? 0)) maxSeverity = r.review.severity;\n}\nconst nextPath = decision === \"DONE\" ? \"FINALIZE_OR_PUBLISH\"\n  : decision === \"FIX\" ? \"TARGETED_FIX_LOOP\"\n  : decision === \"SPLIT\" ? \"DECOMPOSE_INTO_SUBTASKS\"\n  : \"HUMAN_OR_POLICY_INTERVENTION\";\nreturn [{\n  json: {\n    contract: \"harness.controller.v1\",\n    run_id: first.run_id,\n    task: first.task,\n    repository: first.repository,\n    fixture: first.fixture,\n    execution_backend: first.execution_backend,\n    config: first.config ?? {},\n    controller: {\n      decision,\n      reason_code,\n      next_path: nextPath,\n      max_severity: maxSeverity,\n      review_count: reviews.length,\n      reviews: reviews.map(r => r.review)\n    },\n    status: decision\n  }\n}];"
+      },
+      "id": "f85a5a01-e79b-433f-82e6-19fb257f3cce",
+      "name": "Deterministic Controller",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3940,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.controller.decision }}",
+              "rightValue": "DONE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "532209dd-1c83-48c2-8881-f91bf539c919",
+      "name": "Decision DONE?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4160,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.controller.decision }}",
+              "rightValue": "FIX",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "d5d01848-48da-499f-9c78-6bf3d2b6477c",
+      "name": "Decision FIX?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4160,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.controller.decision }}",
+              "rightValue": "SPLIT",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "f41e892d-3909-4220-9f68-857aaab78ed2",
+      "name": "Decision SPLIT?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4160,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nreturn [{\n  json: {\n    contract: \"harness.terminal.v1\",\n    run_id: d.run_id ?? null,\n    decision: \"DONE\",\n    reason_code: d.controller?.reason_code ?? \"ALL_HARD_GATES_GREEN\",\n    next_path: \"FINALIZE_OR_PUBLISH\",\n    controller: d.controller ?? null,\n    status: \"DONE\"\n  }\n}];"
+      },
+      "id": "e8109e97-d277-453f-92da-bd87f29ab67d",
+      "name": "Final DONE",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4380,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nreturn [{\n  json: {\n    contract: \"harness.terminal.v1\",\n    run_id: d.run_id ?? null,\n    decision: \"FIX\",\n    reason_code: d.controller?.reason_code ?? \"NON_BLOCKING_REVIEW_FINDINGS\",\n    next_path: \"TARGETED_FIX_LOOP\",\n    controller: d.controller ?? null,\n    status: \"FIX\"\n  }\n}];"
+      },
+      "id": "81b441bd-e2d0-4cbe-b861-a264a8991407",
+      "name": "Final FIX",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4380,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nreturn [{\n  json: {\n    contract: \"harness.terminal.v1\",\n    run_id: d.run_id ?? null,\n    decision: \"SPLIT\",\n    reason_code: d.controller?.reason_code ?? \"REVIEW_REQUESTED_SPLIT\",\n    next_path: \"DECOMPOSE_INTO_SUBTASKS\",\n    controller: d.controller ?? null,\n    status: \"SPLIT\"\n  }\n}];"
+      },
+      "id": "f4b06577-b9ba-449c-82f6-046101c1354d",
+      "name": "Final SPLIT - Review",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4600,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nreturn [{\n  json: {\n    contract: \"harness.terminal.v1\",\n    run_id: d.run_id ?? null,\n    decision: \"BLOCKED\",\n    reason_code: d.controller?.reason_code ?? \"BLOCKING_HIGH_OR_CRITICAL_FINDING\",\n    next_path: \"HUMAN_OR_POLICY_INTERVENTION\",\n    controller: d.controller ?? null,\n    status: \"BLOCKED\"\n  }\n}];"
+      },
+      "id": "fe39e47d-b865-499c-9bd2-2e9d9b78dd1c",
+      "name": "Final BLOCKED - Review",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4600,
+        -20
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Intake": {
+      "main": [
+        [
+          {
+            "node": "Normalize Intake",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Demo Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Demo Task": {
+      "main": [
+        [
+          {
+            "node": "Normalize Intake",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Intake": {
+      "main": [
+        [
+          {
+            "node": "Intake Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Intake Valid?": {
+      "main": [
+        [
+          {
+            "node": "Baseline Adapter",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Final BLOCKED - Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baseline Adapter": {
+      "main": [
+        [
+          {
+            "node": "Research Code",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Research Docs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Research Tests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Code": {
+      "main": [
+        [
+          {
+            "node": "Merge Research A+B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Docs": {
+      "main": [
+        [
+          {
+            "node": "Merge Research A+B",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Research A+B": {
+      "main": [
+        [
+          {
+            "node": "Merge Research +C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Tests": {
+      "main": [
+        [
+          {
+            "node": "Merge Research +C",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Research +C": {
+      "main": [
+        [
+          {
+            "node": "Research Contract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Contract": {
+      "main": [
+        [
+          {
+            "node": "Plan Adapter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Adapter": {
+      "main": [
+        [
+          {
+            "node": "Plan Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Gate": {
+      "main": [
+        [
+          {
+            "node": "Plan Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Approved?": {
+      "main": [
+        [
+          {
+            "node": "Build Adapter",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Final BLOCKED - Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Adapter": {
+      "main": [
+        [
+          {
+            "node": "Verify Adapter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Adapter": {
+      "main": [
+        [
+          {
+            "node": "Verification Passed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verification Passed?": {
+      "main": [
+        [
+          {
+            "node": "Merge Verify Paths",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retry Policy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Policy": {
+      "main": [
+        [
+          {
+            "node": "Retry Allowed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Allowed?": {
+      "main": [
+        [
+          {
+            "node": "Fix Adapter",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Final SPLIT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fix Adapter": {
+      "main": [
+        [
+          {
+            "node": "Verify Retry Adapter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Retry Adapter": {
+      "main": [
+        [
+          {
+            "node": "Retry Passed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Passed?": {
+      "main": [
+        [
+          {
+            "node": "Merge Verify Paths",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "Final SPLIT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Verify Paths": {
+      "main": [
+        [
+          {
+            "node": "Review Correctness",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Review Security",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Review Quality",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review Correctness": {
+      "main": [
+        [
+          {
+            "node": "Merge Reviews A+B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review Security": {
+      "main": [
+        [
+          {
+            "node": "Merge Reviews A+B",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Reviews A+B": {
+      "main": [
+        [
+          {
+            "node": "Merge Reviews +C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review Quality": {
+      "main": [
+        [
+          {
+            "node": "Merge Reviews +C",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Reviews +C": {
+      "main": [
+        [
+          {
+            "node": "Deterministic Controller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deterministic Controller": {
+      "main": [
+        [
+          {
+            "node": "Decision DONE?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision DONE?": {
+      "main": [
+        [
+          {
+            "node": "Final DONE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Decision FIX?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision FIX?": {
+      "main": [
+        [
+          {
+            "node": "Final FIX",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Decision SPLIT?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision SPLIT?": {
+      "main": [
+        [
+          {
+            "node": "Final SPLIT - Review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Final BLOCKED - Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "88660684-55da-495a-9a3d-1c7a43127fbc",
+  "activeVersionId": "88660684-55da-495a-9a3d-1c7a43127fbc",
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-08-16T16:07:20.774Z",
+      "createdAt": "2026-08-16T16:07:20.774Z",
+      "role": "workflow:owner",
+      "workflowId": "NdM7vcGvA4wkYswp",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": {
+    "updatedAt": "2026-08-16T20:14:59.305Z",
+    "createdAt": "2026-08-16T20:14:59.305Z",
+    "versionId": "88660684-55da-495a-9a3d-1c7a43127fbc",
+    "workflowId": "NdM7vcGvA4wkYswp",
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "autodev-harness",
+          "responseMode": "lastNode",
+          "options": {}
+        },
+        "id": "63b7a784-32ff-4d90-81f4-3402c5dc5d1c",
+        "name": "Webhook Intake",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          0,
+          0
+        ],
+        "webhookId": "054f29d8-39a9-4fbd-8cab-fb2d911b739d"
+      },
+      {
+        "parameters": {},
+        "id": "89b5da09-8e66-4645-a734-5815def45445",
+        "name": "Manual Trigger",
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          0,
+          140
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const demo = {\n  task: \"Canary: implement greet() function with unit tests (demo)\",\n  repository: \"local-canary/greeter\",\n  execution_backend: \"embedded\",\n  max_attempts: 2\n};\nreturn [{ json: demo }];"
+        },
+        "id": "b3b62231-12ea-48da-af50-9bceb4ee8f4c",
+        "name": "Demo Task",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          200,
+          140
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const input = $input.first()?.json ?? {};\nconst raw = (input.body && typeof input.body === 'object') ? input.body : input;\nconst task = raw.task ?? raw.issue ?? raw.description;\nif (task === undefined || task === null || String(task).trim() === '') {\n  return [{\n    json: {\n      contract: \"harness.issue.v1\",\n      run_id: null,\n      status: \"INTAKE_INVALID\",\n      intake_valid: false,\n      error: \"INTAKE_INVALID\",\n      trace: { started_at: new Date().toISOString() }\n    }\n  }];\n}\nconst runId = 'run-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);\nreturn [{\n  json: {\n    contract: \"harness.issue.v1\",\n    run_id: runId,\n    task: String(task),\n    repository: raw.repository ?? \"local-canary/greeter\",\n    attempt: 1,\n    max_attempts: Number(raw.max_attempts ?? 2),\n    fixture: raw.fixture ?? null,\n    execution_backend: raw.execution_backend ?? \"embedded\",\n    intake_valid: true,\n    status: \"OK\",\n    config: {\n      adapter_base_url: raw.adapter_base_url ?? \"http://192.168.1.136:8080\"\n    },\n    trace: { started_at: new Date().toISOString() }\n  }\n}];"
+        },
+        "id": "24adc860-eed1-415c-9399-4e6557ea7f8e",
+        "name": "Normalize Intake",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          420,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ $json.intake_valid }}",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            }
+          }
+        },
+        "id": "7a3df1b7-0f38-44fd-831f-2ba2ef345fbc",
+        "name": "Intake Valid?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          640,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.config.adapter_base_url }}/baseline",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Harness-Token",
+                "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, max_attempts: $json.max_attempts, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "id": "e68a0384-392c-4280-b948-53deaa69b08b",
+        "name": "Baseline Adapter",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          860,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.config.adapter_base_url }}/research/code",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Harness-Token",
+                "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, research_focus: 'code', config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "id": "1b449b1d-be9b-4735-b917-3e9706afabfc",
+        "name": "Research Code",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          1080,
+          -140
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.config.adapter_base_url }}/research/docs",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Harness-Token",
+                "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, research_focus: 'docs', config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "id": "d95fd059-3465-4f69-a4c1-5e3d2d84e59c",
+        "name": "Research Docs",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          1080,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.config.adapter_base_url }}/research/tests",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Harness-Token",
+                "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, research_focus: 'tests', config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "id": "fa8dba46-fb04-40fc-836a-e7c406b8ca32",
+        "name": "Research Tests",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          1080,
+          140
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "append",
+          "numberInputs": 2
+        },
+        "id": "18608a8f-60f9-4ef7-a2c3-04e6b37f85fc",
+        "name": "Merge Research A+B",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.2,
+        "position": [
+          1300,
+          -70
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "append",
+          "numberInputs": 2
+        },
+        "id": "5ab43034-74a5-4cb1-81f0-4e1ed04c1584",
+        "name": "Merge Research +C",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.2,
+        "position": [
+          1520,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all().map(i => i.json);\nconst research = items.filter(i => i && i.contract === \"harness.research.v1\");\nconst first = items.find(i => i && i.run_id) || {};\nconst empty = research.length === 0 || research.every(r => r.empty);\nreturn [{\n  json: {\n    contract: \"harness.research.v1\",\n    run_id: first.run_id,\n    task: first.task,\n    repository: first.repository,\n    fixture: first.fixture,\n    execution_backend: first.execution_backend,\n    attempt: first.attempt ?? 1,\n    max_attempts: first.max_attempts ?? 2,\n    config: first.config ?? {},\n    research,\n    research_empty: empty,\n    trace: first.trace ?? {}\n  }\n}];"
+        },
+        "id": "dc2e4c36-4f44-4fb5-a4a9-70acc1d139fc",
+        "name": "Research Contract",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1740,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.config.adapter_base_url }}/plan",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Harness-Token",
+                "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, research: $json.research, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "id": "3f71d468-0fcd-42d0-908f-2d0d08d8584e",
+        "name": "Plan Adapter",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          1960,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const d = $input.first().json;\nconst plan = d.plan ?? null;\nconst errors = [];\nif (!plan) errors.push(\"PLAN_MISSING\");\nif (!plan || !Array.isArray(plan.acceptance_criteria) || plan.acceptance_criteria.length === 0) errors.push(\"ACCEPTANCE_CRITERIA_MISSING\");\nif (!plan || !plan.build_scope) errors.push(\"BUILD_SCOPE_MISSING\");\nif (!plan || !Array.isArray(plan.required_tests)) errors.push(\"REQUIRED_TESTS_INVALID\");\nconst approved = errors.length === 0;\nreturn [{ json: { ...d, plan_gate: { approved, errors, checked_at: new Date().toISOString() } } }];"
+        },
+        "id": "c37d4aa0-325a-49e4-8743-fa20c4ded075",
+        "name": "Plan Gate",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2180,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ $json.plan_gate.approved }}",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            }
+          }
+        },
+        "id": "28877680-8fab-41e8-99bf-546a4ad9695f",
+        "name": "Plan Approved?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          2400,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const d = $input.first().json;\nconst reason = d.intake_valid === false\n  ? \"INTAKE_INVALID\"\n  : ((d.plan_gate?.errors ?? []).join(\",\") || \"PLAN_GATE_REJECTED\");\nreturn [{\n  json: {\n    contract: \"harness.terminal.v1\",\n    run_id: d.run_id ?? null,\n    decision: \"BLOCKED\",\n    reason_code: reason,\n    next_path: \"HUMAN_OR_POLICY_INTERVENTION\",\n    plan_gate: d.plan_gate ?? null,\n    status: \"BLOCKED\"\n  }\n}];"
+        },
+        "id": "d56b6ce0-2024-4b1a-a09f-6e00f2c38614",
+        "name": "Final BLOCKED - Plan",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2400,
+          160
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.config.adapter_base_url }}/build",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Harness-Token",
+                "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, attempt: $json.attempt, plan: $json.plan, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "id": "12056425-5175-4889-8cd2-5c8343b0a666",
+        "name": "Build Adapter",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          2620,
+          -60
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.config.adapter_base_url }}/verify",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Harness-Token",
+                "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, attempt: $json.attempt, plan: $json.plan, build: $json.build, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "id": "295b0141-f638-4eb5-a524-ed524068ff03",
+        "name": "Verify Adapter",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          2840,
+          -60
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ $json.verification.passed }}",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            }
+          }
+        },
+        "id": "4b95bcd5-c027-4922-9632-a0fe6bcf5869",
+        "name": "Verification Passed?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          3060,
+          -60
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const d = $input.first().json;\nconst v = d.verification ?? {};\nconst attempt = Number(d.attempt ?? 1);\nconst maxAttempts = Number(d.max_attempts ?? 2);\nconst hasSig = typeof v.failure_signature === \"string\" && v.failure_signature.length > 0;\nconst hasDelta = typeof v.strategy_delta === \"string\" && v.strategy_delta.length > 0;\nlet allowed = false;\nlet reason_code;\nif (!hasSig) reason_code = \"RETRY_DENIED_NO_FAILURE_SIGNATURE\";\nelse if (!hasDelta) reason_code = \"RETRY_DENIED_NO_STRATEGY_DELTA\";\nelse if (attempt >= maxAttempts) reason_code = \"RETRY_DENIED_ATTEMPT_LIMIT\";\nelse { allowed = true; reason_code = \"RETRY_ALLOWED_WITH_STRATEGY_DELTA\"; }\nreturn [{ json: { ...d, attempt, max_attempts: maxAttempts, retry_policy: { allowed, reason_code, attempt, max_attempts: maxAttempts, checked_at: new Date().toISOString() } } }];"
+        },
+        "id": "0262dce9-ddfb-4d7d-81ad-089ce486eb53",
+        "name": "Retry Policy",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3060,
+          160
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ $json.retry_policy.allowed }}",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            }
+          }
+        },
+        "id": "746c0bf1-f8eb-46e4-96ac-cfc765b5b0e0",
+        "name": "Retry Allowed?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          3280,
+          160
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.config.adapter_base_url }}/fix",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Harness-Token",
+                "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, attempt: $json.attempt + 1, max_attempts: $json.max_attempts, strategy_delta: $json.verification.strategy_delta, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "id": "97953d13-e1da-45a5-aac2-bbd37e1a89ef",
+        "name": "Fix Adapter",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          3500,
+          20
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.config.adapter_base_url }}/verify",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Harness-Token",
+                "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, attempt: $json.fix.attempt, max_attempts: $json.max_attempts, plan: $json.plan, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "id": "25d860ce-88d2-4acc-8d0c-5d02bdfde1f4",
+        "name": "Verify Retry Adapter",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          3720,
+          20
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ $json.verification.passed }}",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            }
+          }
+        },
+        "id": "c75fd6c0-b9e6-4e0c-ae10-27ef4bd007cf",
+        "name": "Retry Passed?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          3940,
+          20
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const d = $input.first().json;\nlet reason = d.retry_policy?.reason_code ?? null;\nif (!reason) {\n  const v = d.verification ?? {};\n  const attempt = Number(d.attempt ?? 1);\n  const maxAttempts = Number(d.max_attempts ?? 2);\n  const hasSig = typeof v.failure_signature === \"string\" && v.failure_signature.length > 0;\n  const hasDelta = typeof v.strategy_delta === \"string\" && v.strategy_delta.length > 0;\n  if (!hasSig) reason = \"RETRY_DENIED_NO_FAILURE_SIGNATURE\";\n  else if (!hasDelta) reason = \"RETRY_DENIED_NO_STRATEGY_DELTA\";\n  else if (attempt >= maxAttempts) reason = \"RETRY_DENIED_ATTEMPT_LIMIT\";\n  else reason = \"RETRY_EXHAUSTED\";\n}\nreturn [{\n  json: {\n    contract: \"harness.terminal.v1\",\n    run_id: d.run_id ?? null,\n    decision: \"SPLIT\",\n    reason_code: reason,\n    next_path: \"DECOMPOSE_INTO_SUBTASKS\",\n    retry_policy: d.retry_policy ?? null,\n    status: \"SPLIT\"\n  }\n}];"
+        },
+        "id": "733c1f04-1af7-43ec-97be-e5b720eed739",
+        "name": "Final SPLIT",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3500,
+          240
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "append",
+          "numberInputs": 2
+        },
+        "id": "78746403-383d-46cb-9be3-603343a40037",
+        "name": "Merge Verify Paths",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.2,
+        "position": [
+          3060,
+          -140
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.config.adapter_base_url }}/review/correctness",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Harness-Token",
+                "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, attempt: $json.attempt, verification: $json.verification, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "id": "671d4623-6b8c-4585-8be1-32651f564d8b",
+        "name": "Review Correctness",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          3280,
+          -200
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.config.adapter_base_url }}/review/security",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Harness-Token",
+                "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, attempt: $json.attempt, verification: $json.verification, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "id": "071462e9-4d8d-403e-b375-599decb34a42",
+        "name": "Review Security",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          3280,
+          -80
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.config.adapter_base_url }}/review/quality",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Harness-Token",
+                "value": "cbad731c391ea4e348ed93f209927cb3c3baaac033e4942199f2f7155ceff308"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ run_id: $json.run_id, task: $json.task, repository: $json.repository, fixture: $json.fixture, execution_backend: $json.execution_backend, attempt: $json.attempt, verification: $json.verification, config: { adapter_base_url: $json.config.adapter_base_url } }) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "id": "1e388b6f-2631-4fcf-afaa-a4f03958477c",
+        "name": "Review Quality",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          3280,
+          40
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "append",
+          "numberInputs": 2
+        },
+        "id": "95f4f61d-e6b5-4e6d-92a2-912eaeabe821",
+        "name": "Merge Reviews A+B",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.2,
+        "position": [
+          3500,
+          -140
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "append",
+          "numberInputs": 2
+        },
+        "id": "ad8024ba-7b9f-4ba6-ae32-cd27849ed96f",
+        "name": "Merge Reviews +C",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.2,
+        "position": [
+          3720,
+          -140
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all().map(i => i.json);\nconst reviews = items.filter(i => i && i.review);\nconst first = items.find(i => i && i.run_id) || {};\nconst sevRank = { INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 };\nlet decision = \"DONE\";\nlet reason_code = \"ALL_HARD_GATES_GREEN\";\nconst hardBlock = reviews.some(r => r.review.blocking === true && (sevRank[r.review.severity] ?? 0) >= sevRank.HIGH);\nif (hardBlock) {\n  decision = \"BLOCKED\";\n  reason_code = \"BLOCKING_HIGH_OR_CRITICAL_FINDING\";\n} else if (reviews.some(r => r.review.recommendation === \"SPLIT\")) {\n  decision = \"SPLIT\";\n  reason_code = \"REVIEW_REQUESTED_SPLIT\";\n} else if (reviews.some(r => ![\"PASS\", \"OK\", \"APPROVED\"].includes(r.review.status))) {\n  decision = \"FIX\";\n  reason_code = \"NON_BLOCKING_REVIEW_FINDINGS\";\n}\nlet maxSeverity = \"INFO\";\nfor (const r of reviews) {\n  if ((sevRank[r.review.severity] ?? 0) > (sevRank[maxSeverity] ?? 0)) maxSeverity = r.review.severity;\n}\nconst nextPath = decision === \"DONE\" ? \"FINALIZE_OR_PUBLISH\"\n  : decision === \"FIX\" ? \"TARGETED_FIX_LOOP\"\n  : decision === \"SPLIT\" ? \"DECOMPOSE_INTO_SUBTASKS\"\n  : \"HUMAN_OR_POLICY_INTERVENTION\";\nreturn [{\n  json: {\n    contract: \"harness.controller.v1\",\n    run_id: first.run_id,\n    task: first.task,\n    repository: first.repository,\n    fixture: first.fixture,\n    execution_backend: first.execution_backend,\n    config: first.config ?? {},\n    controller: {\n      decision,\n      reason_code,\n      next_path: nextPath,\n      max_severity: maxSeverity,\n      review_count: reviews.length,\n      reviews: reviews.map(r => r.review)\n    },\n    status: decision\n  }\n}];"
+        },
+        "id": "f85a5a01-e79b-433f-82e6-19fb257f3cce",
+        "name": "Deterministic Controller",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3940,
+          -140
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ $json.controller.decision }}",
+                "rightValue": "DONE",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            }
+          }
+        },
+        "id": "532209dd-1c83-48c2-8881-f91bf539c919",
+        "name": "Decision DONE?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          4160,
+          -140
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ $json.controller.decision }}",
+                "rightValue": "FIX",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            }
+          }
+        },
+        "id": "d5d01848-48da-499f-9c78-6bf3d2b6477c",
+        "name": "Decision FIX?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          4160,
+          -60
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ $json.controller.decision }}",
+                "rightValue": "SPLIT",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            }
+          }
+        },
+        "id": "f41e892d-3909-4220-9f68-857aaab78ed2",
+        "name": "Decision SPLIT?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          4160,
+          20
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const d = $input.first().json;\nreturn [{\n  json: {\n    contract: \"harness.terminal.v1\",\n    run_id: d.run_id ?? null,\n    decision: \"DONE\",\n    reason_code: d.controller?.reason_code ?? \"ALL_HARD_GATES_GREEN\",\n    next_path: \"FINALIZE_OR_PUBLISH\",\n    controller: d.controller ?? null,\n    status: \"DONE\"\n  }\n}];"
+        },
+        "id": "e8109e97-d277-453f-92da-bd87f29ab67d",
+        "name": "Final DONE",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4380,
+          -260
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const d = $input.first().json;\nreturn [{\n  json: {\n    contract: \"harness.terminal.v1\",\n    run_id: d.run_id ?? null,\n    decision: \"FIX\",\n    reason_code: d.controller?.reason_code ?? \"NON_BLOCKING_REVIEW_FINDINGS\",\n    next_path: \"TARGETED_FIX_LOOP\",\n    controller: d.controller ?? null,\n    status: \"FIX\"\n  }\n}];"
+        },
+        "id": "81b441bd-e2d0-4cbe-b861-a264a8991407",
+        "name": "Final FIX",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4380,
+          -180
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const d = $input.first().json;\nreturn [{\n  json: {\n    contract: \"harness.terminal.v1\",\n    run_id: d.run_id ?? null,\n    decision: \"SPLIT\",\n    reason_code: d.controller?.reason_code ?? \"REVIEW_REQUESTED_SPLIT\",\n    next_path: \"DECOMPOSE_INTO_SUBTASKS\",\n    controller: d.controller ?? null,\n    status: \"SPLIT\"\n  }\n}];"
+        },
+        "id": "f4b06577-b9ba-449c-82f6-046101c1354d",
+        "name": "Final SPLIT - Review",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4600,
+          -100
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const d = $input.first().json;\nreturn [{\n  json: {\n    contract: \"harness.terminal.v1\",\n    run_id: d.run_id ?? null,\n    decision: \"BLOCKED\",\n    reason_code: d.controller?.reason_code ?? \"BLOCKING_HIGH_OR_CRITICAL_FINDING\",\n    next_path: \"HUMAN_OR_POLICY_INTERVENTION\",\n    controller: d.controller ?? null,\n    status: \"BLOCKED\"\n  }\n}];"
+        },
+        "id": "fe39e47d-b865-499c-9bd2-2e9d9b78dd1c",
+        "name": "Final BLOCKED - Review",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4600,
+          -20
+        ]
+      }
+    ],
+    "connections": {
+      "Webhook Intake": {
+        "main": [
+          [
+            {
+              "node": "Normalize Intake",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Manual Trigger": {
+        "main": [
+          [
+            {
+              "node": "Demo Task",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Demo Task": {
+        "main": [
+          [
+            {
+              "node": "Normalize Intake",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Intake": {
+        "main": [
+          [
+            {
+              "node": "Intake Valid?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Intake Valid?": {
+        "main": [
+          [
+            {
+              "node": "Baseline Adapter",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Final BLOCKED - Plan",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Baseline Adapter": {
+        "main": [
+          [
+            {
+              "node": "Research Code",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Research Docs",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Research Tests",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Research Code": {
+        "main": [
+          [
+            {
+              "node": "Merge Research A+B",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Research Docs": {
+        "main": [
+          [
+            {
+              "node": "Merge Research A+B",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Merge Research A+B": {
+        "main": [
+          [
+            {
+              "node": "Merge Research +C",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Research Tests": {
+        "main": [
+          [
+            {
+              "node": "Merge Research +C",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Merge Research +C": {
+        "main": [
+          [
+            {
+              "node": "Research Contract",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Research Contract": {
+        "main": [
+          [
+            {
+              "node": "Plan Adapter",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Plan Adapter": {
+        "main": [
+          [
+            {
+              "node": "Plan Gate",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Plan Gate": {
+        "main": [
+          [
+            {
+              "node": "Plan Approved?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Plan Approved?": {
+        "main": [
+          [
+            {
+              "node": "Build Adapter",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Final BLOCKED - Plan",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Adapter": {
+        "main": [
+          [
+            {
+              "node": "Verify Adapter",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Verify Adapter": {
+        "main": [
+          [
+            {
+              "node": "Verification Passed?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Verification Passed?": {
+        "main": [
+          [
+            {
+              "node": "Merge Verify Paths",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Retry Policy",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Retry Policy": {
+        "main": [
+          [
+            {
+              "node": "Retry Allowed?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Retry Allowed?": {
+        "main": [
+          [
+            {
+              "node": "Fix Adapter",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Final SPLIT",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Fix Adapter": {
+        "main": [
+          [
+            {
+              "node": "Verify Retry Adapter",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Verify Retry Adapter": {
+        "main": [
+          [
+            {
+              "node": "Retry Passed?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Retry Passed?": {
+        "main": [
+          [
+            {
+              "node": "Merge Verify Paths",
+              "type": "main",
+              "index": 1
+            }
+          ],
+          [
+            {
+              "node": "Final SPLIT",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Merge Verify Paths": {
+        "main": [
+          [
+            {
+              "node": "Review Correctness",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Review Security",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Review Quality",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Review Correctness": {
+        "main": [
+          [
+            {
+              "node": "Merge Reviews A+B",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Review Security": {
+        "main": [
+          [
+            {
+              "node": "Merge Reviews A+B",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Merge Reviews A+B": {
+        "main": [
+          [
+            {
+              "node": "Merge Reviews +C",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Review Quality": {
+        "main": [
+          [
+            {
+              "node": "Merge Reviews +C",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Merge Reviews +C": {
+        "main": [
+          [
+            {
+              "node": "Deterministic Controller",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Deterministic Controller": {
+        "main": [
+          [
+            {
+              "node": "Decision DONE?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Decision DONE?": {
+        "main": [
+          [
+            {
+              "node": "Final DONE",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Decision FIX?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Decision FIX?": {
+        "main": [
+          [
+            {
+              "node": "Final FIX",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Decision SPLIT?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Decision SPLIT?": {
+        "main": [
+          [
+            {
+              "node": "Final SPLIT - Review",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Final BLOCKED - Review",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "nodeGroups": [],
+    "authors": "Raik Müller",
+    "name": null,
+    "description": null,
+    "autosaved": false
+  },
+  "tags": []
+}

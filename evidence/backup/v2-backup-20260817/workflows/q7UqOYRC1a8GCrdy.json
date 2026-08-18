@@ -1,0 +1,76 @@
+{
+  "updatedAt": "2026-07-19T05:44:58.566Z",
+  "createdAt": "2026-07-19T03:48:08.897Z",
+  "id": "q7UqOYRC1a8GCrdy",
+  "name": "TEST – CT102 SSH Credential Probe – INACTIVE",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "manual-trigger-1",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "id": "ssh-1",
+      "name": "SSH Probe",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ],
+      "parameters": {
+        "command": "set -eu\nprintf 'N8N_SSH_CREDENTIAL_PATH_OK\\n'\nprintf 'USER='\nid -un\nprintf 'HOST='\nhostname\ntest -x /opt/dev-fabric/scripts/run_red_sdd_ssh_request.sh\nprintf 'ADAPTER_EXECUTABLE_OK\\n'\n",
+        "authentication": "password"
+      },
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "42a60f05-16eb-493f-8257-3eeb5aef531a",
+          "name": "dev-runner-ssh"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "SSH Probe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "349ba834-126a-4f0d-986a-1cad4ba94bd1",
+  "activeVersionId": null,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-07-19T03:48:08.902Z",
+      "createdAt": "2026-07-19T03:48:08.902Z",
+      "role": "workflow:owner",
+      "workflowId": "q7UqOYRC1a8GCrdy",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

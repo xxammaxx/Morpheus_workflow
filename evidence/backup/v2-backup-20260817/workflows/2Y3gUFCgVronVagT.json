@@ -1,0 +1,394 @@
+{
+  "updatedAt": "2026-07-07T21:33:43.213Z",
+  "createdAt": "2026-07-07T21:33:43.213Z",
+  "id": "2Y3gUFCgVronVagT",
+  "name": "MDAL_STEP0_TEST__manual_approval_gate",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mission-loop/approval",
+        "options": {}
+      },
+      "name": "Approval Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "69d7932e-c28d-484c-81b2-b51f7c46408b",
+      "webhookId": "b7296bde-29fc-4186-8a0a-9bf4f2c97f7b"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// approval-router.js ??? Phase 3B Manual Approval Routing\n// CRITICAL: Explicit === string comparisons. NO truthy/falsy logic.\n// ALL approval values set canStartRunner = false.\n// APPROVE_NEXT_DRY_RUN is DOCUMENTATION-ONLY.\n// ================================================================\n\nconst rawApproval = $input.first().json.approval || $input.first().json.action;\nconst approval = (typeof rawApproval === 'string' && rawApproval.trim().length > 0)\n  ? String(rawApproval).trim().toUpperCase()\n  : 'PAUSE';\n\nconst runId = $input.first().json.run_id || 'UNKNOWN';\nconst reviewer = $input.first().json.reviewer || 'UNKNOWN';\nconst comment = $input.first().json.comment || '';\nconst timestamp = new Date().toISOString();\n\nlet route = 'PAUSE';\nlet canStartRunner = false;\nlet requiredHumanReview = true;\nlet decisionRationale = '';\nlet approvalRecorded = false;\n\nif (approval === 'APPROVE_NEXT_DRY_RUN') {\n  route = 'APPROVED_DRY_RUN_ONLY';\n  canStartRunner = false;\n  requiredHumanReview = true;\n  decisionRationale = 'Approved for next dry-run only. Runner NOT started. Phase 4 required for actual execution.';\n  approvalRecorded = true;\n} else if (approval === 'PAUSE') {\n  route = 'PAUSE';\n  canStartRunner = false;\n  requiredHumanReview = true;\n  decisionRationale = 'Run paused. Awaiting further instructions.';\n  approvalRecorded = true;\n} else if (approval === 'REJECT') {\n  route = 'REJECTED';\n  canStartRunner = false;\n  requiredHumanReview = true;\n  decisionRationale = 'Run rejected. No further action will be taken.';\n  approvalRecorded = true;\n} else if (approval === 'REQUEST_MORE_EVIDENCE') {\n  route = 'MORE_EVIDENCE';\n  canStartRunner = false;\n  requiredHumanReview = true;\n  decisionRationale = 'Additional evidence requested before approval can proceed.';\n  approvalRecorded = true;\n} else {\n  route = 'PAUSE';\n  canStartRunner = false;\n  requiredHumanReview = true;\n  decisionRationale = 'Unrecognized approval value: \"' + rawApproval + '\". Defaulting to PAUSE. Valid values: APPROVE_NEXT_DRY_RUN, PAUSE, REJECT, REQUEST_MORE_EVIDENCE.';\n  approvalRecorded = false;\n}\n\nconst approvalRecord = {\n  approval_id: 'approval-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8),\n  run_id: runId,\n  reviewer: reviewer,\n  action: approval,\n  route: route,\n  comment: comment,\n  timestamp: timestamp,\n  canStartRunner: canStartRunner,\n  requiredHumanReview: requiredHumanReview,\n  decisionRationale: decisionRationale,\n  phase: '3B_BLUEPRINT_ONLY',\n  note: 'This is a Phase 3B blueprint. No runner was started. Phase 4 will enable actual execution.'\n};\n\nreturn [{\n  json: {\n    run_id: runId,\n    reviewer: reviewer,\n    route: route,\n    canStartRunner: canStartRunner,\n    requiredHumanReview: requiredHumanReview,\n    approval: approvalRecord,\n    decisionRationale: decisionRationale,\n    approvalRecorded: approvalRecorded,\n    status: approvalRecorded ? 'RECORDED' : 'FAILED',\n    timestamp: timestamp\n  }\n}];"
+      },
+      "name": "Approval Router (Code Node)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ],
+      "notes": "CRITICAL: Explicit === comparisons. ALL approval values set canStartRunner=false. NO IF Nodes. See n8n/code-nodes/approval-router.js.",
+      "id": "16facc27-a92a-4622-8277-8589a2b17be7"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.route }}",
+                    "operation": "equals",
+                    "value2": "APPROVED_DRY_RUN_ONLY"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.route }}",
+                    "operation": "equals",
+                    "value2": "PAUSE"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.route }}",
+                    "operation": "equals",
+                    "value2": "REJECTED"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.route }}",
+                    "operation": "equals",
+                    "value2": "MORE_EVIDENCE"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route by Approval Decision",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        400,
+        0
+      ],
+      "notes": "Switch node for multi-branch approval routing. NO IF Nodes.",
+      "id": "50a590f9-15e6-431b-8780-e26c5be43fca"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "approvalStatus",
+              "value": "APPROVED_DRY_RUN_ONLY"
+            },
+            {
+              "name": "nextAction",
+              "value": "none ??? documentation only in Phase 3B"
+            },
+            {
+              "name": "phase4Action",
+              "value": "start_next_dry_run (Phase 4)"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "APPROVED ??? Dry Run Only",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        600,
+        -150
+      ],
+      "notes": "Documents approval. Does NOT start runner.",
+      "id": "3ae97e38-93c9-46d9-849c-995f5a608f0e"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "approvalStatus",
+              "value": "PAUSED"
+            },
+            {
+              "name": "nextAction",
+              "value": "none ??? awaiting further input"
+            },
+            {
+              "name": "phase4Action",
+              "value": "await_new_approval (Phase 4)"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "PAUSED",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        600,
+        50
+      ],
+      "notes": "Pause. Nothing happens.",
+      "id": "a7b5eb3c-8470-4c9b-8b8c-f2663392b7bb"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "approvalStatus",
+              "value": "REJECTED"
+            },
+            {
+              "name": "nextAction",
+              "value": "none ??? run rejected"
+            },
+            {
+              "name": "phase4Action",
+              "value": "stop_loop (Phase 4)"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "REJECTED",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        600,
+        250
+      ],
+      "notes": "Rejection. Nothing happens.",
+      "id": "90d5b269-087e-4c33-821a-e0744e67d2e0"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "approvalStatus",
+              "value": "MORE_EVIDENCE_REQUESTED"
+            },
+            {
+              "name": "nextAction",
+              "value": "none ??? evidence request logged"
+            },
+            {
+              "name": "phase4Action",
+              "value": "request_evidence_from_agent (Phase 4)"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "EVIDENCE REQUESTED",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        600,
+        450
+      ],
+      "notes": "Evidence request. Nothing happens.",
+      "id": "ad412633-17c2-4773-acb8-e2209c15f77c"
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "approvalConfirmation",
+              "value": "={{ $json.approvalStatus }} recorded at {{ $now }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Log Approval Decision",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        800,
+        150
+      ],
+      "notes": "All approval branches converge here. Logs the decision.",
+      "id": "422d6564-b397-4006-9be7-25889ae430ec"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "options": {}
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        150
+      ],
+      "notes": "Returns approval record as JSON response. NO agents started. NO runners launched.",
+      "id": "c4c85c44-5f07-44d2-8ca9-3e5a56b7b1a9"
+    }
+  ],
+  "connections": {
+    "Approval Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Approval Router (Code Node)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approval Router (Code Node)": {
+      "main": [
+        [
+          {
+            "node": "Route by Approval Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Approval Decision": {
+      "main": [
+        [
+          {
+            "node": "APPROVED ??? Dry Run Only",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PAUSED",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "REJECTED",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "EVIDENCE REQUESTED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "APPROVED ??? Dry Run Only": {
+      "main": [
+        [
+          {
+            "node": "Log Approval Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PAUSED": {
+      "main": [
+        [
+          {
+            "node": "Log Approval Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "REJECTED": {
+      "main": [
+        [
+          {
+            "node": "Log Approval Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EVIDENCE REQUESTED": {
+      "main": [
+        [
+          {
+            "node": "Log Approval Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Approval Decision": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "955acf3c-d00d-46b5-a4d8-163845a5a375",
+  "activeVersionId": null,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-07-07T21:33:43.215Z",
+      "createdAt": "2026-07-07T21:33:43.215Z",
+      "role": "workflow:owner",
+      "workflowId": "2Y3gUFCgVronVagT",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

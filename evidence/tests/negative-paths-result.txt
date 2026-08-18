@@ -1,0 +1,57 @@
+{
+  "invalid_plan": {
+    "ok": true,
+    "decision": "BLOCKED",
+    "reason": "ACCEPTANCE_CRITERIA_MISSING",
+    "run_id": "run-msw8uuih-favv6qbh"
+  },
+  "verify_fail_delta": {
+    "ok": true,
+    "decision": "DONE",
+    "reason": "ALL_HARD_GATES_GREEN",
+    "run_id": "run-msw8uvdq-hcwwtov0"
+  },
+  "verify_fail_no_delta": {
+    "ok": true,
+    "decision": "SPLIT",
+    "reason": "RETRY_DENIED_NO_STRATEGY_DELTA",
+    "run_id": "run-msw8uwha-zm7070qu"
+  },
+  "no_signature": {
+    "ok": true,
+    "decision": "SPLIT",
+    "reason": "RETRY_DENIED_NO_FAILURE_SIGNATURE",
+    "run_id": "run-msw8uxdd-jpujvucu"
+  },
+  "attempt_limit": {
+    "ok": true,
+    "decision": "SPLIT",
+    "reason": "RETRY_DENIED_ATTEMPT_LIMIT",
+    "run_id": "run-msw8uyix-kgjtx6hn"
+  },
+  "security_critical_blocking": {
+    "ok": true,
+    "decision": "BLOCKED",
+    "reason": "BLOCKING_HIGH_OR_CRITICAL_FINDING",
+    "run_id": "run-msw8uze4-brwuwaw6"
+  },
+  "review_fix": {
+    "ok": true,
+    "decision": "FIX",
+    "reason": "NON_BLOCKING_REVIEW_FINDINGS",
+    "run_id": "run-msw8v0bk-3x1deh56"
+  },
+  "review_split": {
+    "ok": true,
+    "decision": "SPLIT",
+    "reason": "REVIEW_REQUESTED_SPLIT",
+    "run_id": "run-msw8v180-qv9w18sf"
+  },
+  "intake_invalid": {
+    "ok": true,
+    "decision": "BLOCKED",
+    "reason": "INTAKE_INVALID",
+    "run_id": null
+  }
+}
+ALL_NEGATIVE_PASS True

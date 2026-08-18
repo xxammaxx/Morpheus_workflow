@@ -1,0 +1,130 @@
+{
+  "name": "70 AutoDev Decision",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "sub-workflow-trigger",
+      "name": "Sub-Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst review = s.review || {};\nconst verification = s.verification || {};\nconst runId = s.issue.run_id;\nconst findings = (review.reviews || []).flatMap(rv => rv.findings || []);\nconst securityBlocking = findings.some(f =>\n  f.category === 'security' &&\n  (f.severity === 'HIGH' || f.severity === 'CRITICAL') && f.blocking === true);\nconst splitRequested = findings.some(f => f.rule === 'REVIEW-SPLIT-REQUEST');\nconst correctnessFail = (review.reviews || []).some(rv =>\n  rv.category === 'correctness' && rv.verdict === 'FAIL');\nconst qualityFail = (review.reviews || []).some(rv =>\n  rv.category === 'quality' && rv.verdict === 'FAIL');\nlet decision, reasonCode, next;\nif (securityBlocking) {\n  decision = 'BLOCKED'; reasonCode = 'BLOCKING_HIGH_OR_CRITICAL_FINDING'; next = 'terminal';\n} else if (splitRequested) {\n  decision = 'SPLIT'; reasonCode = 'REVIEW_REQUESTED_SPLIT'; next = 'split';\n} else if (correctnessFail) {\n  decision = 'FIX'; reasonCode = 'CORRECTNESS_FINDINGS'; next = 'fix';\n} else if (qualityFail) {\n  decision = 'FIX'; reasonCode = 'NON_BLOCKING_REVIEW_FINDINGS'; next = 'fix';\n} else if (verification && verification.passed !== true) {\n  decision = 'FIX'; reasonCode = 'VERIFY_FAILED'; next = 'fix';\n} else {\n  decision = 'DONE'; reasonCode = 'ALL_HARD_GATES_GREEN'; next = 'terminal';\n}\nconst decisionContract = {\n  contract: 'autodev.decision.v1', version: 'v1',\n  run_id: runId, decision: decision, reason_code: reasonCode, next: next,\n  evidence: {\n    verification_ref: s.verify_job ? (s.verify_job.result_ref || '') : '',\n    review_ref: s.review_job ? (s.review_job.result_ref || '') : ''\n  }\n};\nfunction validateAutodevContract(payload, schema) {\n  const errors = [];\n  try {\n    if (schema && schema.type === 'object' && typeof payload !== 'object') {\n      errors.push('$: expected object, got ' + typeof payload);\n    } else {\n      validateNode(payload, schema, '$', errors, schema);\n    }\n  } catch (e) {\n    return { ok: false, contract: schema && schema.$id, errors: ['validator error: ' + e.message], error_count: 1 };\n  }\n  const contract = schema && schema.$id ? schema.$id : null;\n  return { ok: errors.length === 0, contract, errors, error_count: errors.length };\n}\nfunction validateNode(value, schema, path, errors, root) {\n  if (schema === true) return;\n  if (schema === false) { errors.push(path + ': schema forbids value'); return; }\n  if (schema.$ref) {\n    const name = schema.$ref.replace('#/$defs/', '');\n    const defs = (root.$defs || {})[name];\n    if (!defs) throw new Error('unresolved $ref ' + schema.$ref);\n    validateNode(value, defs, path, errors, root);\n    return;\n  }\n  if (schema.oneOf) {\n    let matched = 0;\n    for (const sub of schema.oneOf) {\n      const subErrors = [];\n      validateNode(value, sub, path, subErrors, root);\n      if (subErrors.length === 0) matched++;\n    }\n    if (matched !== 1) {\n      errors.push(path + ': must match exactly one of ' + schema.oneOf.length + ' alternatives (matched ' + matched + ')');\n    }\n    return;\n  }\n  if (schema.type) {\n    const expected = Array.isArray(schema.type) ? schema.type : [schema.type];\n    const ok = expected.some((t) => typeCheck(value, t));\n    if (!ok) {\n      errors.push(path + ': expected ' + expected.join(' or ') + ', got ' + jsTypeName(value));\n      return;\n    }\n  }\n  if (schema.const !== undefined) {\n    if (JSON.stringify(value) !== JSON.stringify(schema.const)) {\n      errors.push(path + ': must equal ' + pyRepr(schema.const));\n    }\n    return;\n  }\n  if (schema.enum) {\n    if (!schema.enum.some((e) => JSON.stringify(e) === JSON.stringify(value))) {\n      errors.push(path + ': must be one of [' + schema.enum.map(pyRepr).join(', ') + ']');\n    }\n    return;\n  }\n  if (typeof value === 'string') {\n    if (schema.minLength !== undefined && value.length < schema.minLength) {\n      errors.push(path + ': length must be >= ' + schema.minLength);\n    }\n    if (schema.maxLength !== undefined && value.length > schema.maxLength) {\n      errors.push(path + ': length must be <= ' + schema.maxLength);\n    }\n    if (schema.pattern) {\n      const re = new RegExp(schema.pattern);\n      if (!re.test(value)) errors.push(path + ': must match pattern ' + pyRepr(schema.pattern));\n    }\n    return;\n  }\n  if (typeof value === 'number' && Number.isFinite(value)) {\n    if (schema.minimum !== undefined && value < schema.minimum) {\n      errors.push(path + ': must be >= ' + schema.minimum);\n    }\n    if (schema.maximum !== undefined && value > schema.maximum) {\n      errors.push(path + ': must be <= ' + schema.maximum);\n    }\n    return;\n  }\n  if (Array.isArray(value)) {\n    if (schema.minItems !== undefined && value.length < schema.minItems) {\n      errors.push(path + ': must have at least ' + schema.minItems + ' items');\n    }\n    if (schema.maxItems !== undefined && value.length > schema.maxItems) {\n      errors.push(path + ': must have at most ' + schema.maxItems + ' items');\n    }\n    if (schema.items) {\n      value.forEach((item, i) => validateNode(item, schema.items, path + '[' + i + ']', errors, root));\n    }\n    return;\n  }\n  if (typeof value === 'object' && value !== null) {\n    const props = schema.properties || {};\n    for (const [name, sub] of Object.entries(props)) {\n      if (name in value) validateNode(value[name], sub, path + '.' + name, errors, root);\n    }\n    for (const name of schema.required || []) {\n      if (!(name in value)) errors.push(path + ': ' + name + ' is required');\n    }\n    const addl = schema.additionalProperties === undefined ? true : schema.additionalProperties;\n    if (addl === false) {\n      for (const key of Object.keys(value)) {\n        if (!(key in props)) errors.push(path + ': additional property ' + pyRepr(key) + ' not allowed');\n      }\n    } else if (typeof addl === 'object') {\n      for (const key of Object.keys(value)) {\n        if (!(key in props)) validateNode(value[key], addl, path + '.' + key, errors, root);\n      }\n    }\n    return;\n  }\n}\nfunction typeCheck(value, expected) {\n  switch (expected) {\n    case 'integer': return typeof value === 'number' && Number.isInteger(value);\n    case 'number': return typeof value === 'number' && Number.isFinite(value);\n    case 'string': return typeof value === 'string';\n    case 'boolean': return typeof value === 'boolean';\n    case 'object': return typeof value === 'object' && value !== null && !Array.isArray(value);\n    case 'array': return Array.isArray(value);\n    case 'null': return value === null;\n    default: throw new Error('unsupported type ' + expected);\n  }\n}\nfunction jsTypeName(value) {\n  if (value === null) return 'NoneType';\n  if (Array.isArray(value)) return 'list';\n  if (typeof value === 'object') return 'dict';\n  if (typeof value === 'string') return 'str';\n  if (typeof value === 'boolean') return 'bool';\n  if (typeof value === 'number') return Number.isInteger(value) ? 'int' : 'float';\n  return typeof value;\n}\nfunction pyRepr(value) {\n  if (value === null) return 'None';\n  if (typeof value === 'boolean') return value ? 'True' : 'False';\n  if (typeof value === 'string') return \"'\" + value.replace(/'/g, \"\\\\'\") + \"'\";\n  return String(value);\n}\n\nconst schema = {\"$id\": \"autodev.decision.v1\", \"$schema\": \"https://json-schema.org/draft/2020-12/schema\", \"additionalProperties\": false, \"description\": \"Deterministic decision produced by the decision policy (no LLM controller).\", \"properties\": {\"contract\": {\"const\": \"autodev.decision.v1\"}, \"decision\": {\"enum\": [\"DONE\", \"FIX\", \"SPLIT\", \"BLOCKED\"]}, \"evidence\": {\"additionalProperties\": false, \"properties\": {\"review_ref\": {\"maxLength\": 256, \"type\": \"string\"}, \"verification_ref\": {\"maxLength\": 256, \"type\": \"string\"}}, \"required\": [\"verification_ref\", \"review_ref\"], \"type\": \"object\"}, \"next\": {\"maxLength\": 128, \"type\": \"string\"}, \"reason_code\": {\"maxLength\": 128, \"minLength\": 3, \"type\": \"string\"}, \"run_id\": {\"maxLength\": 64, \"minLength\": 6, \"type\": \"string\"}, \"version\": {\"const\": \"v1\"}, \"x-metadata\": {\"additionalProperties\": true, \"type\": \"object\"}}, \"required\": [\"contract\", \"version\", \"run_id\", \"decision\", \"reason_code\", \"evidence\"], \"title\": \"AutoDev Decision Contract v1\", \"type\": \"object\", \"x-metadata\": [\"job_id\", \"attempt_id\", \"started_at\", \"ended_at\", \"duration_ms\", \"provider\", \"model\", \"backend\"]};\nconst v = validateAutodevContract(decisionContract, schema);\nif (!v.ok) return [{json: {ok: false, failure_class: 'CONTRACT_FAILURE',\n  failure_signature: 'CONTRACT_INVALID', error: v.errors.join(' | ')}}];\nreturn [{json: {ok: true, decision_contract: decisionContract}}];"
+      },
+      "id": "decision-policy",
+      "name": "Decision Policy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nreturn [{json: {artifact: s.decision_contract}}];"
+      },
+      "id": "prep-artifact",
+      "name": "Prep Artifact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.136:8081/v1/artifacts/{{ $json.artifact.run_id }}/decision",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "store-decision-artifact",
+      "name": "Store Decision Artifact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        480,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Jc8UTFOaP9WCcnIt",
+          "name": "autodev-harness-token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Decision Policy').first().json;\nreturn [{json: {ok: true, decision_contract: s.decision_contract}}];"
+      },
+      "id": "return-decision",
+      "name": "Return Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Sub-Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Decision Policy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Policy": {
+      "main": [
+        [
+          {
+            "node": "Prep Artifact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Artifact": {
+      "main": [
+        [
+          {
+            "node": "Store Decision Artifact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Decision Artifact": {
+      "main": [
+        [
+          {
+            "node": "Return Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

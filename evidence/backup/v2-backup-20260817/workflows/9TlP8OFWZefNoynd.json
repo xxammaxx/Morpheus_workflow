@@ -1,0 +1,77 @@
+{
+  "updatedAt": "2026-07-30T04:19:48.678Z",
+  "createdAt": "2026-07-30T04:14:16.673Z",
+  "id": "9TlP8OFWZefNoynd",
+  "name": "GHIW TEST - Lock Access v1",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        256,
+        304
+      ],
+      "name": "Manual Trigger",
+      "id": "dd34e5e9-fc53-40f6-98ad-e5c5c96a432c"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "ghiw-lock-v1 health eyJzY2hlbWFfdmVyc2lvbiI6ICIxLjAifQ=="
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        512,
+        304
+      ],
+      "name": "SSH Lock Health Check",
+      "id": "19d3bfff-0ffd-4829-95d3-53183f9b026c",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "lHEqepKESDGDiqdD",
+          "name": "n8n-ghiw-lock"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "SSH Lock Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "9bc172db-a26d-4289-884c-ece80152f82d",
+  "activeVersionId": null,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-07-30T04:14:16.677Z",
+      "createdAt": "2026-07-30T04:14:16.677Z",
+      "role": "workflow:owner",
+      "workflowId": "9TlP8OFWZefNoynd",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

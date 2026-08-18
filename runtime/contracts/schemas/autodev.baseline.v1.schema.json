@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autodev.baseline.v1",
+  "title": "AutoDev Baseline Contract v1",
+  "description": "Read-only repository state captured before any mutation.",
+  "type": "object",
+  "x-metadata": ["job_id", "attempt_id", "started_at", "ended_at", "duration_ms", "provider", "model", "backend"],
+  "required": ["contract", "version", "run_id", "repository", "read_only_proof"],
+  "properties": {
+    "contract": { "const": "autodev.baseline.v1" },
+    "version": { "const": "v1" },
+    "run_id": { "type": "string", "minLength": 6, "maxLength": 64 },
+    "repository": {
+      "type": "object",
+      "required": ["identity", "head", "branch", "working_tree_clean", "build_system", "test_system"],
+      "properties": {
+        "identity": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "head": { "type": "string", "minLength": 7, "maxLength": 64 },
+        "branch": { "type": "string", "maxLength": 128 },
+        "working_tree_clean": { "type": "boolean" },
+        "build_system": { "type": "string", "maxLength": 64 },
+        "test_system": { "type": "string", "maxLength": 64 },
+        "relevant_files": { "type": "array", "items": { "type": "string", "maxLength": 256 } },
+        "constraints": { "type": "array", "items": { "type": "string", "maxLength": 512 } }
+      },
+      "additionalProperties": false
+    },
+    "read_only_proof": {
+      "type": "object",
+      "required": ["sentinel_absent", "git_status_unchanged"],
+      "properties": {
+        "sentinel_absent": { "const": true },
+        "git_status_unchanged": { "const": true }
+      },
+      "additionalProperties": false
+    },
+    "x-metadata": { "type": "object", "additionalProperties": true }
+  },
+  "additionalProperties": false
+}

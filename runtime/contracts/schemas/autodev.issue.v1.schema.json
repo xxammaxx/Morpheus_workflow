@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autodev.issue.v1",
+  "title": "AutoDev Issue Contract v1",
+  "description": "Canonical task intake for the AutoDev harness control plane.",
+  "type": "object",
+  "x-metadata": ["trace_id", "created_at", "source"],
+  "required": ["contract", "version", "run_id", "repository_ref", "task_description", "workspace"],
+  "properties": {
+    "contract": { "const": "autodev.issue.v1" },
+    "version": { "const": "v1" },
+    "run_id": { "type": "string", "minLength": 6, "maxLength": 64, "pattern": "^[A-Za-z0-9_-]+$" },
+    "task_ref": { "type": "string", "maxLength": 128 },
+    "repository_ref": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "workspace": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "task_description": { "type": "string", "minLength": 10, "maxLength": 4000 },
+    "acceptance_hint": { "type": "string", "maxLength": 2000 },
+    "max_attempts": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "trace_id": { "type": "string", "maxLength": 128 },
+    "created_at": { "type": "string", "maxLength": 64 },
+    "source": { "type": "string", "maxLength": 64 },
+    "x-metadata": { "type": "object", "additionalProperties": true }
+  },
+  "additionalProperties": false
+}

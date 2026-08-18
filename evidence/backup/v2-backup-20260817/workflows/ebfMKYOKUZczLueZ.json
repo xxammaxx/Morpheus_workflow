@@ -1,0 +1,261 @@
+{
+  "updatedAt": "2026-07-26T17:25:50.737Z",
+  "createdAt": "2026-07-26T17:25:05.676Z",
+  "id": "ebfMKYOKUZczLueZ",
+  "name": "TEST — n8n-spec-kit Router Output Contract — INACTIVE",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "routing-test-v1",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "id": "webhook-test",
+      "name": "Test Webhook",
+      "webhookId": "1e5c2912-3914-44ae-820e-18f8db5d522c"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nif (!item?.json) {\n  return [{json: {route: \"INVALID\", stage: \"VALIDATE\", error: \"No input\"}}];\n}\n\n// Normalize: webhook v2 wraps payload under json.body\nconst envelope = item.json;\nconst hasObjBody = envelope && typeof envelope === \"object\" && envelope.body && typeof envelope.body === \"object\" && !Array.isArray(envelope.body);\nconst data = hasObjBody ? envelope.body : envelope;\n\nif (data.dry_run === true || data.dry_run === \"true\") {\n  return [{json: {route: \"VALID_REQUEST\", dry_run: true, ...data}}];\n}\nif (!data.project_id) {\n  return [{json: {route: \"INVALID_REQUEST\", errors: [\"Missing project_id\"], correlation_id: data.correlation_id || \"UNKNOWN\"}}];\n}\nreturn [{json: {route: \"VALID_REQUEST\", dry_run: false, ...data}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        300
+      ],
+      "id": "test-validate",
+      "name": "Test Validate"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json; const isDryRun = data.dry_run === true || data.dry_run === \"true\"; const isInvalid = data.route === \"INVALID_REQUEST\"; let route; if (isInvalid) { route = \"INVALID\"; } else if (isDryRun) { route = \"DRY_RUN\"; } else { route = \"PROCEED\"; } return [{ json: { route: route, correlation_id: data.correlation_id || \"UNKNOWN\", errors: data.errors || null, request: data } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        300
+      ],
+      "id": "test-classify",
+      "name": "Classify Route"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first(); if (!item?.json) { return [{json: {status: \"FAILED\", stage: \"ROUTING\", error: {code: \"INPUT_MISSING\"}}}]; } if (item.json.route === \"INVALID\" || item.json.route === \"DRY_RUN\") { return [item]; } if (item.json.route === \"PROCEED\") { return []; } return [{json: {status: \"FAILED\", stage: \"ROUTING\", error: {code: \"UNKNOWN_ROUTE\"}}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        200
+      ],
+      "id": "test-gate-immediate",
+      "name": "Gate Immediate Response"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first(); if (!item?.json) { return []; } if (item.json.route === \"INVALID\") { return [item]; } if (item.json.status === \"FAILED\") { return [item]; } return [];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        100
+      ],
+      "id": "test-filter-invalid",
+      "name": "Filter: Invalid"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first(); if (!item?.json) { return []; } if (item.json.route === \"DRY_RUN\") { return [item]; } return [];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        300
+      ],
+      "id": "test-filter-dryrun",
+      "name": "Filter: Dry Run"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        100
+      ],
+      "id": "test-respond-invalid",
+      "name": "Respond Invalid"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        300
+      ],
+      "id": "test-respond-dryrun",
+      "name": "Respond Dry Run"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first(); if (!item?.json) { throw new Error(\"ROUTING_INPUT_MISSING\"); } if (item.json.route === \"PROCEED\") { return [item]; } if (item.json.route === \"INVALID\" || item.json.route === \"DRY_RUN\") { return []; } throw new Error(\"UNKNOWN_ROUTE\");"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        500
+      ],
+      "id": "test-gate-provisioning",
+      "name": "Gate Provisioning"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first(); if (!item?.json) { return [{json: {status: \"MARKER_ERROR\"}}]; } return [{json: {status: \"PROCEED_MARKER_REACHED\", route: item.json.route, correlation_id: item.json.correlation_id}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        500
+      ],
+      "id": "test-proceed-marker",
+      "name": "Proceed Marker"
+    }
+  ],
+  "connections": {
+    "Test Webhook": {
+      "main": [
+        [
+          {
+            "node": "Test Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Validate": {
+      "main": [
+        [
+          {
+            "node": "Classify Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Route": {
+      "main": [
+        [
+          {
+            "node": "Gate Immediate Response",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gate Provisioning",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gate Immediate Response": {
+      "main": [
+        [
+          {
+            "node": "Filter: Invalid",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter: Dry Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Invalid": {
+      "main": [
+        [
+          {
+            "node": "Respond Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Dry Run": {
+      "main": [
+        [
+          {
+            "node": "Respond Dry Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gate Provisioning": {
+      "main": [
+        [
+          {
+            "node": "Proceed Marker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": false,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 60
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "d2495534-0307-4230-98da-a6f4cba20b00",
+  "activeVersionId": null,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-07-26T17:25:05.678Z",
+      "createdAt": "2026-07-26T17:25:05.678Z",
+      "role": "workflow:owner",
+      "workflowId": "ebfMKYOKUZczLueZ",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

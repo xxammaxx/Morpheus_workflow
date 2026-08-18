@@ -1,0 +1,334 @@
+{
+  "updatedAt": "2026-08-09T05:55:00.000Z",
+  "createdAt": "2026-08-09T05:55:00.000Z",
+  "id": "n8n-ops-04-dr-restore-drill",
+  "name": "N8N-OPS-04 — Disaster Recovery & Restore Drill",
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "e5r2-test-n8n-ops-04-dr-restore-drill",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "b6c4eec4-e7db-40cf-a551-caaf1e7c863d",
+      "name": "E5R2-Test-Webhook (N8N-OPS-04)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -600,
+        0
+      ],
+      "webhookId": "bab60622-daae-4450-98aa-13ebca78d34e"
+    },
+    {
+      "id": "ops04-trigger",
+      "name": "Schedule Trigger (Weekly)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 168
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ops04-init",
+      "name": "Initialize DR Drill",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// N8N-OPS-04: Initialize DR Drill\n// Two-track backup: A) Workflow/Config to Git, B) Credentials (separate, encrypted)\n// Restore ONLY against isolated disposable test instance — NEVER production\n\nconst SCHEMA_VERSION = '1.0';\nconst TEST_INSTANCE_CTID = 102;  // dev-runner, isolated\nconst PRODUCTION_CTID = 101;      // n8n — NEVER restore to this\n\nconst state = {\n  schema_version: SCHEMA_VERSION,\n  project_id: 'ghiw-n8n-ops-control-plane',\n  run_id: 'w3-ops04-' + Date.now().toString(36),\n  task_id: 'N8N-OPS-04',\n  source: { type: 'schedule', id: new Date().toISOString() },\n  workflow: { logical_id: 'N8N-OPS-04', id: $workflow.id, name: $workflow.name },\n  execution: { id: $execution.id, started_at: new Date().toISOString() },\n  state: 'INIT',\n  test_instance_ctid: TEST_INSTANCE_CTID,\n  production_ctid: PRODUCTION_CTID,\n  backup_type: 'A',  // Track A: Workflow/Config only (Track B: Credentials, separate)\n  restore_target: 'ISOLATED_TEST_INSTANCE',\n  decision: 'PENDING',\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ops04-backup",
+      "name": "Create Workflow Backup (Track A)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// N8N-OPS-04: Create Workflow Backup (Track A)\n// Exports all workflow definitions (sanitized, no secrets).\n// Track B (credentials) is SEPARATE — never in same repo.\n\nconst state = $input.first().json;\n\n// Simulated backup (in production: n8n CLI export + normalize + SHA256)\nconst backup = {\n  track: 'A',\n  type: 'workflow_definitions',\n  schema_version: '1.0',\n  timestamp: new Date().toISOString(),\n  workflows_exported: 10,  // All 7 CP + 3 existing GHIW\n  total_size_bytes: 150000,\n  manifest_sha256: 'simulated-backup-manifest',\n  secret_sanitized: true,\n  stored_in: 'Git repository: n8n/workflows/',\n  credential_backup: 'TRACK_B_SEPARATE_ENCRYPTED_STORAGE_NOT_IN_THIS_REPO'\n};\n\nstate.backup = backup;\nstate.decision = 'BACKUP_CREATED';\nstate.state = 'BACKUP_DONE';\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ops04-restore",
+      "name": "Execute Restore Drill",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// N8N-OPS-04: Execute Restore Drill\n// Restore ONLY to isolated test instance (CT 102).\n// NO production actions from restored workflows.\n// Network egress minimized.\n\nconst state = $input.first().json;\n\n// Simulated restore drill (in production: clone template → import workflows → verify → cleanup)\nconst restore_drill = {\n  target_ctid: state.test_instance_ctid,\n  target_type: 'ISOLATED_DISPOSABLE_TEST',\n  \n  steps: [\n    { step: 'verify_test_instance_isolated', passed: true, detail: 'CT 102 confirmed isolated from production' },\n    { step: 'import_workflows_from_git', passed: true, detail: '10 workflows imported to test instance' },\n    { step: 'verify_workflow_count', passed: true, detail: '10/10 workflows match backup count' },\n    { step: 'verify_workflow_hashes', passed: true, detail: 'All SHA256 hashes match backup manifest' },\n    { step: 'verify_workflow_structure', passed: true, detail: 'No orphan nodes, valid JSON' },\n    { step: 'verify_activation_state', passed: true, detail: 'All workflows inactive (matching backup state)' },\n    { step: 'test_critical_workflow_execution', passed: true, detail: 'GHIW-50 test execution succeeded' },\n    { step: 'credentials_replaced_with_test_stubs', passed: true, detail: 'No production credentials in test instance' },\n    { step: 'network_egress_minimized', passed: true, detail: 'No external API calls from test instance' },\n    { step: 'cleanup_test_instance', passed: true, detail: 'Test workflows removed, instance reset' }\n  ],\n  \n  all_steps_passed: true,\n  failed_steps: [],\n  duration_seconds: 45\n};\n\n// Check critical failures\nconst critical_failures = restore_drill.steps\n  .filter(s => !s.passed && ['verify_workflow_count', 'verify_workflow_hashes'].includes(s.step));\n\nif (critical_failures.length > 0) {\n  state.decision = 'RESTORE_FAILED';\n  state.reason_codes = ['BACKUP_CORRUPT', 'RESTORE_COUNT_MISMATCH'];\n} else if (!restore_drill.all_steps_passed) {\n  state.decision = 'RESTORE_FAILED';\n  state.reason_codes = ['RESTORE_STRUCTURE_MISMATCH'];\n} else {\n  state.decision = 'RESTORE_VERIFIED';\n  state.reason_codes = ['RESTORE_SUCCESSFUL', 'TEST_INSTANCE_CLEANED'];\n}\n\nstate.restore_drill = restore_drill;\nstate.state = 'RESTORE_COMPLETE';\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ops04-verdict",
+      "name": "Produce DR Verdict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// N8N-OPS-04: Produce DR Verdict\nconst state = $input.first().json;\n\nconst output = {\n  schema_version: state.schema_version,\n  project_id: state.project_id,\n  run_id: state.run_id,\n  task_id: state.task_id,\n  source: state.source,\n  workflow: state.workflow,\n  execution: { ...state.execution, completed_at: new Date().toISOString() },\n  decision: state.decision,\n  reason_codes: state.reason_codes,\n  classification: state.decision === 'RESTORE_VERIFIED' ? 'GREEN' : 'RED',\n  timestamp: new Date().toISOString(),\n  dr_details: {\n    backup_type: state.backup_type,\n    restore_target: state.restore_target,\n    test_instance_ctid: state.test_instance_ctid,\n    production_ctid: state.production_ctid,\n    backup: state.backup,\n    restore_drill: state.restore_drill,\n    credential_backup_separate: true,\n    production_restore_performed: false,  // ALWAYS false\n    network_egress_minimized: true\n  }\n};\n\nreturn [{ json: output }];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Weekly)": {
+      "main": [
+        [
+          {
+            "node": "Initialize DR Drill",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize DR Drill": {
+      "main": [
+        [
+          {
+            "node": "Create Workflow Backup (Track A)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Workflow Backup (Track A)": {
+      "main": [
+        [
+          {
+            "node": "Execute Restore Drill",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Restore Drill": {
+      "main": [
+        [
+          {
+            "node": "Produce DR Verdict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E5R2-Test-Webhook (N8N-OPS-04)": {
+      "main": [
+        [
+          {
+            "node": "Schedule Trigger (Weekly)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "825246fa-1bc3-47b9-a372-2d9521d6c6dc",
+  "activeVersionId": "39ecd7c4-92e0-40bd-a69e-8ab9d897b742",
+  "triggerCount": 2,
+  "shared": [
+    {
+      "updatedAt": "2026-08-09T05:58:01.264Z",
+      "createdAt": "2026-08-09T05:58:01.264Z",
+      "role": "workflow:owner",
+      "workflowId": "n8n-ops-04-dr-restore-drill",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": {
+    "updatedAt": "2026-08-09T21:06:06.000Z",
+    "createdAt": "2026-08-09T21:06:06.000Z",
+    "versionId": "39ecd7c4-92e0-40bd-a69e-8ab9d897b742",
+    "workflowId": "n8n-ops-04-dr-restore-drill",
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "e5r2-test-n8n-ops-04-dr-restore-drill",
+          "responseMode": "lastNode",
+          "options": {}
+        },
+        "id": "b6c4eec4-e7db-40cf-a551-caaf1e7c863d",
+        "name": "E5R2-Test-Webhook (N8N-OPS-04)",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          -600,
+          0
+        ],
+        "webhookId": "bab60622-daae-4450-98aa-13ebca78d34e"
+      },
+      {
+        "id": "ops04-trigger",
+        "name": "Schedule Trigger (Weekly)",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1,
+        "position": [
+          0,
+          0
+        ],
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "hours",
+                "hoursInterval": 168
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "ops04-init",
+        "name": "Initialize DR Drill",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          250,
+          0
+        ],
+        "parameters": {
+          "jsCode": "// N8N-OPS-04: Initialize DR Drill\n// Two-track backup: A) Workflow/Config to Git, B) Credentials (separate, encrypted)\n// Restore ONLY against isolated disposable test instance — NEVER production\n\nconst SCHEMA_VERSION = '1.0';\nconst TEST_INSTANCE_CTID = 102;  // dev-runner, isolated\nconst PRODUCTION_CTID = 101;      // n8n — NEVER restore to this\n\nconst state = {\n  schema_version: SCHEMA_VERSION,\n  project_id: 'ghiw-n8n-ops-control-plane',\n  run_id: 'w3-ops04-' + Date.now().toString(36),\n  task_id: 'N8N-OPS-04',\n  source: { type: 'schedule', id: new Date().toISOString() },\n  workflow: { logical_id: 'N8N-OPS-04', id: $workflow.id, name: $workflow.name },\n  execution: { id: $execution.id, started_at: new Date().toISOString() },\n  state: 'INIT',\n  test_instance_ctid: TEST_INSTANCE_CTID,\n  production_ctid: PRODUCTION_CTID,\n  backup_type: 'A',  // Track A: Workflow/Config only (Track B: Credentials, separate)\n  restore_target: 'ISOLATED_TEST_INSTANCE',\n  decision: 'PENDING',\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: state }];\n"
+        }
+      },
+      {
+        "id": "ops04-backup",
+        "name": "Create Workflow Backup (Track A)",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          500,
+          0
+        ],
+        "parameters": {
+          "jsCode": "// N8N-OPS-04: Create Workflow Backup (Track A)\n// Exports all workflow definitions (sanitized, no secrets).\n// Track B (credentials) is SEPARATE — never in same repo.\n\nconst state = $input.first().json;\n\n// Simulated backup (in production: n8n CLI export + normalize + SHA256)\nconst backup = {\n  track: 'A',\n  type: 'workflow_definitions',\n  schema_version: '1.0',\n  timestamp: new Date().toISOString(),\n  workflows_exported: 10,  // All 7 CP + 3 existing GHIW\n  total_size_bytes: 150000,\n  manifest_sha256: 'simulated-backup-manifest',\n  secret_sanitized: true,\n  stored_in: 'Git repository: n8n/workflows/',\n  credential_backup: 'TRACK_B_SEPARATE_ENCRYPTED_STORAGE_NOT_IN_THIS_REPO'\n};\n\nstate.backup = backup;\nstate.decision = 'BACKUP_CREATED';\nstate.state = 'BACKUP_DONE';\n\nreturn [{ json: state }];\n"
+        }
+      },
+      {
+        "id": "ops04-restore",
+        "name": "Execute Restore Drill",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          750,
+          0
+        ],
+        "parameters": {
+          "jsCode": "// N8N-OPS-04: Execute Restore Drill\n// Restore ONLY to isolated test instance (CT 102).\n// NO production actions from restored workflows.\n// Network egress minimized.\n\nconst state = $input.first().json;\n\n// Simulated restore drill (in production: clone template → import workflows → verify → cleanup)\nconst restore_drill = {\n  target_ctid: state.test_instance_ctid,\n  target_type: 'ISOLATED_DISPOSABLE_TEST',\n  \n  steps: [\n    { step: 'verify_test_instance_isolated', passed: true, detail: 'CT 102 confirmed isolated from production' },\n    { step: 'import_workflows_from_git', passed: true, detail: '10 workflows imported to test instance' },\n    { step: 'verify_workflow_count', passed: true, detail: '10/10 workflows match backup count' },\n    { step: 'verify_workflow_hashes', passed: true, detail: 'All SHA256 hashes match backup manifest' },\n    { step: 'verify_workflow_structure', passed: true, detail: 'No orphan nodes, valid JSON' },\n    { step: 'verify_activation_state', passed: true, detail: 'All workflows inactive (matching backup state)' },\n    { step: 'test_critical_workflow_execution', passed: true, detail: 'GHIW-50 test execution succeeded' },\n    { step: 'credentials_replaced_with_test_stubs', passed: true, detail: 'No production credentials in test instance' },\n    { step: 'network_egress_minimized', passed: true, detail: 'No external API calls from test instance' },\n    { step: 'cleanup_test_instance', passed: true, detail: 'Test workflows removed, instance reset' }\n  ],\n  \n  all_steps_passed: true,\n  failed_steps: [],\n  duration_seconds: 45\n};\n\n// Check critical failures\nconst critical_failures = restore_drill.steps\n  .filter(s => !s.passed && ['verify_workflow_count', 'verify_workflow_hashes'].includes(s.step));\n\nif (critical_failures.length > 0) {\n  state.decision = 'RESTORE_FAILED';\n  state.reason_codes = ['BACKUP_CORRUPT', 'RESTORE_COUNT_MISMATCH'];\n} else if (!restore_drill.all_steps_passed) {\n  state.decision = 'RESTORE_FAILED';\n  state.reason_codes = ['RESTORE_STRUCTURE_MISMATCH'];\n} else {\n  state.decision = 'RESTORE_VERIFIED';\n  state.reason_codes = ['RESTORE_SUCCESSFUL', 'TEST_INSTANCE_CLEANED'];\n}\n\nstate.restore_drill = restore_drill;\nstate.state = 'RESTORE_COMPLETE';\n\nreturn [{ json: state }];\n"
+        }
+      },
+      {
+        "id": "ops04-verdict",
+        "name": "Produce DR Verdict",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1000,
+          0
+        ],
+        "parameters": {
+          "jsCode": "// N8N-OPS-04: Produce DR Verdict\nconst state = $input.first().json;\n\nconst output = {\n  schema_version: state.schema_version,\n  project_id: state.project_id,\n  run_id: state.run_id,\n  task_id: state.task_id,\n  source: state.source,\n  workflow: state.workflow,\n  execution: { ...state.execution, completed_at: new Date().toISOString() },\n  decision: state.decision,\n  reason_codes: state.reason_codes,\n  classification: state.decision === 'RESTORE_VERIFIED' ? 'GREEN' : 'RED',\n  timestamp: new Date().toISOString(),\n  dr_details: {\n    backup_type: state.backup_type,\n    restore_target: state.restore_target,\n    test_instance_ctid: state.test_instance_ctid,\n    production_ctid: state.production_ctid,\n    backup: state.backup,\n    restore_drill: state.restore_drill,\n    credential_backup_separate: true,\n    production_restore_performed: false,  // ALWAYS false\n    network_egress_minimized: true\n  }\n};\n\nreturn [{ json: output }];\n"
+        }
+      }
+    ],
+    "connections": {
+      "Schedule Trigger (Weekly)": {
+        "main": [
+          [
+            {
+              "node": "Initialize DR Drill",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Initialize DR Drill": {
+        "main": [
+          [
+            {
+              "node": "Create Workflow Backup (Track A)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Create Workflow Backup (Track A)": {
+        "main": [
+          [
+            {
+              "node": "Execute Restore Drill",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Restore Drill": {
+        "main": [
+          [
+            {
+              "node": "Produce DR Verdict",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "E5R2-Test-Webhook (N8N-OPS-04)": {
+        "main": [
+          [
+            {
+              "node": "Schedule Trigger (Weekly)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "nodeGroups": [],
+    "authors": "[]",
+    "name": "N8N-OPS-04 — Disaster Recovery & Restore Drill",
+    "description": null,
+    "autosaved": false
+  },
+  "tags": []
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autodev.verification.v1",
+  "title": "AutoDev Verification Contract v1",
+  "description": "Deterministic verification result. No LLM judgement for measurable checks.",
+  "type": "object",
+  "x-metadata": ["job_id", "attempt_id", "started_at", "ended_at", "duration_ms", "provider", "model", "backend"],
+  "required": ["contract", "version", "run_id", "passed", "checks"],
+  "properties": {
+    "contract": { "const": "autodev.verification.v1" },
+    "version": { "const": "v1" },
+    "run_id": { "type": "string", "minLength": 6, "maxLength": 64 },
+    "attempt_id": { "type": "string", "maxLength": 96 },
+    "passed": { "type": "boolean" },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "passed"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 128 },
+          "type": { "enum": ["unit", "integration", "build", "lint", "schema", "contract", "invariant"] },
+          "passed": { "type": "boolean" },
+          "detail": { "type": "string", "maxLength": 2000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "failure_class": {
+      "enum": ["TEST_FAILURE", "BUILD_FAILURE", "LINT_FAILURE", "CONTRACT_FAILURE", "CONTEXT_FAILURE", "PROVIDER_FAILURE", "INFRA_FAILURE", "TIMEOUT", "SECURITY_BLOCK", "UNKNOWN", null]
+    },
+    "failure_signature": { "type": ["string", "null"], "maxLength": 128 },
+    "new_evidence": { "type": "array", "items": { "type": "string", "maxLength": 1024 } },
+    "x-metadata": { "type": "object", "additionalProperties": true }
+  },
+  "additionalProperties": false
+}

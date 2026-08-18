@@ -1,0 +1,177 @@
+{
+  "updatedAt": "2026-07-21T14:45:43.194Z",
+  "createdAt": "2026-07-19T08:14:51.184Z",
+  "id": "1cRVmiZSVNBrFgKk",
+  "name": "Blueprint RED-SDD – SSH Runner – REVIEW",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "manual-trigger-redsdd-1",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "code-build-request-1",
+      "name": "Build Canonical Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        450,
+        300
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const SPEC_KIT_COMMIT = '487af97864901462874f18f1c7f8d8adec0b7ddd';\nconst REPOSITORY_PATH = '/opt/dev-fabric/workspaces/spec-kit';\nconst FEATURE_SLUG = 'red-sdd-adapter';\n\nfunction fail(message) {\n  throw new Error('REQUEST_BUILD_FAILED: ' + message);\n}\n\n// Get current execution ID from n8n context\nconst executionId = $execution ? ($execution.id || 'unknown') : 'unknown';\nif (!executionId || executionId === 'unknown') {\n  fail('execution.id is unavailable — cannot bind run_id');\n}\n\nfunction createRunId() {\n  const uuidSource =\n    typeof globalThis.crypto?.randomUUID === 'function'\n      ? globalThis.crypto.randomUUID()\n      : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);\n  // Format: red-sdd-<executionId>-<nonce>\n  const combined = 'red-sdd-' + String(executionId) + '-' + uuidSource;\n  const normalized = combined\n    .toLowerCase()\n    .replace(/[^a-z0-9-]+/g, '-')\n    .replace(/^-+|-+$/g, '')\n    .slice(0, 64);\n\n  if (!/^[a-z0-9][a-z0-9-]{2,63}$/.test(normalized)) {\n    fail('run_id is outside the allowed pattern: ' + normalized);\n  }\n\n  return normalized;\n}\n\nif (!/^[a-z0-9][a-z0-9-]{2,62}$/.test(FEATURE_SLUG)) {\n  fail('feature_slug is outside the allowed pattern');\n}\n\nreturn [\n  {\n    json: {\n      schema_version: 1,\n      action: 'prepare',\n      taskstoissues: false,\n      max_converge_loops: 1,\n      spec_kit_commit: SPEC_KIT_COMMIT,\n      run_id: createRunId(),\n      project: {\n        repository_path: REPOSITORY_PATH,\n        feature_slug: FEATURE_SLUG\n      }\n    }\n  }\n];\n"
+      }
+    },
+    {
+      "id": "code-validate-request-1",
+      "name": "Validate and Normalize Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        650,
+        300
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const request = $input.first().json;\n\nconst EXPECTED_COMMIT = '487af97864901462874f18f1c7f8d8adec0b7ddd';\nconst ALLOWED_REPOSITORY_PATH = '/opt/dev-fabric/workspaces/spec-kit';\nconst ALLOWED_FEATURE_SLUG = 'red-sdd-adapter';\nconst ALLOWED_TOP_LEVEL = new Set([\n  'schema_version',\n  'action',\n  'taskstoissues',\n  'max_converge_loops',\n  'spec_kit_commit',\n  'run_id',\n  'project'\n]);\nconst ALLOWED_PROJECT_FIELDS = new Set(['repository_path', 'feature_slug']);\nconst CONTROL_FIELD_BLOCKLIST = [\n  'prepare',\n  'execute',\n  'implement',\n  'converge',\n  'run',\n  'deploy',\n  'approval_request',\n  'approval-request',\n  'approvalRequest',\n  'next_phase',\n  'next-phase',\n  'nextPhase'\n];\nconst CONTROL_CHAR_PATTERN = /[\\u0000-\\u001f\\u007f]/;\nconst SHELL_METACHAR_PATTERN = /[;&|$`()<>{}!#~*?\\[\\]\\\\'\"]/;\n\nfunction fail(code, message) {\n  const error = new Error(code + ': ' + message);\n  error.name = code;\n  throw error;\n}\n\nfunction ensure(condition, code, message) {\n  if (!condition) {\n    fail(code, message);\n  }\n}\n\nfunction ensurePlainObject(value, label) {\n  ensure(!!value && typeof value === 'object' && !Array.isArray(value), 'REQUEST_VALIDATION_FAILED', label + ' must be an object');\n}\n\nfunction ensureExactKeys(value, allowed, label) {\n  for (const key of Object.keys(value)) {\n    ensure(allowed.has(key), 'REQUEST_VALIDATION_FAILED', label + ' contains unknown field: ' + key);\n  }\n}\n\nfunction ensureSafeText(value, label) {\n  ensure(typeof value === 'string', 'REQUEST_VALIDATION_FAILED', label + ' must be a string');\n  ensure(!CONTROL_CHAR_PATTERN.test(value), 'REQUEST_VALIDATION_FAILED', label + ' contains control characters');\n}\n\nfunction stableStringify(value) {\n  if (Array.isArray(value)) {\n    return '[' + value.map((item) => stableStringify(item)).join(',') + ']';\n  }\n\n  if (value && typeof value === 'object') {\n    const keys = Object.keys(value).sort();\n    return '{' + keys.map((key) => JSON.stringify(key) + ':' + stableStringify(value[key])).join(',') + '}';\n  }\n\n  return JSON.stringify(value);\n}\n\n// =============================================================================\n// Pure-JavaScript base64url encoder (NO Buffer dependency)\n// Avoids n8n Buffer.from corruption observed in Execution 2493\n// =============================================================================\n\nconst BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';\n\nfunction base64urlEncode(str) {\n  const bytes = [];\n  for (let i = 0; i < str.length; i++) {\n    const code = str.charCodeAt(i);\n    if (code < 0x80) {\n      bytes.push(code);\n    } else if (code < 0x800) {\n      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));\n    } else if (code < 0x10000) {\n      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));\n    } else {\n      bytes.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 0x3f), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));\n    }\n  }\n\n  let result = '';\n  for (let i = 0; i < bytes.length; i += 3) {\n    const b1 = bytes[i];\n    const b2 = i + 1 < bytes.length ? bytes[i + 1] : 0;\n    const b3 = i + 2 < bytes.length ? bytes[i + 2] : 0;\n\n    result += BASE64_CHARS[b1 >> 2];\n    result += BASE64_CHARS[((b1 & 0x03) << 4) | (b2 >> 4)];\n    result += i + 1 < bytes.length ? BASE64_CHARS[((b2 & 0x0f) << 2) | (b3 >> 6)] : '=';\n    result += i + 2 < bytes.length ? BASE64_CHARS[b3 & 0x3f] : '=';\n  }\n\n  // Convert to base64url: + → -, / → _, strip =\n  return result.replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');\n}\n\nfunction base64urlDecode(b64url) {\n  // Convert base64url to standard base64\n  let std = b64url.replace(/-/g, '+').replace(/_/g, '/');\n  // Restore padding\n  while (std.length % 4 !== 0) {\n    std += '=';\n  }\n\n  const BASE64_LOOKUP = {};\n  for (let i = 0; i < BASE64_CHARS.length; i++) {\n    BASE64_LOOKUP[BASE64_CHARS[i]] = i;\n  }\n\n  const bytes = [];\n  for (let i = 0; i < std.length; i += 4) {\n    const b0 = BASE64_LOOKUP[std[i]] || 0;\n    const b1 = BASE64_LOOKUP[std[i + 1]] || 0;\n    const b2 = std[i + 2] === '=' ? 0 : (BASE64_LOOKUP[std[i + 2]] || 0);\n    const b3 = std[i + 3] === '=' ? 0 : (BASE64_LOOKUP[std[i + 3]] || 0);\n\n    bytes.push((b0 << 2) | (b1 >> 4));\n    if (std[i + 2] !== '=') bytes.push(((b1 & 0x0f) << 4) | (b2 >> 2));\n    if (std[i + 3] !== '=') bytes.push(((b2 & 0x03) << 6) | b3);\n  }\n\n  // Decode UTF-8 bytes to string\n  let result = '';\n  let i = 0;\n  while (i < bytes.length) {\n    const b0 = bytes[i++];\n    if (b0 < 0x80) {\n      result += String.fromCharCode(b0);\n    } else if (b0 < 0xe0) {\n      result += String.fromCharCode(((b0 & 0x1f) << 6) | (bytes[i++] & 0x3f));\n    } else if (b0 < 0xf0) {\n      result += String.fromCharCode(((b0 & 0x0f) << 12) | ((bytes[i++] & 0x3f) << 6) | (bytes[i++] & 0x3f));\n    } else {\n      result += String.fromCharCode(((b0 & 0x07) << 18) | ((bytes[i++] & 0x3f) << 12) | ((bytes[i++] & 0x3f) << 6) | (bytes[i++] & 0x3f));\n    }\n  }\n\n  return result;\n}\n\n// =============================================================================\n// Request validation\n// =============================================================================\n\nensurePlainObject(request, 'request');\n\nfor (const key of CONTROL_FIELD_BLOCKLIST) {\n  ensure(!(key in request), 'ACTION_CONFLICT_DETECTED', 'request contains unauthorized control field: ' + key);\n}\n\nensureExactKeys(request, ALLOWED_TOP_LEVEL, 'request');\nensure(request.schema_version === 1, 'REQUEST_VALIDATION_FAILED', 'schema_version must equal 1');\nensure(request.action === 'prepare', 'ACTION_NOT_AUTHORIZED', 'action must equal prepare');\nensure(request.taskstoissues === false, 'REQUEST_VALIDATION_FAILED', 'taskstoissues must be false');\nensure(request.max_converge_loops === 1, 'REQUEST_VALIDATION_FAILED', 'max_converge_loops must equal 1');\n\nensureSafeText(request.spec_kit_commit, 'spec_kit_commit');\nensure(/^[a-f0-9]{40}$/.test(request.spec_kit_commit), 'REQUEST_VALIDATION_FAILED', 'spec_kit_commit must be a full SHA-1 hash');\nensure(request.spec_kit_commit === EXPECTED_COMMIT, 'REQUEST_VALIDATION_FAILED', 'spec_kit_commit does not match the pinned value');\n\nensureSafeText(request.run_id, 'run_id');\nensure(/^[a-z0-9][a-z0-9-]{2,63}$/.test(request.run_id), 'REQUEST_VALIDATION_FAILED', 'run_id is outside the allowed pattern');\n\nensurePlainObject(request.project, 'project');\nensureExactKeys(request.project, ALLOWED_PROJECT_FIELDS, 'project');\n\nensureSafeText(request.project.repository_path, 'project.repository_path');\nensure(!SHELL_METACHAR_PATTERN.test(request.project.repository_path), 'COMMAND_INJECTION_DETECTED', 'project.repository_path contains shell metacharacters');\nensure(request.project.repository_path === ALLOWED_REPOSITORY_PATH, 'REQUEST_VALIDATION_FAILED', 'project.repository_path is outside the allowlist');\n\nensureSafeText(request.project.feature_slug, 'project.feature_slug');\nensure(!SHELL_METACHAR_PATTERN.test(request.project.feature_slug), 'COMMAND_INJECTION_DETECTED', 'project.feature_slug contains shell metacharacters');\nensure(/^[a-z0-9][a-z0-9-]{2,62}$/.test(request.project.feature_slug), 'REQUEST_VALIDATION_FAILED', 'project.feature_slug is outside the allowed pattern');\nensure(request.project.feature_slug === ALLOWED_FEATURE_SLUG, 'REQUEST_VALIDATION_FAILED', 'project.feature_slug does not match the pinned value');\n\nconst normalizedRequest = {\n  schema_version: 1,\n  action: 'prepare',\n  taskstoissues: false,\n  max_converge_loops: 1,\n  spec_kit_commit: EXPECTED_COMMIT,\n  run_id: request.run_id,\n  project: {\n    repository_path: ALLOWED_REPOSITORY_PATH,\n    feature_slug: ALLOWED_FEATURE_SLUG\n  }\n};\n\n// =============================================================================\n// Encoding with roundtrip verification (fixes Execution 2493 corruption)\n// =============================================================================\n\nconst canonicalJson = stableStringify(normalizedRequest);\n\n// Pure-JS base64url encode (no Buffer dependency)\nconst base64Payload = base64urlEncode(canonicalJson);\n\n// Character set validation\nensure(/^[A-Za-z0-9_-]+$/.test(base64Payload), 'REQUEST_BASE64URL_CHARSET_INVALID', '_base64_payload contains invalid base64url characters');\n\n// CRITICAL: Roundtrip verification — decode back and compare\n// This catches any encoding corruption (e.g., n8n Buffer.from bugs)\nconst decodedBack = base64urlDecode(base64Payload);\nensure(decodedBack === canonicalJson, 'REQUEST_BASE64URL_ROUNDTRIP_FAILED', 'Base64-URL roundtrip verification failed — encoding is corrupted');\n\nreturn [\n  {\n    json: {\n      ...normalizedRequest,\n      _canonical_json: canonicalJson,\n      _base64_payload: base64Payload\n    }\n  }\n];\n"
+      }
+    },
+    {
+      "id": "ssh-redsdd-adapter-1",
+      "name": "SSH – CT102 RED-SDD Adapter",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ],
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=/opt/dev-fabric/scripts/run_red_sdd_ssh_request.sh --request-b64url {{$json._base64_payload}} --execution-id {{ $execution.id }}"
+      },
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "42a60f05-16eb-493f-8257-3eeb5aef531a",
+          "name": "dev-runner-ssh"
+        }
+      }
+    },
+    {
+      "id": "code-validate-response-1",
+      "name": "Validate Runner Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        300
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const rawInput = $input.first().json;\n\n// ADR-004 / Execution-2428 fix: n8n SSH node can output either:\n//   Direct:    {\"code\": 66, \"stdout\": \"\", \"stderr\": \"...\"}\n//   Nested:    {\"json\": {\"code\": 66, \"stdout\": \"\", \"stderr\": \"...\"}}\n// Unwrap nested format, then extract code/stdout/stderr.\nconst sshResult =\n  rawInput &&\n  typeof rawInput === 'object' &&\n  rawInput.json &&\n  typeof rawInput.json === 'object' &&\n  Object.prototype.hasOwnProperty.call(rawInput.json, 'code')\n    ? rawInput.json\n    : rawInput;\n\nconst request = $('Validate and Normalize Request').first().json;\nconst stdout = typeof sshResult.stdout === 'string' ? sshResult.stdout : '';\nconst stderr = typeof sshResult.stderr === 'string' ? sshResult.stderr : '';\nconst sshExitCode = Number.isInteger(sshResult.code) ? sshResult.code : null;\nconst ALLOWED_ADAPTER_STATUSES = new Set([\n  'AMBER_REVIEW_APPROVAL_REQUIRED',\n  'NEEDS_VALIDATION',\n  'NEEDS_VALIDATION_ADAPTER_CONTRACT_CONFLICT',\n  'RED_BLOCK'\n]);\nconst EXECUTE_PHASE_PATTERN = /\\b(execute|implement|converge|taskstoissues)\\b/i;\nconst PROVIDER_AUTH_PATTERN = /\\b(401|unauthorized|invalid[_ -]?api[_ -]?key|provider[_ -]?401)\\b/i;\nconst APPROVAL_REQUEST_PATH_PATTERN = /^(?!.*\\.\\.)(?!.*[\\u0000-\\u001f\\u007f]).*\\/approval-request\\.json$/;\n\n// ADR-004: structured redacted error classes from adapter\nconst ADAPTER_ERROR_CLASS_PATTERN = /\"error_class\"\\s*:\\s*\"(REQUEST_[A-Z_]+)\"/;\n\n// Execution binding: detect stale partial execution rejection\nconst PARTIAL_EXECUTION_PATTERN = /\\bREQUEST_EXECUTION_BINDING_REJECTED\\b/;\n\nfunction buildResult(status, parsed, overrides = {}) {\n  return [\n    {\n      json: {\n        ok: overrides.ok ?? (status !== 'RED_BLOCK' && overrides.error_class == null),\n        status,\n        adapter_status: parsed && typeof parsed.adapter_status === 'string' ? parsed.adapter_status : null,\n        run_id: request.run_id,\n        action: 'prepare',\n        runner_origin: parsed && parsed.runner_origin === 'CT102' ? 'CT102' : null,\n        exit_code: Number.isInteger(parsed && parsed.adapter_exit_code)\n          ? parsed.adapter_exit_code\n          : (Number.isInteger(parsed && parsed.exit_code) ? parsed.exit_code : sshExitCode),\n        profiles_completed: Array.isArray(parsed && parsed.profiles_completed) ? parsed.profiles_completed : [],\n        approval_request_path:\n          typeof (parsed && parsed.approval_request_path) === 'string' &&\n          APPROVAL_REQUEST_PATH_PATTERN.test(parsed.approval_request_path)\n            ? parsed.approval_request_path\n            : null,\n        error_class: overrides.error_class ?? null,\n        safe_message: overrides.safe_message ?? null,\n        stdout_length: stdout.length,\n        stderr_length: stderr.length\n      }\n    }\n  ];\n}\n\nfunction block(errorClass, safeMessage, parsed) {\n  return buildResult('RED_BLOCK', parsed, { ok: false, error_class: errorClass, safe_message: safeMessage });\n}\n\n// ADR-004: Extract structured error class from stderr if adapter produced one\nfunction extractErrorClassFromStderr() {\n  const match = ADAPTER_ERROR_CLASS_PATTERN.exec(stderr);\n  if (match) {\n    return match[1];\n  }\n  // Also try parsing stderr as JSON for error_class key\n  try {\n    const errJson = JSON.parse(stderr);\n    if (errJson && typeof errJson.error_class === 'string') {\n      return errJson.error_class;\n    }\n  } catch (_) {\n    // stderr not JSON, fall through\n  }\n  return null;\n}\n\n// =============================================================================\n// Partial Execution Binding Rejection (Execution 2492 regression guard)\n// =============================================================================\n// Detects when adapter rejects due to stale execution-ID binding\n// The adapter returns exit code 66 with REQUEST_EXECUTION_BINDING_REJECTED\nif (sshExitCode === 66 && PARTIAL_EXECUTION_PATTERN.test(stderr)) {\n  return buildResult('NEEDS_VALIDATION_PARTIAL_EXECUTION_REJECTED', null, {\n    ok: false,\n    error_class: 'REQUEST_EXECUTION_BINDING_REJECTED',\n    safe_message: 'Adapter rejected request: execution-ID binding mismatch (stale partial execution)'\n  });\n}\n\n// ADR-004: Exit code 66 is contract violation — map to precise error\nif (sshExitCode === 66) {\n  const extractedError = extractErrorClassFromStderr();\n  const errorClass = extractedError || 'NEEDS_VALIDATION_ADAPTER_CONTRACT_CONFLICT';\n  return buildResult('NEEDS_VALIDATION_ADAPTER_CONTRACT_CONFLICT', null, {\n    ok: false,\n    error_class: errorClass,\n    safe_message: 'Adapter rejected request: exit code 66 (contract violation)'\n  });\n}\n\nif (sshExitCode === null) {\n  return block('RUNNER_RESPONSE_INVALID', 'SSH exit code is missing');\n}\n\nif (!stdout.trim()) {\n  return block('RUNNER_RESPONSE_INVALID', 'Runner stdout is empty');\n}\n\nif (PROVIDER_AUTH_PATTERN.test(stdout) || PROVIDER_AUTH_PATTERN.test(stderr)) {\n  return block('PROVIDER_AUTH_FAILURE', 'Provider authentication failure detected');\n}\n\nif (EXECUTE_PHASE_PATTERN.test(stdout) || EXECUTE_PHASE_PATTERN.test(stderr)) {\n  return block('EXECUTE_ARTIFACT_DETECTED', 'Execute or converge artifact detected in SSH output');\n}\n\nlet parsed;\ntry {\n  parsed = JSON.parse(stdout);\n} catch (error) {\n  return block('RUNNER_RESPONSE_INVALID', 'Runner stdout is not valid JSON');\n}\n\nif (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {\n  return block('RUNNER_RESPONSE_INVALID', 'Runner response must be an object');\n}\n\nif ('action' in parsed && parsed.action !== 'prepare') {\n  return block('ACTION_NOT_AUTHORIZED', 'Runner action is not prepare', parsed);\n}\n\nif ('runner_origin' in parsed && parsed.runner_origin !== 'CT102') {\n  return block('RUNNER_ORIGIN_MISMATCH', 'Runner origin is not CT102', parsed);\n}\n\nif (\n  'approval_request_path' in parsed &&\n  parsed.approval_request_path !== null &&\n  (\n    typeof parsed.approval_request_path !== 'string' ||\n    !APPROVAL_REQUEST_PATH_PATTERN.test(parsed.approval_request_path)\n  )\n) {\n  return block('RUNNER_RESPONSE_INVALID', 'approval_request_path is not safe', parsed);\n}\n\n// ADR-004: adapter_exit_code is canonical (with fallback to exit_code for backward compat)\nconst effectiveExitCode = 'adapter_exit_code' in parsed\n  ? parsed.adapter_exit_code\n  : parsed.exit_code;\n\nif (!Number.isInteger(effectiveExitCode)) {\n  return block('RUNNER_RESPONSE_INVALID', 'Runner response has no valid adapter_exit_code or exit_code', parsed);\n}\n\n// ADR-004: adapter_exit_code != 0 must NEVER be treated as success\nif (effectiveExitCode !== 0) {\n  const errorClass = parsed.error_class || extractErrorClassFromStderr() || 'RUNNER_NONZERO_EXIT';\n  return block(errorClass, 'Runner returned non-zero exit code: ' + effectiveExitCode, parsed);\n}\n\n// Check required fields after exit code validation\nfor (const field of ['schema_version', 'run_id', 'action', 'runner_origin', 'adapter_status', 'final_classification']) {\n  if (!(field in parsed)) {\n    return block('RUNNER_RESPONSE_INVALID', 'Runner response is missing required field: ' + field, parsed);\n  }\n}\n\nif (parsed.run_id !== request.run_id) {\n  return block('RUNNER_RESPONSE_INVALID', 'Runner run_id does not match request run_id', parsed);\n}\n\nif (!ALLOWED_ADAPTER_STATUSES.has(parsed.adapter_status)) {\n  return block('RUNNER_RESPONSE_INVALID', 'Runner adapter_status is not allowlisted: ' + parsed.adapter_status, parsed);\n}\n\nconst phaseSnapshot = JSON.stringify({\n  status: parsed.adapter_status ?? parsed.status,\n  phase: parsed.phase ?? null,\n  next_phase: parsed.next_phase ?? null,\n  next_step: parsed.next_step ?? null,\n  final_classification: parsed.final_classification ?? null\n});\n\nif (EXECUTE_PHASE_PATTERN.test(phaseSnapshot)) {\n  return block('EXECUTE_ARTIFACT_DETECTED', 'Execute or converge phase detected in runner response', parsed);\n}\n\n// Map adapter_status to normalized status\nconst effectiveStatus = parsed.adapter_status || parsed.status || 'RED_BLOCK';\nconst normalizedStatus =\n  effectiveStatus === 'NEEDS_VALIDATION_ADAPTER_CONTRACT_CONFLICT'\n    ? 'NEEDS_VALIDATION'\n    : (ALLOWED_ADAPTER_STATUSES.has(effectiveStatus) ? effectiveStatus : 'RED_BLOCK');\n\nreturn buildResult(normalizedStatus, parsed, {\n  ok: normalizedStatus !== 'RED_BLOCK'\n});\n"
+      }
+    },
+    {
+      "id": "code-final-classify-1",
+      "name": "Final Prepare Classification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        300
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const input = $input.first().json;\nconst status = input.status;\nconst adapterExitCode = Number.isInteger(input.exit_code) ? input.exit_code : null;\n\n// Allowlisted statuses including partial execution rejection\nconst isAllowedStatus =\n  status === 'AMBER_REVIEW_APPROVAL_REQUIRED' ||\n  status === 'NEEDS_VALIDATION' ||\n  status === 'NEEDS_VALIDATION_ADAPTER_CONTRACT_CONFLICT' ||\n  status === 'NEEDS_VALIDATION_PARTIAL_EXECUTION_REJECTED' ||\n  status === 'RED_BLOCK' ||\n  /^TOOL_GAP_[A-Z0-9_]+$/.test(status);\n\nif (!isAllowedStatus) {\n  throw new Error('FINAL_CLASSIFICATION_INVALID: unexpected status ' + String(status));\n}\n\n// ADR-004: adapter_exit_code != 0 must never produce AMBER_REVIEW_APPROVAL_REQUIRED\n// If exit code is non-zero (including 66), force RED_BLOCK regardless of status\nconst effectiveClassification =\n  adapterExitCode !== null && adapterExitCode !== 0\n    ? 'RED_BLOCK'\n    : status;\n\n// Map NEEDS_VALIDATION_ADAPTER_CONTRACT_CONFLICT → RED_BLOCK\n// Map NEEDS_VALIDATION_PARTIAL_EXECUTION_REJECTED → RED_BLOCK_PARTIAL_EXECUTION_REJECTED\nlet finalClassification;\nif (effectiveClassification === 'NEEDS_VALIDATION_ADAPTER_CONTRACT_CONFLICT') {\n  finalClassification = 'RED_BLOCK';\n} else if (effectiveClassification === 'NEEDS_VALIDATION_PARTIAL_EXECUTION_REJECTED') {\n  finalClassification = 'RED_BLOCK_PARTIAL_EXECUTION_REJECTED';\n} else {\n  finalClassification = effectiveClassification;\n}\n\nreturn [\n  {\n    json: {\n      classification: finalClassification,\n      run_id: input.run_id,\n      action: 'prepare',\n      runner_origin: input.runner_origin,\n      exit_code: adapterExitCode,\n      adapter_status: input.adapter_status ?? null,\n      profiles_completed: Array.isArray(input.profiles_completed) ? input.profiles_completed : [],\n      approval_request_path: input.approval_request_path ?? null,\n      error_class: input.error_class ?? null,\n      requires_human_review: finalClassification === 'AMBER_REVIEW_APPROVAL_REQUIRED',\n      terminal: true\n    }\n  }\n];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Canonical Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Canonical Request": {
+      "main": [
+        [
+          {
+            "node": "Validate and Normalize Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Normalize Request": {
+      "main": [
+        [
+          {
+            "node": "SSH – CT102 RED-SDD Adapter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH – CT102 RED-SDD Adapter": {
+      "main": [
+        [
+          {
+            "node": "Validate Runner Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Runner Response": {
+      "main": [
+        [
+          {
+            "node": "Final Prepare Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "c3f477bc-8cf7-473f-8c81-7c60d9529767",
+  "activeVersionId": null,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-07-19T08:14:51.192Z",
+      "createdAt": "2026-07-19T08:14:51.192Z",
+      "role": "workflow:owner",
+      "workflowId": "1cRVmiZSVNBrFgKk",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

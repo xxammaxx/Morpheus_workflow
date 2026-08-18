@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autodev.build-result.v1",
+  "title": "AutoDev Build Result Contract v1",
+  "description": "Result of a build/fix job. Changed files + bounded summary; no blobs.",
+  "type": "object",
+  "x-metadata": ["job_id", "attempt_id", "started_at", "ended_at", "duration_ms", "provider", "model", "backend"],
+  "required": ["contract", "version", "run_id", "status", "changed_files", "summary"],
+  "properties": {
+    "contract": { "const": "autodev.build-result.v1" },
+    "version": { "const": "v1" },
+    "run_id": { "type": "string", "minLength": 6, "maxLength": 64 },
+    "attempt_id": { "type": "string", "maxLength": 96 },
+    "plan_fingerprint": { "type": "string", "maxLength": 64 },
+    "status": { "enum": ["success", "failed"] },
+    "changed_files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "change", "size"],
+        "properties": {
+          "path": { "type": "string", "maxLength": 256 },
+          "change": { "enum": ["add", "modify", "delete"] },
+          "size": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "summary": { "type": "string", "maxLength": 2000 },
+    "test_results": {
+      "type": "object",
+      "properties": {
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "failure": {
+      "type": "object",
+      "required": ["failure_signature", "message"],
+      "properties": {
+        "failure_signature": { "type": "string", "maxLength": 128 },
+        "message": { "type": "string", "maxLength": 2000 }
+      },
+      "additionalProperties": false
+    },
+    "x-metadata": { "type": "object", "additionalProperties": true }
+  },
+  "additionalProperties": false
+}

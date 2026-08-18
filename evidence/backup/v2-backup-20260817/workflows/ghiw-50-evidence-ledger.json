@@ -1,0 +1,139 @@
+{
+  "updatedAt": "2026-08-08T22:30:00.000Z",
+  "createdAt": "2026-08-08T22:30:00.000Z",
+  "id": "ghiw-50-evidence-ledger",
+  "name": "GHIW-50 — Evidence Ledger",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "ghiw50-trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "ghiw50-init",
+      "name": "Initialize & Validate Envelope",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// GHIW-50: Initialize & Validate Cross-Workflow Envelope\n// Validates input against envelope schema. Produces deterministic validation result.\n\nconst SCHEMA_VERSION = '1.0';\nconst PROJECT_ID = 'ghiw-n8n-ops-control-plane';\nconst ALLOWED_TASK_IDS = ['GHIW-00','GHIW-10','GHIW-50','GHIW-60','GHIW-70','GHIW-90','N8N-OPS-01','N8N-OPS-02','N8N-OPS-03','N8N-OPS-04'];\nconst UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nconst SHA256_RE = /^[a-f0-9]{64}$/;\n\nconst input = ($input.first().json.body || $input.first().json);\n\n// Required field check\nif (!input.schema_version) return [{ json: { decision: 'REJECTED_INVALID_SCHEMA', reason_codes: ['MISSING_SCHEMA_VERSION'], timestamp: new Date().toISOString() } }];\nif (input.schema_version !== SCHEMA_VERSION) return [{ json: { decision: 'REJECTED_INVALID_SCHEMA', reason_codes: ['INVALID_SCHEMA_VERSION'], timestamp: new Date().toISOString() } }];\nif (!input.run_id || !UUID_RE.test(input.run_id)) return [{ json: { decision: 'REJECTED_MISSING_FIELD', reason_codes: ['INVALID_RUN_ID'], timestamp: new Date().toISOString() } }];\nif (!input.task_id || !ALLOWED_TASK_IDS.includes(input.task_id)) return [{ json: { decision: 'REJECTED_MISSING_FIELD', reason_codes: ['INVALID_TASK_ID'], timestamp: new Date().toISOString() } }];\nif (!input.decision) return [{ json: { decision: 'REJECTED_MISSING_FIELD', reason_codes: ['MISSING_DECISION'], timestamp: new Date().toISOString() } }];\n\n// Normalize input\nconst envelope = {\n  schema_version: SCHEMA_VERSION,\n  project_id: PROJECT_ID,\n  run_id: input.run_id,\n  task_id: input.task_id,\n  parent_run_id: input.parent_run_id || null,\n  source: input.source || { type: 'subworkflow', id: input.run_id },\n  workflow: input.workflow || { logical_id: input.task_id, id: $workflow.id, name: $workflow.name },\n  execution: input.execution || { id: $execution.id, started_at: new Date().toISOString() },\n  decision: input.decision,\n  reason_codes: Array.isArray(input.reason_codes) ? input.reason_codes : [],\n  evidence_refs: Array.isArray(input.evidence_refs) ? input.evidence_refs : [],\n  evidence_manifest_sha256: input.evidence_manifest_sha256 || null,\n  classification: input.classification || 'GREEN',\n  input_hash: input.input_hash || null,\n  output_hash: null,\n  timestamp: new Date().toISOString(),\n  hermes: input.hermes || {}\n};\n\n// Compute input hash (simple deterministic hash of sorted JSON keys)\nfunction simpleHash(s) {\n  let h = 0;\n  for (let i = 0; i < s.length; i++) {\n    h = ((h << 5) - h) + s.charCodeAt(i);\n    h |= 0;\n  }\n  return ('00000000' + (h >>> 0).toString(16)).slice(-8);\n}\n\nconst sortedInput = JSON.stringify(envelope, Object.keys(envelope).sort());\nenvelope.input_hash = simpleHash(sortedInput);\n\nreturn [{ json: envelope }];\n"
+      }
+    },
+    {
+      "id": "ghiw50-check-idempotency",
+      "name": "Check Idempotency",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// GHIW-50: Check Idempotency\n// Query evidence_ledger.sqlite3 for existing run_id.\n// Returns IDEMPOTENT_REPLAY if already recorded, else allows INSERT.\n\nconst state = $input.first().json;\n\n// Build an SSH command to query the ledger.\n// Since we're in n8n Code node, we prepare the command for the next SSH node.\n// The actual DB query happens via SSH to Proxmox host.\n\nfunction toBase64Url(s) {\n  // Simple base64url encoding\n  const b64 = Buffer.from ? Buffer.from(s).toString('base64') : btoa(unescape(encodeURIComponent(s)));\n  return b64.replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');\n}\n\n// Prepare ledger health/inspect command\nconst queryJson = JSON.stringify({\n  schema_version: '1.0',\n  operation: 'check-run',\n  run_id: state.run_id\n});\n\nconst command = 'ghiw-ledger-v1 check-run ' + toBase64Url(queryJson);\n\nstate.command = command;\nstate.ledger_state = 'CHECKING';\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ghiw50-write-record",
+      "name": "Write Ledger Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// GHIW-50: Write Ledger Record\n// Build INSERT statement for evidence_ledger.sqlite3.\n// This prepares the SQL payload for SSH execution against the Proxmox host.\n\nconst state = $input.first().json;\n\n// For idempotency: if previous node detected existing record, skip\nif (state.decision === 'IDEMPOTENT_REPLAY') {\n  state.ledger_state = 'IDEMPOTENT';\n  state.ledger_entry_id = state.existing_entry_id || state.run_id;\n  return [{ json: state }];\n}\n\n// Build INSERT payload\nfunction toBase64Url(s) {\n  const b64 = Buffer.from ? Buffer.from(s).toString('base64') : btoa(unescape(encodeURIComponent(s)));\n  return b64.replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');\n}\n\nconst insertPayload = JSON.stringify({\n  schema_version: '1.0',\n  run_id: state.run_id,\n  task_id: state.task_id,\n  parent_run_id: state.parent_run_id,\n  source_type: state.source.type,\n  source_id: state.source.id || '',\n  workflow_id: state.workflow.id,\n  execution_id: state.execution.id,\n  decision: state.decision,\n  reason_codes: state.reason_codes,\n  classification: state.classification,\n  input_hash: state.input_hash,\n  evidence_refs: state.evidence_refs,\n  evidence_manifest_sha256: state.evidence_manifest_sha256,\n  hermes_run_id: (state.hermes.run || {}).id || '',\n  hermes_task_id: (state.hermes.task || {}).id || '',\n  timestamp: state.timestamp\n});\n\nstate.command = 'ghiw-ledger-v1 insert ' + toBase64Url(insertPayload);\nstate.ledger_state = 'WRITING';\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ghiw50-assemble-output",
+      "name": "Assemble Ledger Receipt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// GHIW-50: Assemble Ledger Receipt\n// Produces the deterministic output contract for the Evidence Ledger.\n\nconst state = $input.first().json;\n\n// Compute output hash\nfunction simpleHash(s) {\n  let h = 0;\n  for (let i = 0; i < s.length; i++) {\n    h = ((h << 5) - h) + s.charCodeAt(i);\n    h |= 0;\n  }\n  return ('00000000' + (h >>> 0).toString(16)).slice(-8);\n}\n\nconst receipt = {\n  schema_version: '1.0',\n  project_id: state.project_id,\n  run_id: state.run_id,\n  task_id: state.task_id,\n  source: state.source,\n  workflow: state.workflow,\n  execution: { ...state.execution, completed_at: new Date().toISOString() },\n  decision: state.ledger_state === 'IDEMPOTENT' ? 'IDEMPOTENT_REPLAY' : 'RECORDED',\n  reason_codes: state.ledger_state === 'IDEMPOTENT' ? ['IDEMPOTENT_REPLAY', 'RUN_ALREADY_RECORDED'] : ['RUN_RECORDED'],\n  evidence_refs: state.evidence_refs || [],\n  evidence_manifest_sha256: state.evidence_manifest_sha256,\n  classification: state.ledger_state === 'WRITING' ? 'GREEN' : 'AMBER',\n  input_hash: state.input_hash,\n  output_hash: simpleHash(JSON.stringify(state)),\n  ledger_entry_id: state.run_id,\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: receipt }];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Initialize & Validate Envelope",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize & Validate Envelope": {
+      "main": [
+        [
+          {
+            "node": "Check Idempotency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Idempotency": {
+      "main": [
+        [
+          {
+            "node": "Write Ledger Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Ledger Record": {
+      "main": [
+        [
+          {
+            "node": "Assemble Ledger Receipt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "5477094f-44f1-4b34-9367-a98c9e94f539",
+  "activeVersionId": null,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-08-08T22:34:44.726Z",
+      "createdAt": "2026-08-08T22:34:44.726Z",
+      "role": "workflow:owner",
+      "workflowId": "ghiw-50-evidence-ledger",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

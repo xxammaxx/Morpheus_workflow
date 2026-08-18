@@ -1,0 +1,144 @@
+{
+  "updatedAt": "2026-07-07T21:33:43.280Z",
+  "createdAt": "2026-07-07T21:33:43.280Z",
+  "id": "OasGdvLd6v7No5YU",
+  "name": "MDAL_STEP0_TEST__android_tv_status",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "mission-loop/tv-status",
+        "options": {}
+      },
+      "name": "TV Status Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "8f0092d1-5521-4797-a21e-4d3acba78bd2",
+      "webhookId": "37f4b579-58dc-41be-9b4d-5d0370273044"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "value": "={{ JSON.stringify() }}",
+              "name": "data"
+            }
+          ]
+        },
+        "keepOnlySet": true
+      },
+      "name": "Read status.json",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ],
+      "id": "a3100ba2-c465-485a-8c03-2d8f8af5866c"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build simplified HTML for Android TV / Kiosk display\n// Color-coded status, dark theme, auto-refresh, read-only\n// NO raw logs, NO file paths, NO interactive controls\n\nconst fileData = $input.first().json.data;\nlet statusData;\ntry {\n  statusData = JSON.parse(fileData);\n} catch (e) {\n  const errorHtml = `<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>Agent Loop ??? Error</title><style>body{background:#1a1a2e;color:#e74c3c;font:28px monospace;padding:60px;text-align:center}h1{margin-bottom:40px}</style></head><body><h1>ERROR</h1><p>Cannot read status data</p></body></html>`;\n  return [{ json: { html: errorHtml } }];\n}\n\nconst status = String(statusData.overall_status || 'UNKNOWN').toUpperCase();\nconst runsFound = Number(statusData.runs_found) || 0;\nconst withDecision = Number(statusData.runs_with_controller_decision) || 0;\nconst withAgent = Number(statusData.runs_with_agent_launched) || 0;\nconst latestRunId = String(statusData.latest_run_id || 'N/A');\nconst generatedAt = statusData.generated_at || 'Unknown';\n\n// Map status to CSS class and icon\nlet statusClass = 'unknown';\nlet statusIcon = '???';\nlet statusLabel = 'UNKNOWN';\n\nif (status === 'RED_BLOCK') { statusClass = 'red'; statusIcon = '????'; statusLabel = 'RED BLOCK'; }\nelse if (status === 'YELLOW_REVIEW') { statusClass = 'yellow'; statusIcon = '??????'; statusLabel = 'YELLOW REVIEW'; }\nelse if (status === 'NEEDS_VALIDATION') { statusClass = 'yellow'; statusIcon = '????'; statusLabel = 'NEEDS VALIDATION'; }\nelse if (status === 'TOOL_GAP') { statusClass = 'yellow'; statusIcon = '????'; statusLabel = 'TOOL GAP'; }\nelse if (status === 'GREEN_SAFE') { statusClass = 'green'; statusIcon = '???'; statusLabel = 'GREEN SAFE'; }\nelse if (status === 'STALE') { statusClass = 'grey'; statusIcon = '???'; statusLabel = 'STALE'; }\n\nconst html = `<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <meta http-equiv=\"refresh\" content=\"30\">\n  <title>Agent Loop ??? TV Status</title>\n  <style>\n    * { margin: 0; padding: 0; box-sizing: border-box; }\n    body {\n      background: #1a1a2e;\n      color: #e0e0e0;\n      font-family: 'Courier New', monospace;\n      padding: 40px 60px;\n      min-height: 100vh;\n    }\n    h1 {\n      font-size: 36px;\n      margin-bottom: 10px;\n      color: #a0a0b0;\n      letter-spacing: 2px;\n      text-transform: uppercase;\n    }\n    .subtitle {\n      font-size: 18px;\n      color: #666;\n      margin-bottom: 40px;\n    }\n    .status-box {\n      padding: 40px;\n      border-radius: 16px;\n      margin-bottom: 30px;\n      text-align: center;\n      border: 3px solid transparent;\n    }\n    .status-box.red {\n      background: rgba(231, 76, 60, 0.2);\n      border-color: #e74c3c;\n      box-shadow: 0 0 60px rgba(231, 76, 60, 0.15);\n    }\n    .status-box.yellow {\n      background: rgba(243, 156, 18, 0.2);\n      border-color: #f39c12;\n      box-shadow: 0 0 60px rgba(243, 156, 18, 0.15);\n    }\n    .status-box.green {\n      background: rgba(39, 174, 96, 0.2);\n      border-color: #27ae60;\n      box-shadow: 0 0 60px rgba(39, 174, 96, 0.15);\n    }\n    .status-box.grey {\n      background: rgba(127, 140, 141, 0.2);\n      border-color: #7f8c8d;\n    }\n    .status-box.unknown {\n      background: rgba(149, 165, 166, 0.15);\n      border-color: #95a5a6;\n    }\n    .status-icon {\n      font-size: 72px;\n      margin-bottom: 20px;\n    }\n    .status-label {\n      font-size: 48px;\n      font-weight: bold;\n      letter-spacing: 4px;\n      margin-bottom: 20px;\n    }\n    .red .status-label { color: #e74c3c; }\n    .yellow .status-label { color: #f39c12; }\n    .green .status-label { color: #27ae60; }\n    .grey .status-label { color: #7f8c8d; }\n    .stats-grid {\n      display: grid;\n      grid-template-columns: repeat(3, 1fr);\n      gap: 20px;\n      margin-bottom: 30px;\n    }\n    .stat-card {\n      background: rgba(255, 255, 255, 0.05);\n      border-radius: 12px;\n      padding: 25px;\n      text-align: center;\n    }\n    .stat-value {\n      font-size: 48px;\n      font-weight: bold;\n      color: #fff;\n    }\n    .stat-label {\n      font-size: 16px;\n      color: #888;\n      margin-top: 8px;\n      text-transform: uppercase;\n      letter-spacing: 1px;\n    }\n    .footer {\n      position: fixed;\n      bottom: 20px;\n      left: 0;\n      right: 0;\n      text-align: center;\n      color: #444;\n      font-size: 14px;\n    }\n    .disclaimer {\n      color: #555;\n      font-size: 14px;\n      margin-top: 10px;\n    }\n  </style>\n</head>\n<body>\n  <h1>???? Agent Loop Status</h1>\n  <p class=\"subtitle\">mission-driven-agent-loop ??? Phase 3B</p>\n\n  <div class=\"status-box ${statusClass}\">\n    <div class=\"status-icon\">${statusIcon}</div>\n    <div class=\"status-label\">${statusLabel}</div>\n  </div>\n\n  <div class=\"stats-grid\">\n    <div class=\"stat-card\">\n      <div class=\"stat-value\">${runsFound}</div>\n      <div class=\"stat-label\">Total Runs</div>\n    </div>\n    <div class=\"stat-card\">\n      <div class=\"stat-value\">${withDecision}</div>\n      <div class=\"stat-label\">With Decision</div>\n    </div>\n    <div class=\"stat-card\">\n      <div class=\"stat-value\">${withAgent}</div>\n      <div class=\"stat-label\">Agent Launched</div>\n    </div>\n  </div>\n\n  <p class=\"disclaimer\">???? READ-ONLY ??? No agents running ??? Auto-refresh: 30s</p>\n  <p class=\"disclaimer\">Latest: ${latestRunId} @ ${generatedAt}</p>\n\n  <div class=\"footer\">Phase 3B ??? n8n Integration Blueprint</div>\n</body>\n</html>`;\n\nreturn [{ json: { html: html } }];"
+      },
+      "name": "Build TV HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ],
+      "notes": "Builds simplified HTML for Android TV. Color-coded status, dark theme, auto-refresh every 30s. NO raw logs, NO file paths, NO interactive controls.",
+      "id": "be64578b-f703-40ed-8c32-01c3093014e1"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Respond with HTML",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        600,
+        0
+      ],
+      "notes": "Returns HTML response for Android TV display. Read-only.",
+      "id": "f1568146-83cd-42ab-b673-8e1b590b57a8"
+    }
+  ],
+  "connections": {
+    "TV Status Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read status.json",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read status.json": {
+      "main": [
+        [
+          {
+            "node": "Build TV HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build TV HTML": {
+      "main": [
+        [
+          {
+            "node": "Respond with HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "67e93516-46f6-4a10-8f71-231ac2842510",
+  "activeVersionId": null,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-07-07T21:33:43.282Z",
+      "createdAt": "2026-07-07T21:33:43.282Z",
+      "role": "workflow:owner",
+      "workflowId": "OasGdvLd6v7No5YU",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

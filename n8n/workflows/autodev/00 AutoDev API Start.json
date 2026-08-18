@@ -1,0 +1,257 @@
+{
+  "name": "00 AutoDev API Start",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "autodev/start",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "start-webhook",
+      "name": "Start Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "bNrV3DszwdD7hXuY",
+          "name": "autodev-api-auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.body || $json;\nconst task = raw.task && typeof raw.task === 'object' ? raw.task : raw;\nconst now = new Date();\nconst runId = 'run-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);\nconst issue = {\n  contract: 'autodev.issue.v1', version: 'v1', run_id: runId,\n  task_ref: task.task_ref || '', repository_ref: task.repository_ref || '',\n  workspace: task.workspace || 'autodev-v2',\n  task_description: task.task_description || '',\n  acceptance_hint: task.acceptance_hint || '',\n  max_attempts: task.max_attempts || 2,\n  created_at: now.toISOString(),\n  trace_id: 'trace-' + runId, source: 'autodev-start-api',\n};\nfunction validateAutodevContract(payload, schema) {\n  const errors = [];\n  try {\n    if (schema && schema.type === 'object' && typeof payload !== 'object') {\n      errors.push('$: expected object, got ' + typeof payload);\n    } else {\n      validateNode(payload, schema, '$', errors, schema);\n    }\n  } catch (e) {\n    return { ok: false, contract: schema && schema.$id, errors: ['validator error: ' + e.message], error_count: 1 };\n  }\n  const contract = schema && schema.$id ? schema.$id : null;\n  return { ok: errors.length === 0, contract, errors, error_count: errors.length };\n}\nfunction validateNode(value, schema, path, errors, root) {\n  if (schema === true) return;\n  if (schema === false) { errors.push(path + ': schema forbids value'); return; }\n  if (schema.$ref) {\n    const name = schema.$ref.replace('#/$defs/', '');\n    const defs = (root.$defs || {})[name];\n    if (!defs) throw new Error('unresolved $ref ' + schema.$ref);\n    validateNode(value, defs, path, errors, root);\n    return;\n  }\n  if (schema.oneOf) {\n    let matched = 0;\n    for (const sub of schema.oneOf) {\n      const subErrors = [];\n      validateNode(value, sub, path, subErrors, root);\n      if (subErrors.length === 0) matched++;\n    }\n    if (matched !== 1) {\n      errors.push(path + ': must match exactly one of ' + schema.oneOf.length + ' alternatives (matched ' + matched + ')');\n    }\n    return;\n  }\n  if (schema.type) {\n    const expected = Array.isArray(schema.type) ? schema.type : [schema.type];\n    const ok = expected.some((t) => typeCheck(value, t));\n    if (!ok) {\n      errors.push(path + ': expected ' + expected.join(' or ') + ', got ' + jsTypeName(value));\n      return;\n    }\n  }\n  if (schema.const !== undefined) {\n    if (JSON.stringify(value) !== JSON.stringify(schema.const)) {\n      errors.push(path + ': must equal ' + pyRepr(schema.const));\n    }\n    return;\n  }\n  if (schema.enum) {\n    if (!schema.enum.some((e) => JSON.stringify(e) === JSON.stringify(value))) {\n      errors.push(path + ': must be one of [' + schema.enum.map(pyRepr).join(', ') + ']');\n    }\n    return;\n  }\n  if (typeof value === 'string') {\n    if (schema.minLength !== undefined && value.length < schema.minLength) {\n      errors.push(path + ': length must be >= ' + schema.minLength);\n    }\n    if (schema.maxLength !== undefined && value.length > schema.maxLength) {\n      errors.push(path + ': length must be <= ' + schema.maxLength);\n    }\n    if (schema.pattern) {\n      const re = new RegExp(schema.pattern);\n      if (!re.test(value)) errors.push(path + ': must match pattern ' + pyRepr(schema.pattern));\n    }\n    return;\n  }\n  if (typeof value === 'number' && Number.isFinite(value)) {\n    if (schema.minimum !== undefined && value < schema.minimum) {\n      errors.push(path + ': must be >= ' + schema.minimum);\n    }\n    if (schema.maximum !== undefined && value > schema.maximum) {\n      errors.push(path + ': must be <= ' + schema.maximum);\n    }\n    return;\n  }\n  if (Array.isArray(value)) {\n    if (schema.minItems !== undefined && value.length < schema.minItems) {\n      errors.push(path + ': must have at least ' + schema.minItems + ' items');\n    }\n    if (schema.maxItems !== undefined && value.length > schema.maxItems) {\n      errors.push(path + ': must have at most ' + schema.maxItems + ' items');\n    }\n    if (schema.items) {\n      value.forEach((item, i) => validateNode(item, schema.items, path + '[' + i + ']', errors, root));\n    }\n    return;\n  }\n  if (typeof value === 'object' && value !== null) {\n    const props = schema.properties || {};\n    for (const [name, sub] of Object.entries(props)) {\n      if (name in value) validateNode(value[name], sub, path + '.' + name, errors, root);\n    }\n    for (const name of schema.required || []) {\n      if (!(name in value)) errors.push(path + ': ' + name + ' is required');\n    }\n    const addl = schema.additionalProperties === undefined ? true : schema.additionalProperties;\n    if (addl === false) {\n      for (const key of Object.keys(value)) {\n        if (!(key in props)) errors.push(path + ': additional property ' + pyRepr(key) + ' not allowed');\n      }\n    } else if (typeof addl === 'object') {\n      for (const key of Object.keys(value)) {\n        if (!(key in props)) validateNode(value[key], addl, path + '.' + key, errors, root);\n      }\n    }\n    return;\n  }\n}\nfunction typeCheck(value, expected) {\n  switch (expected) {\n    case 'integer': return typeof value === 'number' && Number.isInteger(value);\n    case 'number': return typeof value === 'number' && Number.isFinite(value);\n    case 'string': return typeof value === 'string';\n    case 'boolean': return typeof value === 'boolean';\n    case 'object': return typeof value === 'object' && value !== null && !Array.isArray(value);\n    case 'array': return Array.isArray(value);\n    case 'null': return value === null;\n    default: throw new Error('unsupported type ' + expected);\n  }\n}\nfunction jsTypeName(value) {\n  if (value === null) return 'NoneType';\n  if (Array.isArray(value)) return 'list';\n  if (typeof value === 'object') return 'dict';\n  if (typeof value === 'string') return 'str';\n  if (typeof value === 'boolean') return 'bool';\n  if (typeof value === 'number') return Number.isInteger(value) ? 'int' : 'float';\n  return typeof value;\n}\nfunction pyRepr(value) {\n  if (value === null) return 'None';\n  if (typeof value === 'boolean') return value ? 'True' : 'False';\n  if (typeof value === 'string') return \"'\" + value.replace(/'/g, \"\\\\'\") + \"'\";\n  return String(value);\n}\n\nconst schema = {\"$id\": \"autodev.issue.v1\", \"$schema\": \"https://json-schema.org/draft/2020-12/schema\", \"additionalProperties\": false, \"description\": \"Canonical task intake for the AutoDev harness control plane.\", \"properties\": {\"acceptance_hint\": {\"maxLength\": 2000, \"type\": \"string\"}, \"contract\": {\"const\": \"autodev.issue.v1\"}, \"created_at\": {\"maxLength\": 64, \"type\": \"string\"}, \"max_attempts\": {\"maximum\": 5, \"minimum\": 1, \"type\": \"integer\"}, \"repository_ref\": {\"maxLength\": 128, \"minLength\": 1, \"type\": \"string\"}, \"run_id\": {\"maxLength\": 64, \"minLength\": 6, \"pattern\": \"^[A-Za-z0-9_-]+$\", \"type\": \"string\"}, \"source\": {\"maxLength\": 64, \"type\": \"string\"}, \"task_description\": {\"maxLength\": 4000, \"minLength\": 10, \"type\": \"string\"}, \"task_ref\": {\"maxLength\": 128, \"type\": \"string\"}, \"trace_id\": {\"maxLength\": 128, \"type\": \"string\"}, \"version\": {\"const\": \"v1\"}, \"workspace\": {\"maxLength\": 256, \"minLength\": 1, \"type\": \"string\"}, \"x-metadata\": {\"additionalProperties\": true, \"type\": \"object\"}}, \"required\": [\"contract\", \"version\", \"run_id\", \"repository_ref\", \"task_description\", \"workspace\"], \"title\": \"AutoDev Issue Contract v1\", \"type\": \"object\", \"x-metadata\": [\"trace_id\", \"created_at\", \"source\"]};\nconst v = validateAutodevContract(issue, schema);\nconst fixture = (raw.fixture && ['invalid_plan','verify_fail_delta','verify_fail_no_delta','no_signature','attempt_limit','security_critical_blocking','review_fix','review_split'].includes(raw.fixture)) ? raw.fixture : null;\nconst backend = (raw.backend === 'embedded' || raw.backend === 'opencode-builder-8001') ? raw.backend : 'opencode-builder-8001';\nreturn [{ json: { intake_valid: v.ok, errors: v.errors, issue: issue,\n  fixture: fixture, backend: backend, run_id: runId } }];\n"
+      },
+      "id": "validate-intake",
+      "name": "Validate Intake",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.intake_valid}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "intake-valid?",
+      "name": "Intake Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', code: 'INTAKE_INVALID', run_id: $json.run_id, errors: $json.errors }) }}"
+      },
+      "id": "respond-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        720,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nreturn [{json: {intake: {issue: s.issue, fixture: s.fixture, backend: s.backend},\n  data: [{run_id: s.issue.run_id, state: 'ACCEPTED', task_ref: s.issue.task_ref || '',\n  repository_ref: s.issue.repository_ref || '', current_job: 'intake', decision: '',\n  reason_code: 'INTAKE_OK', created_at: s.issue.created_at, updated_at: s.issue.created_at,\n  result_ref: '', trace_id: s.issue.trace_id || '', backend: s.backend}], returnType: 'all'}}];"
+      },
+      "id": "prepare-run-row",
+      "name": "Prepare Run Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "insert-run-row",
+      "name": "Insert Run Row",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        720,
+        160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ run_id: $json.run_id, status: 'ACCEPTED', status_url: 'http://192.168.1.52:5678/webhook/autodev/status?run_id=' + $json.run_id }) }}"
+      },
+      "id": "respond-202",
+      "name": "Respond 202",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "qU9xIrDwQzKQqyjY",
+          "cachedResultName": "01 AutoDev Orchestrator"
+        },
+        "mode": "once",
+        "options": {
+          "executeOnce": true
+        }
+      },
+      "id": "run-orchestrator",
+      "name": "Run Orchestrator",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 4,
+      "position": [
+        1200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst intake = $('Prepare Run Row').first().json.intake || {};\nconst row = (s.data && s.data[0]) || {};\nreturn [{json: Object.assign({}, intake, {run_row: row,\n  run_id: intake.issue ? intake.issue.run_id : row.run_id})}];"
+      },
+      "id": "pass-intake",
+      "name": "Pass Intake",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Start Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Intake",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Intake": {
+      "main": [
+        [
+          {
+            "node": "Intake Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Intake Valid?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Run Row",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Run Row": {
+      "main": [
+        [
+          {
+            "node": "Insert Run Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Run Row": {
+      "main": [
+        [
+          {
+            "node": "Pass Intake",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pass Intake": {
+      "main": [
+        [
+          {
+            "node": "Respond 202",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Run Orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

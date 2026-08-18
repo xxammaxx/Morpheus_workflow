@@ -1,0 +1,17 @@
+pve
+pve-manager/8.4.19/a68fb383814bb1e6 (running kernel: 6.8.12-32-pve)
+---
+status: running
+---
+arch: amd64
+cores: 2
+hostname: lxc-n8n-local
+memory: 1536
+nameserver: 192.168.1.1
+net0: name=eth0,bridge=vmbr0,hwaddr=BC:24:11:96:3D:9A,ip=dhcp,type=veth
+onboot: 1
+ostype: debian
+rootfs: local-lvm:vm-101-disk-0,size=16G
+swap: 512
+tags: ghiw-neg-test
+unprivileged: 1

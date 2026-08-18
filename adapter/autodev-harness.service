@@ -1,0 +1,16 @@
+[Unit]
+Description=AutoDev Harness Adapter v1 (minimal stdlib HTTP service)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/autodev-harness/harness_adapter.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/autodev-harness
+
+[Install]
+WantedBy=multi-user.target

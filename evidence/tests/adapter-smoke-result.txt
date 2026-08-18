@@ -1,0 +1,63 @@
+{
+  "/baseline": {
+    "http": 200,
+    "contract": "harness.baseline.v1",
+    "ok": true
+  },
+  "/research/code": {
+    "http": 200,
+    "contract": "harness.research.v1",
+    "ok": true
+  },
+  "/research/docs": {
+    "http": 200,
+    "contract": "harness.research.v1",
+    "ok": true
+  },
+  "/research/tests": {
+    "http": 200,
+    "contract": "harness.research.v1",
+    "ok": true
+  },
+  "/plan": {
+    "http": 200,
+    "contract": "harness.plan.v1",
+    "ok": true
+  },
+  "/build": {
+    "http": 200,
+    "contract": "harness.build-result.v1",
+    "ok": true
+  },
+  "/verify": {
+    "http": 200,
+    "contract": "harness.verification.v1",
+    "ok": true,
+    "passed_field": false
+  },
+  "/fix": {
+    "http": 200,
+    "contract": "harness.fix.v1",
+    "ok": true
+  },
+  "/review/correctness": {
+    "http": 200,
+    "contract": "harness.review.v1",
+    "ok": true
+  },
+  "/review/security": {
+    "http": 200,
+    "contract": "harness.review.v1",
+    "ok": true
+  },
+  "/review/quality": {
+    "http": 200,
+    "contract": "harness.review.v1",
+    "ok": true
+  },
+  "auth_without_token": {
+    "ok": true,
+    "http": 401
+  }
+}
+ALL_SMOKE_PASS True

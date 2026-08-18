@@ -1,0 +1,106 @@
+{
+  "updatedAt": "2026-06-21T18:09:10.000Z",
+  "createdAt": "2026-06-21T15:12:23.701Z",
+  "id": "7BdoKSsnOhApjEP8",
+  "name": "My workflow 2",
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Debug Minimal Form UI",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "project_slug",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "blueprint_text",
+              "fieldType": "textarea",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "path": "debug-minimal-form-ui"
+        }
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "c1fddbf9-ba98-4412-a489-a8a8886a1d8c",
+      "name": "On form submission",
+      "webhookId": "b6593795-95c8-4dcf-9018-942fd6e87595"
+    }
+  ],
+  "connections": {},
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "60293743-7910-4fe8-a685-127d6b9cce62",
+  "activeVersionId": "60293743-7910-4fe8-a685-127d6b9cce62",
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-06-21T15:12:23.703Z",
+      "createdAt": "2026-06-21T15:12:23.703Z",
+      "role": "workflow:owner",
+      "workflowId": "7BdoKSsnOhApjEP8",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": {
+    "updatedAt": "2026-06-21T15:24:14.139Z",
+    "createdAt": "2026-06-21T15:24:14.139Z",
+    "versionId": "60293743-7910-4fe8-a685-127d6b9cce62",
+    "workflowId": "7BdoKSsnOhApjEP8",
+    "nodes": [
+      {
+        "parameters": {
+          "formTitle": "Debug Minimal Form UI",
+          "formFields": {
+            "values": [
+              {
+                "fieldLabel": "project_slug",
+                "requiredField": true
+              },
+              {
+                "fieldLabel": "blueprint_text",
+                "fieldType": "textarea",
+                "requiredField": true
+              }
+            ]
+          },
+          "options": {
+            "path": "debug-minimal-form-ui"
+          }
+        },
+        "type": "n8n-nodes-base.formTrigger",
+        "typeVersion": 2.6,
+        "position": [
+          0,
+          0
+        ],
+        "id": "c1fddbf9-ba98-4412-a489-a8a8886a1d8c",
+        "name": "On form submission",
+        "webhookId": "b6593795-95c8-4dcf-9018-942fd6e87595"
+      }
+    ],
+    "connections": {},
+    "nodeGroups": [],
+    "authors": "Raik Müller",
+    "name": null,
+    "description": null,
+    "autosaved": true
+  },
+  "tags": []
+}

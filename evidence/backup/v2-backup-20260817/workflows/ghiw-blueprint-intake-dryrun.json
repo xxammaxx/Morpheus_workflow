@@ -1,0 +1,295 @@
+{
+  "updatedAt": "2026-08-10T17:26:30.000Z",
+  "createdAt": "2026-08-10T17:26:30.000Z",
+  "id": "ghiw-blueprint-intake-dryrun",
+  "name": "GHIW Blueprint Intake (DRY RUN)",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "manual-test-trigger",
+      "name": "Manual Test Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -250,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "140119ae-260b-4b82-9d93-dee48ee76d90",
+      "name": "Blueprint Intake Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "blueprint-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "ghiw-blueprint-intake"
+    },
+    {
+      "id": "5640d1a0-c471-4b29-a2d3-45c4858e5679",
+      "name": "Validate Blueprint",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        0
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === E5-R4 Blueprint Intake: Validate ===\n// Schema v1.0 validation — reject before any processing\n\nconst SCHEMA_VERSION = \"1.0\";\nconst ALLOWED_FIELDS = new Set([\n  \"schema_version\", \"request_id\", \"project_id\", \"project_name\",\n  \"repository\", \"blueprint\", \"blueprint_sha256\", \"requested_capabilities\",\n  \"target_environment\", \"dry_run\", \"constraints\", \"metadata\"\n]);\nconst ALLOWED_CAPABILITIES = new Set([\"build\", \"test\", \"lint\", \"docs\", \"evidence\", \"review\"]);\nconst MAX_BLUEPRINT = 300000;\nconst MAX_REQUEST = 500000;\n\nconst raw = $input.first().json.body || $input.first().json;\nconst errors = [];\nconst warnings = [];\n\n// --- Size limit ---\nconst reqStr = JSON.stringify(raw);\nif (reqStr.length > MAX_REQUEST) {\n  errors.push({code: \"REQUEST_TOO_LARGE\", field: null});\n}\n\n// --- Unknown fields ---\nfor (const key of Object.keys(raw)) {\n  if (!ALLOWED_FIELDS.has(key)) {\n    errors.push({code: \"UNKNOWN_FIELD\", field: key, message: \"Unknown field: \" + key});\n  }\n}\n\n// --- Schema version ---\nconst sv = raw.schema_version;\nif (!sv) {\n  errors.push({code: \"MISSING_REQUIRED_FIELD\", field: \"schema_version\"});\n} else if (sv !== SCHEMA_VERSION) {\n  errors.push({code: \"INVALID_SCHEMA_VERSION\", field: \"schema_version\", message: \"Expected \" + SCHEMA_VERSION + \", got \" + sv});\n}\n\n// --- Required fields ---\nfor (const f of [\"request_id\", \"project_id\", \"blueprint\"]) {\n  if (!raw[f]) {\n    errors.push({code: \"MISSING_REQUIRED_FIELD\", field: f, message: f + \" is required\"});\n  }\n}\n\n// --- Field validation ---\nconst requestId = String(raw.request_id || \"\");\nconst projectId = String(raw.project_id || \"\");\nconst blueprint = String(raw.blueprint || \"\");\n\nif (requestId && !/^[a-z0-9][a-z0-9-]{2,62}$/.test(requestId)) {\n  errors.push({code: \"INVALID_REQUEST_ID\", field: \"request_id\"});\n}\nif (projectId && !/^[a-z0-9][a-z0-9-]{2,62}$/.test(projectId)) {\n  errors.push({code: \"INVALID_PROJECT_ID\", field: \"project_id\"});\n}\nif (blueprint.length < 50) {\n  errors.push({code: \"BLUEPRINT_TOO_SHORT\", field: \"blueprint\"});\n}\nif (blueprint.length > MAX_BLUEPRINT) {\n  errors.push({code: \"BLUEPRINT_TOO_LONG\", field: \"blueprint\"});\n}\n\n// --- Repository validation ---\nconst repo = String(raw.repository || \"\");\nif (repo && !/^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?\\/[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/.test(repo)) {\n  errors.push({code: \"INVALID_REPOSITORY\", field: \"repository\"});\n}\n\n// --- Blueprint SHA256 verification ---\nconst expectedSha = raw.blueprint_sha256 || \"\";\nlet shaVerified = false;\nif (expectedSha) {\n  const crypto = require('crypto');\n  const actualSha = crypto.createHash('sha256').update(blueprint).digest('hex');\n  if (actualSha !== expectedSha) {\n    errors.push({code: \"BLUEPRINT_HASH_MISMATCH\", field: \"blueprint_sha256\"});\n  } else {\n    shaVerified = true;\n  }\n}\n\n// --- Danger scan ---\nconst DANGER_PATTERNS = [\n  [/\\.\\.\\//, \"PATH_TRAVERSAL\"],\n  [/\\/etc\\/passwd/, \"SENSITIVE_FILE\"],\n  [/rm\\s+-rf\\s+\\//, \"DESTRUCTIVE_COMMAND\"],\n  [/curl.*\\|.*sh/, \"PIPE_TO_SHELL\"],\n  [/\\$\\(.*\\)/, \"SHELL_EXPANSION\"],\n  [/`[^`]+`/, \"BACKTICK_EXECUTION\"]\n];\nfor (const [pat, code] of DANGER_PATTERNS) {\n  if (pat.test(reqStr)) {\n    errors.push({code: \"DANGEROUS_\" + code, field: null});\n    break;\n  }\n}\n\n// --- Secret scan ---\nconst SECRET_PATTERNS = [\n  [/sk-[A-Za-z0-9]{20,}/, \"OPENAI_API_KEY\"],\n  [/ghp_[A-Za-z0-9_]{20,}/, \"GITHUB_TOKEN\"],\n  [/-----BEGIN\\s+[A-Z\\s]+PRIVATE\\s+KEY-----/, \"PRIVATE_KEY\"]\n];\nfor (const [pat, code] of SECRET_PATTERNS) {\n  if (pat.test(blueprint)) {\n    errors.push({code: \"SECRET_\" + code, field: \"blueprint\"});\n    break;\n  }\n}\n\n// --- Injection scan (warn, don't block) ---\nconst INJECTION_PATTERNS = [\n  [/ignore\\s+(all\\s+)?(previous|prior|above)\\s+(instructions|rules|constraints)/i, \"INJECTION_IGNORE\"],\n  [/bypass\\s+(security|verification|gate|policy)/i, \"INJECTION_BYPASS\"],\n  [/disable\\s+(verifier|security\\s+gate)/i, \"INJECTION_DISABLE\"]\n];\nfor (const [pat, code] of INJECTION_PATTERNS) {\n  if (pat.test(blueprint)) {\n    warnings.push({code: code, message: \"Injection pattern detected — flagged not blocked\"});\n    break;\n  }\n}\n\n// --- Capability validation ---\nconst caps = raw.requested_capabilities || [];\nif (caps.length > 0) {\n  if (!Array.isArray(caps)) {\n    errors.push({code: \"INVALID_CAPABILITIES\", field: \"requested_capabilities\"});\n  } else {\n    for (const c of caps) {\n      if (!ALLOWED_CAPABILITIES.has(c)) {\n        errors.push({code: \"UNKNOWN_CAPABILITY\", field: \"requested_capabilities\", message: \"Unknown: \" + c});\n      }\n    }\n  }\n}\n\n// --- Dry run enforcement ---\nconst isDryRun = raw.dry_run !== false;  // defaults to true\n\nconst valid = errors.length === 0;\nconst normalizedProjectId = projectId.toLowerCase().trim();\n\nreturn [{\n  json: {\n    valid: valid,\n    status: valid ? \"VALID\" : \"REJECTED\",\n    errors: errors,\n    warnings: warnings,\n    normalized_project_id: normalizedProjectId,\n    blueprint_length: blueprint.length,\n    sha_verified: shaVerified,\n    dry_run: isDryRun,\n    // Preserve original for downstream\n    raw_request_id: requestId,\n    raw_project_id: projectId,\n    raw_project_name: raw.project_name || projectId,\n    raw_repository: repo || \"synthetic/\" + normalizedProjectId,\n    raw_blueprint: blueprint,\n    raw_blueprint_sha256: expectedSha,\n    raw_capabilities: caps,\n    raw_target: raw.target_environment || \"auto\"\n  }\n}];\n"
+      }
+    },
+    {
+      "id": "c426bca1-44b5-48b0-8c57-78c979905b9c",
+      "name": "Prepare Registry Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === E5-R4 Blueprint Intake: Registry Lookup ===\n// Read-only query of GHIW registry via SSH\n// Checks: project exists? builder exists? builder state?\n\nconst state = $input.first().json;\nconst projectKey = state.normalized_project_id;\nconst dryRun = state.dry_run;\n\n// Build SSH command for read-only registry query\nconst queryCmd = `sqlite3 -readonly -json /var/lib/ghiw-provisioner/registry.sqlite3 \\\n  \"SELECT builder_id, ctid, current_state FROM builders WHERE project_id='${projectKey}' LIMIT 1; \\\n   SELECT project_id, project_key, repository, current_state FROM projects WHERE project_key='${projectKey}' LIMIT 1;\"`;\n\nreturn [{\n  json: {\n    ...state,\n    registry_query_cmd: queryCmd,\n    registry_query_dry_run: dryRun\n  }\n}];\n"
+      }
+    },
+    {
+      "id": "ca8d483c-db88-434f-97f6-396846bbc8f3",
+      "name": "SSH Query Registry",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        750,
+        0
+      ],
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={{ $json.registry_query_cmd }}"
+      },
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "42a60f05-16eb-493f-8257-3eeb5aef531a",
+          "name": "dev-runner-ssh"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b631100c-5951-4a3b-a9b1-387edc77217c",
+      "name": "Builder Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        0
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === E5-R4 Blueprint Intake: Builder Decision ===\n// Determines: WOULD_REUSE_EXISTING | WOULD_PROVISION_NEW | REJECTED\n// DRY RUN: never calls op_ensure_builder or writes registry\n\nconst state = $input.first().json;\nconst valid = state.valid;\nconst dryRun = state.dry_run;\n\n// Parse registry query result\nlet projectExists = false;\nlet builderExists = false;\nlet builderId = null;\nlet builderCtid = null;\nlet builderState = null;\n\ntry {\n  const stdout = state.stdout || \"\";\n  // SQLite -json returns JSON arrays per SELECT\n  const parts = stdout.split(/\\n(?=\\[)/);\n  if (parts.length >= 2) {\n    const builders = JSON.parse(parts[1]);  // First SELECT: builders\n    const projects = JSON.parse(parts[2]);  // Second SELECT: projects\n    if (builders && builders.length > 0) {\n      builderExists = true;\n      builderId = builders[0].builder_id;\n      builderCtid = builders[0].ctid;\n      builderState = builders[0].current_state;\n    }\n    if (projects && projects.length > 0) {\n      projectExists = true;\n    }\n  }\n} catch(e) {\n  // Parse failure = no registry entries\n}\n\nlet decision = \"REJECTED\";\nlet decisionDetail = \"\";\nlet wouldMutation = false;\n\nif (!valid) {\n  decision = \"REJECTED\";\n  decisionDetail = \"Blueprint validation failed: \" + (state.errors || []).map(e => e.code).join(\", \");\n} else if (builderExists && builderState === \"BUILDER_READY\") {\n  decision = \"WOULD_REUSE_EXISTING\";\n  decisionDetail = \"Existing BUILDER_READY found: \" + builderId + \" (CT \" + builderCtid + \")\";\n} else if (projectExists && (!builderExists || builderState !== \"BUILDER_READY\")) {\n  decision = \"WOULD_PROVISION_NEW\";\n  decisionDetail = \"Project exists but no READY builder. Would provision new builder.\";\n  wouldMutation = true;\n} else if (!projectExists) {\n  decision = \"WOULD_PROVISION_NEW\";\n  decisionDetail = \"New project: \" + state.normalized_project_id + \". Would create project + provision builder.\";\n  wouldMutation = true;\n}\n\n// Hard dry-run guard\nlet mutationBlocked = false;\nif (wouldMutation && dryRun) {\n  mutationBlocked = true;\n  decisionDetail += \" [DRY_RUN: mutation blocked]\";\n}\nif (wouldMutation && !dryRun) {\n  decisionDetail += \" [LIVE: would execute mutation]\";\n}\n\nconst result = {\n  // Input\n  request_id: state.raw_request_id,\n  project_id: state.normalized_project_id,\n  blueprint_length: state.blueprint_length,\n  dry_run: dryRun,\n  valid: valid,\n  \n  // Registry state\n  project_exists: projectExists,\n  builder_exists: builderExists,\n  builder_id: builderId,\n  builder_ctid: builderCtid,\n  builder_state: builderState,\n  \n  // Decision\n  decision: decision,\n  decision_detail: decisionDetail,\n  would_mutate: wouldMutation,\n  mutation_blocked_by_dry_run: mutationBlocked,\n  \n  // Safety\n  errors: state.errors || [],\n  warnings: state.warnings || [],\n  \n  // Execution context\n  workflow_id: $workflow.id,\n  execution_id: $execution.id,\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: result }];\n"
+      }
+    },
+    {
+      "id": "ed88db95-09db-48d5-b76e-794540c4eb63",
+      "name": "Format Dry Run Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        0
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === E5-R4 Blueprint Intake: Format Result ===\nconst state = $input.first().json;\n\n// Build deterministic dry-run result\nconst dryRunResult = {\n  schema_version: \"1.0\",\n  workflow: \"GHIW Blueprint Intake (DRY RUN)\",\n  status: state.decision,\n  request_id: state.request_id,\n  project_id: state.project_id,\n  dry_run: state.dry_run,\n  result: {\n    valid: state.valid,\n    decision: state.decision,\n    detail: state.decision_detail,\n    project_exists: state.project_exists,\n    builder_exists: state.builder_exists,\n    builder_id: state.builder_id || null,\n    builder_ctid: state.builder_ctid || null,\n    builder_state: state.builder_state || null,\n    would_mutate: state.would_mutate,\n    mutation_blocked_by_dry_run: state.mutation_blocked_by_dry_run || false\n  },\n  errors: state.errors,\n  warnings: state.warnings || [],\n  execution: {\n    workflow_id: state.workflow_id,\n    execution_id: state.execution_id,\n    timestamp: state.timestamp\n  },\n  safety: {\n    dry_run_enforced: state.dry_run,\n    no_mutations_performed: true,\n    registry_read_only: true\n  }\n};\n\nreturn [{ json: dryRunResult }];\n"
+      }
+    },
+    {
+      "id": "81e6add2-0c23-4f6c-8807-9f677568da4b",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      }
+    },
+    {
+      "id": "1d3c8af8-b0a2-4e6a-a2c5-46df210222ae",
+      "name": "Format Error Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        200
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === E5-R4 Blueprint Intake: Error Handler ===\n// SSH failure or validation failure path\nconst state = $input.first().json || {};\n\nlet errors = [];\nif (state.errors) {\n  errors = state.errors;\n} else if (state.stdout) {\n  // SSH failed but we had prior state\n  errors = [{code: \"SSH_REGISTRY_QUERY_FAILED\", message: String(state.stdout || \"\").slice(0, 200)}];\n} else {\n  errors = [{code: \"UNKNOWN_ERROR\", message: \"Blueprint intake failed\"}];\n}\n\nconst result = {\n  schema_version: \"1.0\",\n  workflow: \"GHIW Blueprint Intake (DRY RUN)\",\n  status: \"ERROR\",\n  dry_run: true,\n  result: {\n    valid: false,\n    decision: \"ERROR\",\n    detail: \"Registry query or validation failed\",\n    would_mutate: false,\n    mutation_blocked_by_dry_run: true\n  },\n  errors: errors,\n  execution: {\n    workflow_id: $workflow.id,\n    execution_id: $execution.id,\n    timestamp: new Date().toISOString()\n  },\n  safety: {\n    dry_run_enforced: true,\n    no_mutations_performed: true\n  }\n};\n\nreturn [{ json: result }];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Blueprint Intake Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Blueprint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Blueprint": {
+      "main": [
+        [
+          {
+            "node": "Prepare Registry Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Registry Query": {
+      "main": [
+        [
+          {
+            "node": "SSH Query Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH Query Registry": {
+      "main": [
+        [
+          {
+            "node": "Builder Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Builder Decision": {
+      "main": [
+        [
+          {
+            "node": "Format Dry Run Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Dry Run Result": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error Result": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Test Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Blueprint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {
+    "Manual Test Trigger": [
+      {
+        "json": {
+          "schema_version": "1.0",
+          "request_id": "f1-existing-builder",
+          "project_id": "e3r6-canary-001",
+          "project_name": "E3R6 Canary Project",
+          "repository": "synthetic/e3r6-canary",
+          "blueprint": "# Hello Blueprint Canary\n\nA minimal test application for blueprint intake validation.\n\n## Goal\nCreate a simple hello-world project that proves the blueprint intake path works.\n\n## Requirements\n- Must produce a README.md file\n- Must contain at least one source file\n- Must pass a basic validation test\n\n## Acceptance Criteria\n- README.md created with project name\n- Source file created with hello world\n- Test passes\n",
+          "blueprint_sha256": "022d842cdbcdeb9f427fea91bf8aaef74f5b78a6ff7faaf8708a8eef81c6795c",
+          "dry_run": true
+        }
+      },
+      {
+        "json": {
+          "schema_version": "1.0",
+          "request_id": "f2-new-project",
+          "project_id": "hello-blueprint-canary",
+          "project_name": "Hello Blueprint Canary",
+          "repository": "xxammaxx/hello-canary",
+          "blueprint": "# Hello Blueprint Canary\n\nA minimal test application for blueprint intake validation.\n\n## Goal\nCreate a simple hello-world project that proves the blueprint intake path works.\n\n## Requirements\n- Must produce a README.md file\n- Must contain at least one source file\n- Must pass a basic validation test\n\n## Acceptance Criteria\n- README.md created with project name\n- Source file created with hello world\n- Test passes\n",
+          "blueprint_sha256": "022d842cdbcdeb9f427fea91bf8aaef74f5b78a6ff7faaf8708a8eef81c6795c",
+          "requested_capabilities": [
+            "build",
+            "test"
+          ],
+          "dry_run": true
+        }
+      },
+      {
+        "json": {
+          "schema_version": "0.9",
+          "request_id": "f3-malicious",
+          "project_id": "../../etc/passwd",
+          "blueprint": "too short",
+          "dry_run": true
+        }
+      }
+    ]
+  },
+  "versionId": "3809f55c-609a-4e69-80c5-65a2620dcfcb",
+  "activeVersionId": null,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-08-10T17:25:45.592Z",
+      "createdAt": "2026-08-10T17:25:45.592Z",
+      "role": "workflow:owner",
+      "workflowId": "ghiw-blueprint-intake-dryrun",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

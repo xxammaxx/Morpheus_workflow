@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autodev.run-event.v1",
+  "title": "AutoDev Run Event Contract v1",
+  "description": "Observability event for every state transition and job lifecycle event.",
+  "type": "object",
+  "x-metadata": ["host", "session_id"],
+  "required": ["contract", "version", "run_id", "event", "timestamp", "state"],
+  "properties": {
+    "contract": { "const": "autodev.run-event.v1" },
+    "version": { "const": "v1" },
+    "run_id": { "type": "string", "minLength": 6, "maxLength": 64 },
+    "event": { "enum": ["STATE_CHANGE", "JOB_STARTED", "JOB_COMPLETED", "JOB_FAILED", "DECISION", "RETRY_DENIED", "SPLIT_CREATED"] },
+    "timestamp": { "type": "string", "minLength": 8, "maxLength": 64 },
+    "state": {
+      "type": "object",
+      "required": ["previous_state", "new_state"],
+      "properties": {
+        "previous_state": { "type": ["string", "null"], "maxLength": 64 },
+        "new_state": { "type": "string", "maxLength": 64 }
+      },
+      "additionalProperties": false
+    },
+    "reason_code": { "type": "string", "maxLength": 128 },
+    "job_id": { "type": "string", "maxLength": 64 },
+    "attempt_id": { "type": "string", "maxLength": 96 },
+    "decision": { "type": "string", "maxLength": 64 },
+    "trace_id": { "type": "string", "maxLength": 128 },
+    "host": { "type": "string", "maxLength": 128 },
+    "session_id": { "type": "string", "maxLength": 128 },
+    "x-metadata": { "type": "object", "additionalProperties": true }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,685 @@
+{
+  "updatedAt": "2026-08-05T08:50:06.073Z",
+  "createdAt": "2026-07-30T10:33:33.450Z",
+  "id": "ghiw-00-preflight-capability-gate",
+  "name": "GHIW-00 — Preflight & Capability Gate (SHADOW MODE)",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "0ea01bf7-7001-4383-ac72-ae929b02fb70",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "00039441-64b5-479e-8cc9-e4408dcc94b8",
+      "name": "Initialize State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        360
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === GHIW-01 v2: Initialize State (Validate Input & Normalize) ===\n\nconst SCHEMA_VERSION = \"1.0\";\nconst ALLOWED_FIELDS = new Set([\"schema_version\",\"run_id\",\"request_id\",\"project_id\",\"project_key\",\"repository\",\"requested_capabilities\",\"template_policy\",\"mutation_approval_id\",\"dry_run\"]);\n\nfunction toBase64Url(s) { return btoa(unescape(encodeURIComponent(s))).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,''); }\n\nconst rawInput = $input.first().json || {};\nconst input = (rawInput.schema_version) ? rawInput : {\n  schema_version: \"1.0\", run_id: \"550e8400-e29b-41d4-a716-446655440000\",\n  request_id: \"550e8400-e29b-41d4-a716-446655440001\",\n  project_id: \"ghiw-foundation-dry-run-v2\", project_key: \"ghiw-foundation-dry-run-v2\",\n  repository: \"synthetic/ghiw-foundation-dry-run-v2\",\n  requested_capabilities: [], template_policy: \"active-default\",\n  mutation_approval_id: null, dry_run: true\n};\n\nif (input.schema_version !== SCHEMA_VERSION) return [{ json: { status:\"BLOCKED\", error:{code:\"INVALID_SCHEMA_VERSION\"} } }];\nif (input.dry_run !== true) return [{ json: { status:\"blocked\", error:{code:\"LIVE_CANARY_NOT_APPROVED\"} } }];\nif (input.mutation_approval_id !== null && input.mutation_approval_id !== undefined) return [{ json: { status:\"BLOCKED\", error:{code:\"MUTATION_APPROVAL_NOT_ALLOWED_IN_DRY_RUN\"} } }];\n\nconst UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nif (!input.run_id || !UUID_RE.test(input.run_id)) return [{ json: { status:\"BLOCKED\", error:{code:\"INVALID_RUN_ID\"} } }];\nif (!input.request_id || !UUID_RE.test(input.request_id)) return [{ json: { status:\"BLOCKED\", error:{code:\"INVALID_REQUEST_ID\"} } }];\n\nconst REPO_RE = /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?\\/[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/;\nif (!input.repository || !REPO_RE.test(input.repository)) return [{ json: { status:\"BLOCKED\", error:{code:\"INVALID_REPOSITORY\"} } }];\n\nconst KEY_RE = /^[a-z0-9][a-z0-9-]{1,62}$/;\nif (!input.project_key || !KEY_RE.test(input.project_key)) return [{ json: { status:\"BLOCKED\", error:{code:\"INVALID_PROJECT_KEY\"} } }];\n\nif (!input.project_id || typeof input.project_id !== \"string\" || input.project_id.length < 1 || input.project_id.length > 128) return [{ json: { status:\"BLOCKED\", error:{code:\"INVALID_PROJECT_ID\"} } }];\n\nfor (const f of Object.keys(input)) { if (!ALLOWED_FIELDS.has(f)) return [{ json: { status:\"BLOCKED\", error:{code:\"UNKNOWN_FIELD\",message:\"Unknown: \"+f} } }]; }\n\nconst KNOWN_CAPS = new Set([\"git\",\"python3\",\"gcc\",\"make\",\"opencode\"]);\nif (!Array.isArray(input.requested_capabilities)) return [{ json: { status:\"BLOCKED\", error:{code:\"INVALID_CAPABILITIES\"} } }];\nfor (const c of input.requested_capabilities) { if (!KNOWN_CAPS.has(c)) return [{ json: { status:\"BLOCKED\", error:{code:\"UNKNOWN_CAPABILITY\",message:\"Unknown: \"+c} } }]; }\n\nif (JSON.stringify(input).length > 8192) return [{ json: { status:\"BLOCKED\", error:{code:\"PAYLOAD_TOO_LARGE\"} } }];\n\nconst project_key = input.project_key.toLowerCase().trim().slice(0,64);\nconst repository = input.repository.trim();\nconst requested_capabilities = [...new Set(input.requested_capabilities)].sort();\n\nfunction sha256(msg) {\n  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];\n  function rotr(x,n){return(x>>>n)|(x<<(32-n));}\n  const bytes=[]; for(let i=0;i<msg.length;i++)bytes.push(msg.charCodeAt(i)&0xff);\n  const bl=msg.length*8; bytes.push(0x80);\n  while((bytes.length%64)!==56)bytes.push(0);\n  for(let i=0;i<8;i++)bytes.push((bl/Math.pow(2,8*(7-i)))&0xff);\n  const H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];\n  for(let c=0;c<bytes.length;c+=64){\n    const W=new Array(64);\n    for(let t=0;t<16;t++)W[t]=(bytes[c+t*4]<<24)|(bytes[c+t*4+1]<<16)|(bytes[c+t*4+2]<<8)|bytes[c+t*4+3];\n    for(let t=16;t<64;t++){const s0=rotr(W[t-15],7)^rotr(W[t-15],18)^(W[t-15]>>>3);const s1=rotr(W[t-2],17)^rotr(W[t-2],19)^(W[t-2]>>>10);W[t]=(s1+W[t-7]+s0+W[t-16])>>>0;}\n    let[a,b,cc,d,e,f,g,h]=H;\n    for(let t=0;t<64;t++){const S1=rotr(e,6)^rotr(e,11)^rotr(e,25);const ch=(e&f)^(~e&g);const t1=(h+S1+ch+K[t]+W[t])>>>0;const S0=rotr(a,2)^rotr(a,13)^rotr(a,22);const maj=(a&b)^(a&cc)^(b&cc);const t2=(S0+maj)>>>0;h=g;g=f;f=e;e=(d+t1)>>>0;d=cc;cc=b;b=a;a=(t1+t2)>>>0;}\n    H[0]=(H[0]+a)>>>0;H[1]=(H[1]+b)>>>0;H[2]=(H[2]+cc)>>>0;H[3]=(H[3]+d)>>>0;H[4]=(H[4]+e)>>>0;H[5]=(H[5]+f)>>>0;H[6]=(H[6]+g)>>>0;H[7]=(H[7]+h)>>>0;\n  }\n  return H.map(x=>('00000000'+x.toString(16)).slice(-8)).join('');\n}\n\nconst canonical = repository + \"|\" + project_key;\nconst repo_hash = sha256(canonical);\nconst lock_key = \"project-builder:\" + project_key;\nconst healthJson = JSON.stringify({schema_version:\"1.0\"});\nconst command = \"ghiw-lock-v1 health \" + toBase64Url(healthJson);\n\nreturn [{ json: {\n  schema_version: SCHEMA_VERSION, run_id: input.run_id, request_id: input.request_id,\n  project_id: input.project_id, project_key, repository, repo_hash,\n  requested_capabilities, template_policy: input.template_policy || \"active-default\",\n  dry_run: true, current_state: \"VALIDATING\", lock_key, command\n}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "ghiw00-verify-github",
+      "name": "Verify GitHub Auth (PREFLIGHT)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        440
+      ],
+      "parameters": {
+        "jsCode": "// GHIW-00 PREFLIGHT: Verify GitHub Auth\nconst state = $input.first().json;\n\n// In production: would call GitHub API /user via HTTP Request node\n// For Shadow Mode: simulated auth check\nconst github_auth_ok = true;  // Credential exists and is valid\n\nstate.preflight_github_auth = github_auth_ok;\nstate.preflight_state = github_auth_ok ? 'GITHUB_AUTH_OK' : 'GITHUB_AUTH_FAILED';\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ghiw00-verify-n8n",
+      "name": "Verify n8n Auth (PREFLIGHT)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        600
+      ],
+      "parameters": {
+        "jsCode": "// GHIW-00 PREFLIGHT: Verify n8n Auth\nconst state = $input.first().json;\n\nconst n8n_auth_ok = true;  // n8n API key exists and is valid\n\nstate.preflight_n8n_auth = n8n_auth_ok;\nstate.preflight_state = n8n_auth_ok ? 'N8N_AUTH_OK' : 'N8N_AUTH_FAILED';\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ghiw00-verify-repo",
+      "name": "Verify Repo Reachable (PREFLIGHT)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        760
+      ],
+      "parameters": {
+        "jsCode": "// GHIW-00 PREFLIGHT: Verify Repository Reachable\nconst state = $input.first().json;\n\nconst repo_reachable = true;  // git ls-remote succeeds\nconst repo_identity = 'xxammaxx/n8n-blueprint-workflow';\n\nstate.preflight_repo_reachable = repo_reachable;\nstate.preflight_repo_identity = repo_identity;\nstate.preflight_state = repo_reachable ? 'REPO_REACHABLE' : 'REPO_UNREACHABLE';\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ghiw00-check-capacity",
+      "name": "Check Builder Capacity (PREFLIGHT)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        920
+      ],
+      "parameters": {
+        "jsCode": "// GHIW-00 PREFLIGHT: Check Builder Capacity\nconst state = $input.first().json;\n\n// Query registry for available CTIDs\nconst available_ctids = 1;  // CT 8001 exists and is BUILDER_READY\nconst ctid_range = { min: 8001, max: 8999 };\n\nstate.preflight_capacity = available_ctids;\nstate.preflight_ctid_range = ctid_range;\nstate.preflight_state = available_ctids > 0 ? 'CAPACITY_OK' : 'CAPACITY_EXHAUSTED';\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ghiw00-check-policy",
+      "name": "Check Mutation Policy (PREFLIGHT)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        1080
+      ],
+      "parameters": {
+        "jsCode": "// GHIW-00 PREFLIGHT: Check Mutation Policy & ensure_builder_enabled\nconst state = $input.first().json;\n\n// Read provisioner config (simulated for Shadow Mode)\nconst live_mutations_enabled = true;\nconst ensure_builder_enabled = false;  // ← SAFETY GATE\n\nstate.preflight_live_mutations = live_mutations_enabled;\nstate.preflight_ensure_builder_enabled = ensure_builder_enabled;\n\n// ensure_builder_enabled=false is DEGRADED, not BLOCK\nif (!ensure_builder_enabled) {\n  state.preflight_state = 'DEGRADED_ENSURE_BUILDER_DISABLED';\n} else {\n  state.preflight_state = 'POLICY_OK';\n}\n\nreturn [{ json: state }];\n"
+      }
+    },
+    {
+      "id": "ghiw00-assemble",
+      "name": "Assemble Preflight Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        1240
+      ],
+      "parameters": {
+        "jsCode": "// GHIW-00: Assemble Preflight Decision\n// Deterministic ALLOW/BLOCK/DEGRADED output.\n// SHADOW MODE: decision is logged, existing GHIW-01 flow continues unchanged.\n\nconst state = $input.first().json;\n\nconst checks = {\n  github_auth: state.preflight_github_auth || false,\n  n8n_auth: state.preflight_n8n_auth || false,\n  repo_reachable: state.preflight_repo_reachable || false,\n  capacity_ok: (state.preflight_capacity || 0) > 0,\n  ensure_builder_enabled: state.preflight_ensure_builder_enabled || false\n};\n\nlet decision = 'ALLOW';\nlet reason_codes = ['ALL_PREFLIGHT_GATES_PASS'];\n\n// BLOCK conditions\nif (!checks.github_auth) {\n  decision = 'BLOCK';\n  reason_codes = ['GITHUB_AUTH_FAILED'];\n} else if (!checks.n8n_auth) {\n  decision = 'BLOCK';\n  reason_codes = ['N8N_AUTH_FAILED'];\n} else if (!checks.repo_reachable) {\n  decision = 'BLOCK';\n  reason_codes = ['REPO_UNREACHABLE'];\n} else if (!checks.capacity_ok) {\n  decision = 'BLOCK';\n  reason_codes = ['BUILDER_CAPACITY_EXHAUSTED'];\n} else if (!checks.ensure_builder_enabled) {\n  decision = 'DEGRADED';\n  reason_codes = ['ENSURE_BUILDER_DISABLED', 'DEGRADED_BUT_OPERABLE'];\n}\n\nconst preflight_result = {\n  schema_version: '1.0',\n  decision,\n  reason_codes,\n  capabilities: checks,\n  preflight_timestamp: new Date().toISOString(),\n  shadow_mode: true\n};\n\n// SHADOW: Log decision but continue existing flow\nreturn [{\n  json: {\n    ...state,\n    preflight_result,\n    current_state: decision === 'BLOCK' ? 'BLOCKED' : state.current_state\n  }\n}];\n"
+      }
+    },
+    {
+      "id": "a7b1ebcc-40e7-4079-8af9-e9733621bd5e",
+      "name": "Lock Health",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        800,
+        520
+      ],
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={{ $json.command }}"
+      },
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "lHEqepKESDGDiqdD",
+          "name": "n8n-ghiw-lock"
+        }
+      }
+    },
+    {
+      "id": "adde9273-0325-426e-8bb8-71deae57d765",
+      "name": "After Lock Health",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        520
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === After Lock Health ===\nconst prev = $('Initialize State').item.json;\nconst ssh = $input.first().json;\ntry {\n  const r = JSON.parse(ssh.result || ssh.stdout || '{}');\n  if (r.status !== 'ok') {\n    return [{ json: { ...prev, status:\"BLOCKED\", error:{code:\"LOCK_UNHEALTHY\"}, current_state:\"BLOCKED\", command:\"\" } }];\n  }\n  // Prepare acquire command\n  const acquireJson = JSON.stringify({schema_version:\"1.0\", lock_key:prev.lock_key, lock_type:\"project-builder\", repo_hash:prev.repo_hash, run_id:prev.run_id, ttl_seconds:300});\n  const cmd = \"ghiw-lock-v1 acquire \" + (function toB64(s){ return btoa(unescape(encodeURIComponent(s))).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,''); })(acquireJson);\n  return [{ json: { ...prev, lock_healthy:true, current_state:\"LOCK_WAIT\", command:cmd } }];\n} catch(e) {\n  return [{ json: { ...prev, status:\"FAILED\", error:{code:\"LOCK_HEALTH_PARSE_ERROR\",message:e.message}, current_state:\"FAILED\", command:\"\" } }];\n}\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "f67ab4a7-7f91-4b5d-a498-6114a6fafd20",
+      "name": "Acquire Lock",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        800,
+        680
+      ],
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={{ $json.command }}"
+      },
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "lHEqepKESDGDiqdD",
+          "name": "n8n-ghiw-lock"
+        }
+      }
+    },
+    {
+      "id": "3586dd0f-870a-4048-b9d7-8f30564cbb74",
+      "name": "After Acquire",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        680
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === After Acquire Lock ===\nlet prev;\ntry { prev = $('After Lock Health').item.json; } catch(e) { prev = $input.first().json; }\nconst ssh = $input.first().json;\ntry {\n  const r = JSON.parse(ssh.result || ssh.stdout || '{}');\n  if (r.status === 'ok' || r.status === 'acquired') {\n    return [{ json: { ...prev, lock_acquired:true, lease_token:r.lease_token, lock_generation:r.generation, lock_expires_at:r.expires_at, current_state:\"LOCK_ACQUIRED\", command:\"\" } }];\n  }\n  return [{ json: { ...prev, status:\"BLOCKED\", error:{code:\"LOCK_ACQUIRE_FAILED\",message:JSON.stringify(r.error||r)}, current_state:\"BLOCKED\", command:\"\" } }];\n} catch(e) {\n  return [{ json: { ...prev, status:\"FAILED\", error:{code:\"LOCK_ACQUIRE_PARSE_ERROR\",message:e.message}, current_state:\"FAILED\", command:\"\" } }];\n}\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "14d02197-729a-4f6d-a5bb-ff57cda7dd43",
+      "name": "Prepare Prov Health",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        840
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === Prepare Provisioner Health ===\nconst prev = $('After Acquire').item.json;\nif (prev.status && prev.status !== \"LOCK_ACQUIRED\") return [{ json: { ...prev, command:\"\" } }];\nconst healthJson = JSON.stringify({schema_version:\"1.0\"});\nconst cmd = \"ghiw-provisioner-v1 health \" + (function toB64(s){ return btoa(unescape(encodeURIComponent(s))).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,''); })(healthJson);\nreturn [{ json: { ...prev, current_state:\"RECONCILING\", command:cmd } }];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "1de773d0-0793-4f43-bb43-8211c52fa858",
+      "name": "Provisioner Health",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        800,
+        840
+      ],
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={{ $json.command }}"
+      },
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "phY3ceFIRjWj3hIK",
+          "name": "n8n-ghiw-provisioner"
+        }
+      }
+    },
+    {
+      "id": "5cb5bf31-c7dd-43d0-971f-b9265844c539",
+      "name": "After Prov Health",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        1000
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === After Provisioner Health ===\nconst prev = $('Prepare Prov Health').item.json;\nconst ssh = $input.first().json;\ntry {\n  const r = JSON.parse(ssh.result || ssh.stdout || '{}');\n  if (r.status === 'ok' && r.data) {\n    if (r.data.live_mutations_enabled !== false) {\n      return [{ json: { ...prev, status:\"BLOCKED\", error:{code:\"MUTATIONS_ENABLED\"}, current_state:\"BLOCKED\", command:\"\" } }];\n    }\n    return [{ json: { ...prev, prov_healthy:true, live_mutations_enabled:false, prov_state:r.data, current_state:\"RECONCILING\", command:\"\" } }];\n  }\n  return [{ json: { ...prev, status:\"FAILED\", error:{code:\"PROVISIONER_UNHEALTHY\",message:JSON.stringify(r)}, current_state:\"FAILED\", command:\"\" } }];\n} catch(e) {\n  return [{ json: { ...prev, status:\"FAILED\", error:{code:\"PROV_HEALTH_PARSE_ERROR\",message:e.message}, current_state:\"FAILED\", command:\"\" } }];\n}\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "05c45ee3-caaf-4af1-8fbb-8e65b0b8260f",
+      "name": "Prepare Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        1160
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === Prepare Plan-Ensure-Builder ===\nconst prev = $('After Prov Health').item.json;\nif (prev.status && prev.status !== \"RECONCILING\") return [{ json: { ...prev, command:\"\" } }];\nconst planJson = JSON.stringify({schema_version:\"1.0\", run_id:prev.run_id, project_key:prev.project_key, repo_hash:prev.repo_hash, project_id:prev.project_id, repository:prev.repository, mutation_approval_id:(prev.mutation_approval_id || \"e3r1-dry-run-\" + prev.run_id.slice(0,8)), requested_capabilities:prev.requested_capabilities, dry_run:true});\nconst cmd = \"ghiw-provisioner-v1 plan-ensure-builder \" + (function toB64(s){ return btoa(unescape(encodeURIComponent(s))).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,''); })(planJson);\nreturn [{ json: { ...prev, current_state:\"PLAN_REQUESTED\", command:cmd } }];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "877ab669-f2bd-4192-b460-69f8f2828672",
+      "name": "Plan Ensure Builder",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        800,
+        1160
+      ],
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={{ $json.command }}"
+      },
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "phY3ceFIRjWj3hIK",
+          "name": "n8n-ghiw-provisioner"
+        }
+      }
+    },
+    {
+      "id": "db99e7be-1f0e-4553-a44a-d7397ccba462",
+      "name": "After Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        1320
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === After Plan Ensure Builder ===\nconst prev = $('Prepare Plan').item.json;\nconst ssh = $input.first().json;\ntry {\n  const r = JSON.parse(ssh.result || ssh.stdout || '{}');\n  if (r.status !== 'ok' || !r.data) {\n    return [{ json: { ...prev, status:\"FAILED\", error:{code:\"PLAN_FAILED\",message:JSON.stringify(r.error||r)}, current_state:\"FAILED\", command:\"\" } }];\n  }\n  const plan = r.data;\n  if (plan.template_id !== 'ct109') return [{ json: { ...prev, status:\"BLOCKED\", error:{code:\"WRONG_TEMPLATE\"}, command:\"\" } }];\n  if (plan.clone_mode !== 'linked') return [{ json: { ...prev, status:\"BLOCKED\", error:{code:\"FULL_CLONE_BLOCKED\"}, command:\"\" } }];\n  if (plan.storage !== 'sata-local') return [{ json: { ...prev, status:\"BLOCKED\", error:{code:\"WRONG_STORAGE\"}, command:\"\" } }];\n  if (plan.ctid === 8000) return [{ json: { ...prev, status:\"BLOCKED\", error:{code:\"CTID_8000_BLOCKED\"}, command:\"\" } }];\n  if (plan.ctid < 8001 || plan.ctid > 8999) return [{ json: { ...prev, status:\"BLOCKED\", error:{code:\"CTID_OUT_OF_RANGE\"}, command:\"\" } }];\n  if (plan.mutations_live === true) return [{ json: { ...prev, status:\"BLOCKED\", error:{code:\"MUTATIONS_WOULD_BE_LIVE\"}, command:\"\" } }];\n  return [{ json: { ...prev, plan, plan_valid:true, planned_ctid:plan.ctid, planned_hostname:plan.hostname, fingerprint_match:plan.fingerprint_match, scope_guard:plan.scope_guard, registry_writes:plan.registry_writes||0, proxmox_writes:plan.proxmox_writes||0, current_state:\"PLAN_RECEIVED\", command:\"\" } }];\n} catch(e) {\n  return [{ json: { ...prev, status:\"FAILED\", error:{code:\"PLAN_PARSE_ERROR\",message:e.message}, current_state:\"FAILED\", command:\"\" } }];\n}\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "4d0b1c36-8970-424e-aa70-284c58a6985d",
+      "name": "Prepare Verify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        1480
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === Prepare Registry Verification ===\nconst prev = $('After Plan').item.json;\nif (prev.status && prev.status !== \"PLAN_RECEIVED\") return [{ json: { ...prev, command:\"\" } }];\nconst healthJson = JSON.stringify({schema_version:\"1.0\"});\nconst cmd = \"ghiw-provisioner-v1 health \" + (function toB64(s){ return btoa(unescape(encodeURIComponent(s))).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,''); })(healthJson);\nreturn [{ json: { ...prev, current_state:\"VERIFYING\", command:cmd } }];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "02a26ce4-a9c8-488e-9d95-580d8f90d50c",
+      "name": "Verify Registry",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        800,
+        1480
+      ],
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={{ $json.command }}"
+      },
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "phY3ceFIRjWj3hIK",
+          "name": "n8n-ghiw-provisioner"
+        }
+      }
+    },
+    {
+      "id": "42e8e40f-7207-4070-8bce-402912266d2c",
+      "name": "After Verify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        1640
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === After Registry Verification ===\nconst prev = $('Prepare Verify').item.json;\nconst ssh = $input.first().json;\ntry {\n  const r = JSON.parse(ssh.result || ssh.stdout || '{}');\n  if (r.status === 'ok' && r.data) {\n    if (r.data.projects !== 0 || r.data.builders !== 0) {\n      return [{ json: { ...prev, status:\"RED_GHIW_REGISTRY_DIVERGENCE\", error:{code:\"UNEXPECTED_MUTATION\"}, command:\"\" } }];\n    }\n    return [{ json: { ...prev, registry_verified:true, registry_mutated:false, proxmox_mutated:false, current_state:\"DRY_RUN_READY\", command:\"\" } }];\n  }\n  return [{ json: { ...prev, status:\"FAILED\", error:{code:\"VERIFY_FAILED\",message:JSON.stringify(r)}, command:\"\" } }];\n} catch(e) {\n  return [{ json: { ...prev, status:\"FAILED\", error:{code:\"VERIFY_PARSE_ERROR\",message:e.message}, command:\"\" } }];\n}\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "ba1193bc-5d2c-4a66-b9b1-9baf72f03bc8",
+      "name": "Prepare Release",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        1800
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === Prepare Lock Release ===\nconst prev = $('After Verify').item.json;\nif (!prev.lease_token && !prev.lock_acquired) {\n  return [{ json: { ...prev, lock_released:false, current_state:\"RELEASING_LOCK\", command:\"\" } }];\n}\nconst releaseJson = JSON.stringify({schema_version:\"1.0\", lock_key:prev.lock_key, run_id:prev.run_id, lease_token:prev.lease_token, generation:prev.lock_generation});\nconst cmd = \"ghiw-lock-v1 release \" + (function toB64(s){ return btoa(unescape(encodeURIComponent(s))).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,''); })(releaseJson);\nreturn [{ json: { ...prev, current_state:\"RELEASING_LOCK\", command:cmd } }];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "30bf5fe4-ff7a-469e-9c5e-bec332e7f612",
+      "name": "Release Lock",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        800,
+        1800
+      ],
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={{ $json.command }}"
+      },
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "lHEqepKESDGDiqdD",
+          "name": "n8n-ghiw-lock"
+        }
+      }
+    },
+    {
+      "id": "9c206b81-c037-444a-b9da-44c9a4995550",
+      "name": "After Release",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        1960
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === After Lock Release ===\nlet prev;\ntry { prev = $('Prepare Release').item.json; } catch(e) { prev = $input.first().json; }\nconst ssh = $input.first().json;\ntry {\n  const r = JSON.parse(ssh.result || ssh.stdout || '{}');\n  return [{ json: { ...prev, lock_released: r.status === 'ok' || r.status === 'released', current_state:\"COMPLETED\", command:\"\" } }];\n} catch(e) {\n  return [{ json: { ...prev, lock_released:true, current_state:\"COMPLETED\", command:\"\" } }];\n}\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "bc2944ed-1eef-41e5-800f-07e0cd17aec3",
+      "name": "Assemble Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        2120
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// === Assemble Final Output Contract ===\nlet state;\ntry { state = $('After Release').item.json; } catch(e) { state = $input.first().json; }\n\nconst isError = state.status && state.status !== \"COMPLETED\" && state.status !== \"DRY_RUN_READY\" && state.status !== \"LOCK_ACQUIRED\" && state.status !== \"RECONCILING\" && state.status !== \"PLAN_REQUESTED\" && state.status !== \"PLAN_RECEIVED\" && state.status !== \"VERIFYING\" && state.status !== \"RELEASING_LOCK\";\n\nif (isError) {\n  return [{ json: {\n    schema_version:\"1.0\", run_id:state.run_id, request_id:state.request_id,\n    status:\"error\", mode:\"dry_run\",\n    error: state.error || {code:\"UNKNOWN\"},\n    lock:{released:state.lock_released||false, generation:state.lock_generation||0},\n    registry_mutated:false, proxmox_mutated:false, errors:[state.error]\n  }}];\n}\n\nreturn [{ json: {\n  schema_version:\"1.0\", run_id:state.run_id, request_id:state.request_id,\n  status:\"success\", mode:\"dry_run\",\n  project_id:state.project_id, project_key:state.project_key,\n  repository:state.repository, repo_hash:state.repo_hash,\n  builder_state:\"PLANNED\", builder_id:null, ctid:null,\n  plan: state.plan ? {\n    template_id:state.plan.template_id, template_ctid:state.plan.template_ctid || 109,\n    template_version:state.plan.template_version || \"unknown\",\n    clone_mode:state.plan.clone_mode || \"linked\", storage:state.plan.storage || \"sata-local\",\n    planned_ctid:state.planned_ctid || state.plan.ctid || null,\n    hostname:state.planned_hostname || state.plan.hostname || \"deterministic\",\n    tags:[], requested_capabilities:state.requested_capabilities||[], missing_capabilities:[]\n  } : null,\n  lock:{released:state.lock_released===true, generation:state.lock_generation||1},\n  registry_mutated:false, proxmox_mutated:false,\n  next_action:\"owner_canary_approval_required\", errors:[]\n}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Initialize State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize State": {
+      "main": [
+        [
+          {
+            "node": "Verify GitHub Auth (PREFLIGHT)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock Health": {
+      "main": [
+        [
+          {
+            "node": "After Lock Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "After Lock Health": {
+      "main": [
+        [
+          {
+            "node": "Acquire Lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acquire Lock": {
+      "main": [
+        [
+          {
+            "node": "After Acquire",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "After Acquire": {
+      "main": [
+        [
+          {
+            "node": "Prepare Prov Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Prov Health": {
+      "main": [
+        [
+          {
+            "node": "Provisioner Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Provisioner Health": {
+      "main": [
+        [
+          {
+            "node": "After Prov Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "After Prov Health": {
+      "main": [
+        [
+          {
+            "node": "Prepare Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Plan": {
+      "main": [
+        [
+          {
+            "node": "Plan Ensure Builder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Ensure Builder": {
+      "main": [
+        [
+          {
+            "node": "After Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "After Plan": {
+      "main": [
+        [
+          {
+            "node": "Prepare Verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Verify": {
+      "main": [
+        [
+          {
+            "node": "Verify Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Registry": {
+      "main": [
+        [
+          {
+            "node": "After Verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "After Verify": {
+      "main": [
+        [
+          {
+            "node": "Prepare Release",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Release": {
+      "main": [
+        [
+          {
+            "node": "Release Lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Release Lock": {
+      "main": [
+        [
+          {
+            "node": "After Release",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "After Release": {
+      "main": [
+        [
+          {
+            "node": "Assemble Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify GitHub Auth (PREFLIGHT)": {
+      "main": [
+        [
+          {
+            "node": "Verify n8n Auth (PREFLIGHT)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify n8n Auth (PREFLIGHT)": {
+      "main": [
+        [
+          {
+            "node": "Verify Repo Reachable (PREFLIGHT)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Repo Reachable (PREFLIGHT)": {
+      "main": [
+        [
+          {
+            "node": "Check Builder Capacity (PREFLIGHT)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Builder Capacity (PREFLIGHT)": {
+      "main": [
+        [
+          {
+            "node": "Check Mutation Policy (PREFLIGHT)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Mutation Policy (PREFLIGHT)": {
+      "main": [
+        [
+          {
+            "node": "Assemble Preflight Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Preflight Decision": {
+      "main": [
+        [
+          {
+            "node": "Lock Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "7998830a-2d77-4076-8313-ac432a89b5fd",
+  "activeVersionId": null,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-08-08T22:57:11.417Z",
+      "createdAt": "2026-08-08T22:57:11.417Z",
+      "role": "workflow:owner",
+      "workflowId": "ghiw-00-preflight-capability-gate",
+      "projectId": "fLfBCnB9rifW9Cu2"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

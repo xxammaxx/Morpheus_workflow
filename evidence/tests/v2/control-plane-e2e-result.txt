@@ -1,0 +1,10 @@
+CONTROL_PLANE_E2E 9 passed, 0 failed
+PASS E2E_INVALID_PLAN_GATE_REJECT :: {"state": "PLAN_BLOCKED", "decision": "BLOCKED", "reason_code": "PLAN_RUN_ID_MISMATCH", "result_ref": null} run=run-msx9sbhd-0z4usv
+PASS E2E_VERIFY_FAIL_NO_DELTA_SPLIT :: {"state": "SPLIT_REQUIRED", "decision": "SPLIT", "reason_code": "RETRY_DENIED_NO_STRATEGY_DELTA", "result_ref": null} run=run-msx9sraa-gkaxji
+PASS E2E_VERIFY_NO_SIGNATURE_SPLIT :: {"state": "SPLIT_REQUIRED", "decision": "SPLIT", "reason_code": "RETRY_DENIED_NO_FAILURE_SIGNATURE", "result_ref": null} run=run-msx9teum-93a3mx
+PASS E2E_ATTEMPT_LIMIT_SPLIT :: {"state": "SPLIT_REQUIRED", "decision": "SPLIT", "reason_code": "RETRY_DENIED_ATTEMPT_LIMIT", "result_ref": null} run=run-msx9u2c4-vkwh4d
+PASS E2E_SECURITY_HARD_BLOCK :: {"state": "BLOCKED", "decision": "BLOCKED", "reason_code": "BLOCKING_HIGH_OR_CRITICAL_FINDING", "result_ref": null} run=run-msx9uxqv-ticayk
+PASS E2E_REVIEW_SPLIT :: {"state": "SPLIT_REQUIRED", "decision": "SPLIT", "reason_code": "REVIEW_REQUESTED_SPLIT", "result_ref": null} run=run-msx9vtdn-565nju
+PASS E2E_HAPPY_PATH :: {"state": "DONE", "decision": "DONE", "reason_code": "ALL_HARD_GATES_GREEN", "result_ref": null} run=run-msx9wovc-fb0po7
+PASS E2E_FIX_PATH :: {"state": "DONE", "decision": "DONE", "reason_code": "ALL_HARD_GATES_GREEN", "result_ref": null} run=run-msx9xk8s-1zjwb2
+PASS E2E_REVIEW_FIX_PATH :: {"state": "DONE", "decision": "DONE", "reason_code": "ALL_HARD_GATES_GREEN", "result_ref": null} run=run-msx9ynep-h7nmzc

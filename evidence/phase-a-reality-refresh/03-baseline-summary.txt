@@ -1,0 +1,11 @@
+{
+  "healthz": {
+    "status": "ok"
+  },
+  "workflow_count": 40,
+  "execution_stats_from_api": {
+    "total": 1201,
+    "failed": 60
+  }
+}
+DETAILS_FILE=/tmp/autodev-baseline.json

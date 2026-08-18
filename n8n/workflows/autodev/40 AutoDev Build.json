@@ -1,0 +1,413 @@
+{
+  "name": "40 AutoDev Build",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "sub-workflow-trigger",
+      "name": "Sub-Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst plan = s.plan || {};\nconst issue = s.issue || {};\nconst input = {\n  contract: 'autodev.build-input.v1', version: 'v1',\n  run_id: issue.run_id,\n  attempt_id: s.attempt_id_build || (issue.run_id + ':build:' + ((s.attempt_build || 0) + 1)),\n  plan_fingerprint: s.plan_fingerprint || '',\n  repository_head: s.baseline_head || '',\n  targets: plan.targets || {files: []},\n  acceptance_criteria: plan.acceptance_criteria || [],\n  required_tests: plan.required_tests || [],\n  build_scope: plan.build_scope || {allowed_files: []},\n  task_description: issue.task_description || '',\n  strategy_delta: null,\n  failure_context: null\n};\nreturn [{json: {\n  run_id: issue.run_id, job_id: issue.run_id + ':build:' + ((s.attempt_build || 0) + 1),\n  job_type: 'build', attempt_id: input.attempt_id,\n  input_contract: 'autodev.build-input.v1', input: input,\n  backend: s.backend || 'opencode-builder-8001', fixture: s.fixture || null\n}}];"
+      },
+      "id": "prep-build-input",
+      "name": "Prep Build Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.136:8081/v1/jobs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "dispatch-build",
+      "name": "Dispatch Build",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Jc8UTFOaP9WCcnIt",
+          "name": "autodev-harness-token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "wait",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://192.168.1.136:8081/v1/jobs/{{ $json.data ? $json.data.job_id : $json.job_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": false,
+        "specifyBody": "json",
+        "jsonBody": "={{ {} }}",
+        "options": {}
+      },
+      "id": "poll",
+      "name": "Poll",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        720,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Jc8UTFOaP9WCcnIt",
+          "name": "autodev-harness-token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json;\nconst d = (raw && raw.data) ? raw.data : raw;\nreturn [{json: d}];"
+      },
+      "id": "parse",
+      "name": "Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.status}}",
+              "rightValue": "=completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "done?",
+      "name": "Done?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.status}}",
+              "rightValue": "=failed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "failed?",
+      "name": "Failed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nreturn [{json: Object.assign({}, s, {polls: (s.polls || 0) + 1})}];"
+      },
+      "id": "incr",
+      "name": "Incr",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.polls}}",
+              "rightValue": 40,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "limit?",
+      "name": "Limit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nreturn [{json: {ok: false, failure_class: 'TIMEOUT',\n  failure_signature: 'POLL_TIMEOUT', error: 'poll limit reached'}}];"
+      },
+      "id": "timeout",
+      "name": "Timeout",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst rec = s;\nreturn [{json: {\n  job_record: {job_id: rec.job_id, status: rec.status, job_type: rec.job_type,\n    attempt_id: rec.attempt_id, backend: rec.backend, provider: rec.provider,\n    model: rec.model, input_contract: rec.input_contract,\n    input_fingerprint: rec.input_fingerprint,\n    output_contract: rec.output_contract, output_fingerprint: rec.output_fingerprint,\n    started_at: rec.started_at, ended_at: rec.ended_at, duration_ms: rec.duration_ms,\n    failure_class: rec.failure_class, failure_signature: rec.failure_signature,\n    strategy_delta: rec.strategy_delta, result_ref: rec.result_ref, error: rec.error},\n  result: rec.result || null\n}}];"
+      },
+      "id": "extract-build",
+      "name": "Extract Build",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nreturn [{json: {ok: false, failure_class: s.failure_class || 'UNKNOWN',\n  failure_signature: s.failure_signature || null, error: s.error || null,\n  job_record: {job_id: s.job_id, attempt_id: s.attempt_id, status: s.status,\n    backend: s.backend, provider: s.provider, model: s.model,\n    input_contract: s.input_contract, input_fingerprint: s.input_fingerprint,\n    output_contract: s.output_contract, output_fingerprint: null,\n    started_at: s.started_at, ended_at: s.ended_at, duration_ms: s.duration_ms,\n    failure_class: s.failure_class, failure_signature: s.failure_signature,\n    strategy_delta: s.strategy_delta, result_ref: s.result_ref, error: s.error}}}];"
+      },
+      "id": "failed-build",
+      "name": "Failed Build",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function validateAutodevContract(payload, schema) {\n  const errors = [];\n  try {\n    if (schema && schema.type === 'object' && typeof payload !== 'object') {\n      errors.push('$: expected object, got ' + typeof payload);\n    } else {\n      validateNode(payload, schema, '$', errors, schema);\n    }\n  } catch (e) {\n    return { ok: false, contract: schema && schema.$id, errors: ['validator error: ' + e.message], error_count: 1 };\n  }\n  const contract = schema && schema.$id ? schema.$id : null;\n  return { ok: errors.length === 0, contract, errors, error_count: errors.length };\n}\nfunction validateNode(value, schema, path, errors, root) {\n  if (schema === true) return;\n  if (schema === false) { errors.push(path + ': schema forbids value'); return; }\n  if (schema.$ref) {\n    const name = schema.$ref.replace('#/$defs/', '');\n    const defs = (root.$defs || {})[name];\n    if (!defs) throw new Error('unresolved $ref ' + schema.$ref);\n    validateNode(value, defs, path, errors, root);\n    return;\n  }\n  if (schema.oneOf) {\n    let matched = 0;\n    for (const sub of schema.oneOf) {\n      const subErrors = [];\n      validateNode(value, sub, path, subErrors, root);\n      if (subErrors.length === 0) matched++;\n    }\n    if (matched !== 1) {\n      errors.push(path + ': must match exactly one of ' + schema.oneOf.length + ' alternatives (matched ' + matched + ')');\n    }\n    return;\n  }\n  if (schema.type) {\n    const expected = Array.isArray(schema.type) ? schema.type : [schema.type];\n    const ok = expected.some((t) => typeCheck(value, t));\n    if (!ok) {\n      errors.push(path + ': expected ' + expected.join(' or ') + ', got ' + jsTypeName(value));\n      return;\n    }\n  }\n  if (schema.const !== undefined) {\n    if (JSON.stringify(value) !== JSON.stringify(schema.const)) {\n      errors.push(path + ': must equal ' + pyRepr(schema.const));\n    }\n    return;\n  }\n  if (schema.enum) {\n    if (!schema.enum.some((e) => JSON.stringify(e) === JSON.stringify(value))) {\n      errors.push(path + ': must be one of [' + schema.enum.map(pyRepr).join(', ') + ']');\n    }\n    return;\n  }\n  if (typeof value === 'string') {\n    if (schema.minLength !== undefined && value.length < schema.minLength) {\n      errors.push(path + ': length must be >= ' + schema.minLength);\n    }\n    if (schema.maxLength !== undefined && value.length > schema.maxLength) {\n      errors.push(path + ': length must be <= ' + schema.maxLength);\n    }\n    if (schema.pattern) {\n      const re = new RegExp(schema.pattern);\n      if (!re.test(value)) errors.push(path + ': must match pattern ' + pyRepr(schema.pattern));\n    }\n    return;\n  }\n  if (typeof value === 'number' && Number.isFinite(value)) {\n    if (schema.minimum !== undefined && value < schema.minimum) {\n      errors.push(path + ': must be >= ' + schema.minimum);\n    }\n    if (schema.maximum !== undefined && value > schema.maximum) {\n      errors.push(path + ': must be <= ' + schema.maximum);\n    }\n    return;\n  }\n  if (Array.isArray(value)) {\n    if (schema.minItems !== undefined && value.length < schema.minItems) {\n      errors.push(path + ': must have at least ' + schema.minItems + ' items');\n    }\n    if (schema.maxItems !== undefined && value.length > schema.maxItems) {\n      errors.push(path + ': must have at most ' + schema.maxItems + ' items');\n    }\n    if (schema.items) {\n      value.forEach((item, i) => validateNode(item, schema.items, path + '[' + i + ']', errors, root));\n    }\n    return;\n  }\n  if (typeof value === 'object' && value !== null) {\n    const props = schema.properties || {};\n    for (const [name, sub] of Object.entries(props)) {\n      if (name in value) validateNode(value[name], sub, path + '.' + name, errors, root);\n    }\n    for (const name of schema.required || []) {\n      if (!(name in value)) errors.push(path + ': ' + name + ' is required');\n    }\n    const addl = schema.additionalProperties === undefined ? true : schema.additionalProperties;\n    if (addl === false) {\n      for (const key of Object.keys(value)) {\n        if (!(key in props)) errors.push(path + ': additional property ' + pyRepr(key) + ' not allowed');\n      }\n    } else if (typeof addl === 'object') {\n      for (const key of Object.keys(value)) {\n        if (!(key in props)) validateNode(value[key], addl, path + '.' + key, errors, root);\n      }\n    }\n    return;\n  }\n}\nfunction typeCheck(value, expected) {\n  switch (expected) {\n    case 'integer': return typeof value === 'number' && Number.isInteger(value);\n    case 'number': return typeof value === 'number' && Number.isFinite(value);\n    case 'string': return typeof value === 'string';\n    case 'boolean': return typeof value === 'boolean';\n    case 'object': return typeof value === 'object' && value !== null && !Array.isArray(value);\n    case 'array': return Array.isArray(value);\n    case 'null': return value === null;\n    default: throw new Error('unsupported type ' + expected);\n  }\n}\nfunction jsTypeName(value) {\n  if (value === null) return 'NoneType';\n  if (Array.isArray(value)) return 'list';\n  if (typeof value === 'object') return 'dict';\n  if (typeof value === 'string') return 'str';\n  if (typeof value === 'boolean') return 'bool';\n  if (typeof value === 'number') return Number.isInteger(value) ? 'int' : 'float';\n  return typeof value;\n}\nfunction pyRepr(value) {\n  if (value === null) return 'None';\n  if (typeof value === 'boolean') return value ? 'True' : 'False';\n  if (typeof value === 'string') return \"'\" + value.replace(/'/g, \"\\\\'\") + \"'\";\n  return String(value);\n}\nconst s = $json;\nconst result = s.result;\nconst schema = {\"$id\": \"autodev.build-result.v1\", \"$schema\": \"https://json-schema.org/draft/2020-12/schema\", \"additionalProperties\": false, \"description\": \"Result of a build/fix job. Changed files + bounded summary; no blobs.\", \"properties\": {\"attempt_id\": {\"maxLength\": 96, \"type\": \"string\"}, \"changed_files\": {\"items\": {\"additionalProperties\": false, \"properties\": {\"change\": {\"enum\": [\"add\", \"modify\", \"delete\"]}, \"path\": {\"maxLength\": 256, \"type\": \"string\"}, \"size\": {\"minimum\": 0, \"type\": \"integer\"}}, \"required\": [\"path\", \"change\", \"size\"], \"type\": \"object\"}, \"type\": \"array\"}, \"contract\": {\"const\": \"autodev.build-result.v1\"}, \"failure\": {\"additionalProperties\": false, \"properties\": {\"failure_signature\": {\"maxLength\": 128, \"type\": \"string\"}, \"message\": {\"maxLength\": 2000, \"type\": \"string\"}}, \"required\": [\"failure_signature\", \"message\"], \"type\": \"object\"}, \"plan_fingerprint\": {\"maxLength\": 64, \"type\": \"string\"}, \"run_id\": {\"maxLength\": 64, \"minLength\": 6, \"type\": \"string\"}, \"status\": {\"enum\": [\"success\", \"failed\"]}, \"summary\": {\"maxLength\": 2000, \"type\": \"string\"}, \"test_results\": {\"additionalProperties\": false, \"properties\": {\"failed\": {\"minimum\": 0, \"type\": \"integer\"}, \"passed\": {\"minimum\": 0, \"type\": \"integer\"}}, \"type\": \"object\"}, \"version\": {\"const\": \"v1\"}, \"x-metadata\": {\"additionalProperties\": true, \"type\": \"object\"}}, \"required\": [\"contract\", \"version\", \"run_id\", \"status\", \"changed_files\", \"summary\"], \"title\": \"AutoDev Build Result Contract v1\", \"type\": \"object\", \"x-metadata\": [\"job_id\", \"attempt_id\", \"started_at\", \"ended_at\", \"duration_ms\", \"provider\", \"model\", \"backend\"]};\nconst v = validateAutodevContract(result, schema);\nif (!v.ok) return [{json: {ok: false, failure_class: 'CONTRACT_FAILURE',\n  failure_signature: 'CONTRACT_INVALID', error: v.errors.join(' | '),\n  job_record: s.job_record}}];\nreturn [{json: {ok: true, build_result: result, job_record: s.job_record}}];"
+      },
+      "id": "validate-build",
+      "name": "Validate Build",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        320
+      ]
+    }
+  ],
+  "connections": {
+    "Prep Build Input": {
+      "main": [
+        [
+          {
+            "node": "Dispatch Build",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatch Build": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll": {
+      "main": [
+        [
+          {
+            "node": "Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse": {
+      "main": [
+        [
+          {
+            "node": "Done?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Done?": {
+      "main": [
+        [
+          {
+            "node": "Extract Build",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Failed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Failed?": {
+      "main": [
+        [
+          {
+            "node": "Failed Build",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Incr",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Incr": {
+      "main": [
+        [
+          {
+            "node": "Limit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit?": {
+      "main": [
+        [
+          {
+            "node": "Timeout",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Build": {
+      "main": [
+        [
+          {
+            "node": "Validate Build",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sub-Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prep Build Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

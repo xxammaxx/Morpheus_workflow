@@ -1,0 +1,18 @@
+[Unit]
+Description=AutoDev Harness Adapter v2 (execution plane boundary)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/autodev-harness-v2/harness_adapter_v2.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/autodev-harness-v2
+
+[Install]
+WantedBy=multi-user.target

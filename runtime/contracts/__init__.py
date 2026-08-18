@@ -1,0 +1,1 @@
+"""AutoDev contracts package."""
