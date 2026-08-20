@@ -1,0 +1,37 @@
+PASS HEALTHZ 
+PASS AUTH_NO_TOKEN_401 
+PASS AUTH_WRONG_TOKEN_401 
+PASS JOB_DISPATCH_202 
+PASS JOB_COMPLETES 
+PASS JOB_CONTRACT_OUT 
+PASS JOB_FINGERPRINTS 
+PASS CONTRACT_BOUNDARY_400 
+PASS UNKNOWN_CONTRACT_400 
+PASS IDEMPOTENT_DISPATCH 
+PASS IDEMPOTENCY_CONFLICT_400 
+PASS FIXTURE_VERIFY_FAIL_DELTA 
+PASS FIXTURE_VERIFY_FAIL_NO_DELTA 
+PASS FIXTURE_VERIFY_NO_SIGNATURE 
+PASS FIXTURE_SECURITY_CRITICAL 
+PASS FIXTURE_REVIEW_FIX 
+PASS FIXTURE_REVIEW_SPLIT 
+PASS FIXTURE_INVALID_PLAN 
+PASS ADAPTER_TIMEOUT_CLASS {"run_id": "suitefx-1787218992-review_split", "job_id": "suitefx-1787218992-review_split:timeout:1", "job_type": "research.code", "attempt_id": "suitefx-1787218992-review_split:timeout:1", "status": "
+PASS MALFORMED_RESPONSE_CLASS 
+PASS BATCH_DISPATCH 
+PASS BATCH_BARRIER 
+PASS BATCH_PARALLELISM_OVERLAP overlaps=3
+Traceback (most recent call last):
+  File "/media/xxammaxx/projekte/N8N/Morpheus_workflow/evidence/tests/v2/adapter_suite.py", line 556, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/media/xxammaxx/projekte/N8N/Morpheus_workflow/evidence/tests/v2/adapter_suite.py", line 423, in main
+    sink = HTTPServer(("192.168.1.195", 18091), CallbackSink)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/socketserver.py", line 457, in __init__
+    self.server_bind()
+  File "/usr/lib/python3.12/http/server.py", line 136, in server_bind
+    socketserver.TCPServer.server_bind(self)
+  File "/usr/lib/python3.12/socketserver.py", line 473, in server_bind
+    self.socket.bind(self.server_address)
+OSError: [Errno 99] Cannot assign requested address

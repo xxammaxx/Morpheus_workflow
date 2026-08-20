@@ -1,0 +1,36 @@
+PASS EQ valid_autodev.issue.v1
+PASS EQ valid_autodev.baseline.v1
+PASS EQ valid_autodev.research.v1
+PASS EQ valid_autodev.plan.v1
+PASS EQ valid_autodev.build-input.v1
+PASS EQ valid_autodev.build-result.v1
+PASS EQ valid_autodev.verification.v1
+PASS EQ valid_autodev.finding.v1
+PASS EQ valid_autodev.review-batch.v1
+PASS EQ valid_autodev.decision.v1
+PASS EQ valid_autodev.split.v1
+PASS EQ valid_autodev.run-event.v1
+PASS EQ valid_hamh.harness.v1
+PASS EQ valid_hamh.resolution.v1
+PASS EQ invalid_missing_task
+PASS EQ invalid_bad_runid
+PASS EQ invalid_extra_prop
+PASS EQ invalid_wrong_type
+PASS EQ invalid_short_string
+PASS EQ invalid_sentinel_false
+PASS EQ invalid_finding_severity
+PASS EQ invalid_garbage
+PASS EQ invalid_null_payload
+PASS EQ invalid_list_payload
+PASS EQ invalid_minitems
+PASS EQ invalid_enum_check
+PASS EQ invalid_const
+PASS EQ invalid_required_nested
+PASS EQ invalid_oneof_alt
+PASS EQ invalid_hamh_bad_status
+PASS EQ invalid_hamh_bad_fingerprint
+PASS EQ invalid_hamh_bad_task_class
+PASS EQ invalid_hamh_resolution_missing
+PASS EQ invalid_hamh_resolution_bad_fp
+
+RESULT 34 passed, 0 failed

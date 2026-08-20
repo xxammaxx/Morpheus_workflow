@@ -1,0 +1,82 @@
+{
+  "baseline_train": {
+    "cache_hit_rate": 0.0,
+    "cost_per_verified_success": 14,
+    "escalation_rate": 0.0,
+    "first_pass_success": 2,
+    "latency": 1.0,
+    "latency_per_verified_success": 1.0,
+    "regression_rate": 0.0,
+    "retry_rate": 0.0,
+    "token_usage": 200,
+    "tool_calls": 4,
+    "tool_calls_per_verified_success": 2.0,
+    "tool_failures": 0,
+    "verified_success_rate": 0.5
+  },
+  "candidate_holdout": {
+    "cache_hit_rate": 0.0,
+    "cost_per_verified_success": 12,
+    "escalation_rate": 0.0,
+    "first_pass_success": 1,
+    "latency": 1.0,
+    "latency_per_verified_success": 1.0,
+    "regression_rate": 0.0,
+    "retry_rate": 0.0,
+    "token_usage": 100,
+    "tool_calls": 2,
+    "tool_calls_per_verified_success": 2.0,
+    "tool_failures": 0,
+    "verified_success_rate": 0.5
+  },
+  "candidate_train": {
+    "cache_hit_rate": 0.0,
+    "cost_per_verified_success": 14,
+    "escalation_rate": 0.0,
+    "first_pass_success": 4,
+    "latency": 1.0,
+    "latency_per_verified_success": 1.0,
+    "regression_rate": 0.0,
+    "retry_rate": 0.0,
+    "token_usage": 200,
+    "tool_calls": 4,
+    "tool_calls_per_verified_success": 1.0,
+    "tool_failures": 0,
+    "verified_success_rate": 1.0
+  },
+  "candidate_validation": {
+    "cache_hit_rate": 0.0,
+    "cost_per_verified_success": 12,
+    "escalation_rate": 0.0,
+    "first_pass_success": 2,
+    "latency": 1.0,
+    "latency_per_verified_success": 1.0,
+    "regression_rate": 0.0,
+    "retry_rate": 0.0,
+    "token_usage": 100,
+    "tool_calls": 2,
+    "tool_calls_per_verified_success": 1.0,
+    "tool_failures": 0,
+    "verified_success_rate": 1.0
+  },
+  "leakage_attempt": "REJECTED",
+  "matched_compute_verdict": {
+    "a": 0.375,
+    "b": 0.875,
+    "beats_a": true,
+    "c": 0.375,
+    "explained_by_compute": false,
+    "primary": "verified_success_rate",
+    "verdict": "IMPROVED"
+  },
+  "promotion_path": [
+    "CANDIDATE",
+    "OFFLINE_EVAL",
+    "HOLDOUT",
+    "SHADOW",
+    "CANARY",
+    "AUTHORIZED_PROMOTION",
+    "ROLLBACK_OK"
+  ],
+  "self_promotion_attempts": "DENIED"
+}
