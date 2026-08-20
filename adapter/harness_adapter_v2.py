@@ -56,6 +56,41 @@ if os.path.isdir(CONTRACTS_DIR):
 from contracts import registry  # noqa: E402
 from contracts.registry import fingerprint as fp  # noqa: E402
 
+# HAMH layer (ADR-2026-08-20). Optional at deploy time: if the hamh package
+# is not deployed next to this adapter (or reachable from the repo layout),
+# resolution degrades to the explicit baseline fallback and behavior stays
+# exactly at the v2 baseline. Deployed layout: <adapter_dir>/hamh;
+# repo layout: <adapter_dir>/../runtime/hamh.
+_ADAPTER_DIR = os.path.dirname(os.path.abspath(__file__))
+for _hamh_dir in (
+    os.path.join(_ADAPTER_DIR, "hamh"),
+    os.path.join(_ADAPTER_DIR, "..", "runtime"),
+    os.path.join(_ADAPTER_DIR, "..", "runtime", "hamh"),
+):
+    if os.path.isdir(_hamh_dir):
+        sys.path.insert(0, _hamh_dir)
+try:
+    from hamh import resolver as hamh_resolver  # noqa: E402
+    from hamh import registry as hamh_registry  # noqa: E402
+except ImportError:  # pragma: no cover - deployment without hamh
+    hamh_resolver = None
+    hamh_registry = None
+
+# HAMH harness registry: loaded from <STATE_DIR>/hamh/registry.json when
+# present. Without a registry file the resolver keeps the explicit baseline
+# fallback (current production state). The promotion authority token comes
+# from the environment and is never persisted by this adapter.
+HAMH_REGISTRY_FILE = os.path.join(STATE_DIR, "hamh", "registry.json")
+_hamh_registry = None
+if hamh_registry is not None:
+    try:
+        _hamh_registry = hamh_registry.HarnessRegistry(
+            path=HAMH_REGISTRY_FILE,
+            authority_token=os.environ.get("AUTODEV_HAMH_AUTHORITY") or None,
+        )
+    except Exception:  # noqa: BLE001 - a broken registry must never break dispatch
+        _hamh_registry = None
+
 # ------------------------------------------------------------------ config --
 BUILDER_CTID = "8001"
 BUILDER_WS_ROOT = "/var/lib/ghiw/workspaces"
@@ -97,6 +132,29 @@ FIXTURES = {
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 JOB_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,96}$")
 
+# HAMH dispatch identity fields (ADR H15): provider/model select the harness
+# profile; backend routing (VALID_BACKENDS) remains UNCHANGED.
+HAMH_ID_RE = re.compile(r"^[A-Za-z0-9._/-]{0,64}$")
+HAMH_TASK_CLASSES = {"research", "plan", "build", "review", "verify", "baseline"}
+
+
+def _task_class_of(job_type):
+    """Deterministic job_type -> HAMH task_class mapping."""
+    if job_type == "baseline":
+        return "baseline"
+    if job_type in ("build", "fix"):
+        return "build"
+    if job_type == "verify":
+        return "verify"
+    if job_type == "plan":
+        return "plan"
+    if job_type.startswith("research."):
+        return "research"
+    if job_type.startswith("review."):
+        return "review"
+    return "baseline"
+
+
 # ------------------------------------------------------------------ state --
 _lock = threading.RLock()
 JOBS = {}  # job_id -> record (dict)
@@ -104,6 +162,10 @@ BATCHES = {}  # batch_id -> record
 _verify_seen = {}  # run_id -> verify job count (fail-once fixtures)
 _review_seen = {}  # run_id -> review round count (fail-once review fixtures)
 _sem = threading.BoundedSemaphore(MAX_WORKERS)
+# per-backend opencode serialization semaphore (documented Phase-D mitigation;
+# previously referenced but never defined -> latent NameError on any real
+# opencode dispatch. Fixed as part of the HAMH seam, ADR H15.)
+_opencode_sem = threading.BoundedSemaphore(1)
 _callback_lock = threading.Lock()
 
 for _d in (STATE_DIR, os.path.join(STATE_DIR, "logs"), ARTIFACT_DIR, WS_ROOT):
@@ -286,6 +348,11 @@ def new_job(
     fixture=None,
     timeout_s=None,
     sleep_seconds=None,
+    provider=None,
+    model=None,
+    model_revision=None,
+    task_class=None,
+    harness_resolution=None,
 ):
     rec = {
         "ts": _now(),
@@ -295,8 +362,15 @@ def new_job(
         "attempt_id": attempt_id,
         "status": "queued",
         "backend": backend,
-        "provider": "embedded",
-        "model": "embedded",
+        # backend-aware identity defaults keep the record consistent with
+        # the harness resolution (embedded -> embedded; opencode -> lmstudio)
+        "provider": provider
+        or ("lmstudio" if backend == "opencode-builder-8001" else "embedded"),
+        "model": model
+        or (LMSTUDIO_MODEL if backend == "opencode-builder-8001" else "embedded"),
+        "model_revision": model_revision,
+        "task_class": task_class,
+        "harness_resolution": harness_resolution,
         "input_contract": input_contract,
         "input_fingerprint": fp(payload),
         "output_contract": JOB_TYPES.get(job_type),
@@ -328,8 +402,8 @@ def finalize_job(
     failure_class=None,
     failure_signature=None,
     strategy_delta=None,
-    provider="embedded",
-    model="embedded",
+    provider=None,
+    model=None,
 ):
     rec = JOBS.get(job_id)
     if not rec:
@@ -343,8 +417,12 @@ def finalize_job(
             rec["duration_ms"] = int((en - st).total_seconds() * 1000)
         except Exception:
             rec["duration_ms"] = None
-    rec["provider"] = provider
-    rec["model"] = model
+    # provider/model are only overwritten when explicitly provided: the
+    # dispatch-time identity (incl. HAMH resolution inputs) wins.
+    if provider is not None:
+        rec["provider"] = provider
+    if model is not None:
+        rec["model"] = model
     if result is not None:
         rec["result"] = result
         rec["output_contract"] = (
@@ -375,6 +453,11 @@ def finalize_job(
                 "backend",
                 "provider",
                 "model",
+                "model_revision",
+                "task_class",
+                "harness_id",
+                "harness_version",
+                "harness_fingerprint",
                 "input_contract",
                 "input_fingerprint",
                 "output_contract",
@@ -421,8 +504,9 @@ def run_job_thread(
                 else:
                     handler = EXECUTORS[job_type]
             except KeyError:
-                if backend == "opencode-builder-8001":
-                    _opencode_sem.release()
+                # NOTE: nothing acquired yet -> no _opencode_sem.release()
+                # here (an unbalanced release would raise ValueError and
+                # leave the job stuck in "running"; ADR H15 fix)
                 finalize_job(
                     job_id,
                     "failed",
@@ -572,17 +656,38 @@ def _embedded_result(job_type, fixture, payload):
         with _lock:
             _verify_seen[run_key] = _verify_seen.get(run_key, 0) + 1
             verify_no = _verify_seen[run_key]
-        if fixture in ("verify_fail_delta", "verify_fail_no_delta", "no_signature") \
-                and verify_no > 1:
+        if (
+            fixture in ("verify_fail_delta", "verify_fail_no_delta", "no_signature")
+            and verify_no > 1
+        ):
             return {
-                "contract": "autodev.verification.v1", "version": "v1",
-                "run_id": payload.get("run_id"), "passed": True,
+                "contract": "autodev.verification.v1",
+                "version": "v1",
+                "run_id": payload.get("run_id"),
+                "passed": True,
                 "checks": [
-                    {"name": "unit", "type": "unit", "passed": True, "detail": "2 passed"},
-                    {"name": "build", "type": "build", "passed": True, "detail": "compile ok"},
-                    {"name": "scope", "type": "invariant", "passed": True, "detail": "in scope"},
+                    {
+                        "name": "unit",
+                        "type": "unit",
+                        "passed": True,
+                        "detail": "2 passed",
+                    },
+                    {
+                        "name": "build",
+                        "type": "build",
+                        "passed": True,
+                        "detail": "compile ok",
+                    },
+                    {
+                        "name": "scope",
+                        "type": "invariant",
+                        "passed": True,
+                        "detail": "in scope",
+                    },
                 ],
-                "failure_class": None, "failure_signature": None, "new_evidence": [],
+                "failure_class": None,
+                "failure_signature": None,
+                "new_evidence": [],
             }, None
         if fixture == "verify_fail_delta":
             return {
@@ -620,11 +725,17 @@ def _embedded_result(job_type, fixture, payload):
         if fixture == "attempt_limit":
             # always fails (with evidence) -> exercises the attempt-limit retry path
             return {
-                "contract": "autodev.verification.v1", "version": "v1",
-                "run_id": payload.get("run_id"), "passed": False,
+                "contract": "autodev.verification.v1",
+                "version": "v1",
+                "run_id": payload.get("run_id"),
+                "passed": False,
                 "checks": [
-                    {"name": "unit", "type": "unit", "passed": False,
-                     "detail": "test_returns_hello FAILED (attempt limit)"}
+                    {
+                        "name": "unit",
+                        "type": "unit",
+                        "passed": False,
+                        "detail": "test_returns_hello FAILED (attempt limit)",
+                    }
                 ],
                 "failure_class": "TEST_FAILURE",
                 "failure_signature": "sig-" + _sha("attempt limit")[:16],
@@ -677,10 +788,12 @@ def _embedded_result(job_type, fixture, payload):
             if review_no > 1:
                 # later review rounds pass (fix loop converges)
                 return {
-                    "contract": "autodev.review-batch.v1", "version": "v1",
+                    "contract": "autodev.review-batch.v1",
+                    "version": "v1",
                     "run_id": payload.get("run_id"),
                     "reviews": [{"category": area, "verdict": "PASS", "findings": []}],
-                    "blocked": False, "blocking_findings": [],
+                    "blocked": False,
+                    "blocking_findings": [],
                     "parallelism": {"jobs": [], "overlap_proven": False},
                 }, None
         if fixture == "security_critical_blocking":
@@ -972,6 +1085,7 @@ def _parse_opencode_jsonl(ws):
 def _extract_json(text):
     """Extract the first balanced JSON object from a string (fence-aware)."""
     import re as _re
+
     # strip markdown fences if present
     m = _re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, _re.S)
     if m:
@@ -1661,6 +1775,10 @@ def _dispatch(
     fixture=None,
     timeout_s=None,
     sleep_seconds=None,
+    provider=None,
+    model=None,
+    model_revision=None,
+    task_class=None,
 ):
     if job_type not in JOB_TYPES:
         return None, err("BAD_JOB_TYPE", "unknown job_type %r" % job_type)
@@ -1674,6 +1792,16 @@ def _dispatch(
         return None, err("BAD_ATTEMPT_ID", "invalid attempt_id")
     if fixture and fixture not in FIXTURES:
         return None, err("BAD_FIXTURE", "unknown fixture %r" % fixture)
+    # HAMH identity fields (optional, backwards compatible). Backend routing
+    # is NOT touched by these — they only select the harness profile.
+    if provider is not None and not HAMH_ID_RE.match(provider):
+        return None, err("BAD_PROVIDER", "invalid provider %r" % provider)
+    if model is not None and not HAMH_ID_RE.match(model):
+        return None, err("BAD_MODEL", "invalid model %r" % model)
+    if model_revision is not None and not HAMH_ID_RE.match(model_revision):
+        return None, err("BAD_MODEL_REVISION", "invalid model_revision")
+    if task_class is not None and task_class not in HAMH_TASK_CLASSES:
+        return None, err("BAD_TASK_CLASS", "unknown task_class %r" % task_class)
     # contract validation at the boundary
     if input_contract not in registry.CONTRACTS:
         return None, err(
@@ -1688,7 +1816,8 @@ def _dispatch(
             "errors": v["errors"],
             "error_count": v["error_count"],
         }
-    # idempotent dispatch
+    # idempotent dispatch FIRST (before any resolution side effects: a
+    # rejected/duplicate dispatch must never pollute the resolution artifact)
     with _lock:
         existing = JOBS.get(job_id)
         if existing is not None:
@@ -1702,6 +1831,23 @@ def _dispatch(
                 "IDEMPOTENCY_CONFLICT",
                 "job_id already used with different attempt/fingerprint",
             )
+    # deterministic harness resolution at dispatch (HAMH seam, ADR H3).
+    # Unknown models fall back to the explicit baseline profile.
+    harness_resolution = None
+    if hamh_resolver is not None:
+        eff_provider = provider or ("embedded" if backend == "embedded" else "lmstudio")
+        eff_model = model or ("embedded" if backend == "embedded" else LMSTUDIO_MODEL)
+        eff_task_class = task_class or _task_class_of(job_type)
+        harness_resolution = hamh_resolver.resolve(
+            eff_provider,
+            eff_model,
+            eff_task_class,
+            "auto",
+            model_revision=model_revision,
+            registry=_hamh_registry,
+        )
+        _store_resolution_artifact(run_id, job_id, harness_resolution)
+    with _lock:
         rec = new_job(
             run_id,
             job_id,
@@ -1714,6 +1860,12 @@ def _dispatch(
             fixture=fixture,
             timeout_s=timeout_s,
             sleep_seconds=sleep_seconds,
+            provider=provider,
+            model=model,
+            model_revision=model_revision,
+            task_class=task_class
+            or (None if hamh_resolver is None else _task_class_of(job_type)),
+            harness_resolution=harness_resolution,
         )
         run_job_thread(
             run_id,
@@ -1730,6 +1882,44 @@ def _dispatch(
         return rec, None
 
 
+def _store_resolution_artifact(run_id, job_id, resolution):
+    """Aggregate per-run HAMH resolutions in a deterministic artifact
+    (metadata-first; no prompts/blobs/secrets). Reuses the existing
+    artifact directory and GET /v1/artifacts/<run>/hamh_resolution."""
+    if resolution is None:
+        return
+    path = os.path.join(ARTIFACT_DIR, run_id)
+    os.makedirs(path, exist_ok=True)
+    file_path = os.path.join(path, "hamh_resolution.json")
+    with _lock:
+        data = {}
+        if os.path.exists(file_path):
+            try:
+                with open(file_path) as f:
+                    data = json.load(f)
+            except Exception:
+                data = {}
+        summary = {
+            k: resolution.get(k)
+            for k in (
+                "resolved_harness_id",
+                "harness_version",
+                "fingerprint",
+                "provider",
+                "model",
+                "model_revision",
+                "task_class",
+                "runtime_mode",
+                "is_fallback",
+            )
+        }
+        data[job_id] = summary
+        with open(file_path, "w") as f:
+            json.dump(data, f, indent=2, sort_keys=True)
+            f.flush()
+            os.fsync(f.fileno())
+
+
 def _job_view(rec, with_result=True):
     view = {
         k: rec.get(k)
@@ -1742,6 +1932,11 @@ def _job_view(rec, with_result=True):
             "backend",
             "provider",
             "model",
+            "model_revision",
+            "task_class",
+            "harness_id",
+            "harness_version",
+            "harness_fingerprint",
             "input_contract",
             "input_fingerprint",
             "output_contract",
@@ -1853,6 +2048,11 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
             run_id, name = parts[3], parts[4]
+            if not RUN_ID_RE.match(run_id) or not re.match(
+                r"^[A-Za-z0-9._-]{1,64}$", name
+            ):
+                self._send(400, err("BAD_REQUEST", "invalid run_id or artifact name"))
+                return
             path = os.path.join(ARTIFACT_DIR, run_id, name + ".json")
             if not os.path.exists(path):
                 self._send(404, err("NOT_FOUND", "artifact not found"))
@@ -1888,25 +2088,33 @@ class Handler(BaseHTTPRequestHandler):
                 fixture=body.get("fixture"),
                 timeout_s=body.get("timeout_s"),
                 sleep_seconds=body.get("sleep_seconds"),
+                provider=body.get("provider"),
+                model=body.get("model"),
+                model_revision=body.get("model_revision"),
+                task_class=body.get("task_class"),
             )
             if e is not None:
                 self._send(
                     400 if e.get("error", {}).get("code") != "UNAUTHORIZED" else 401, e
                 )
                 return
-            self._send(
-                202,
-                ok(
-                    {
-                        "job_id": rec["job_id"],
-                        "status": rec["status"],
-                        "run_id": rec["run_id"],
-                        "job_type": rec["job_type"],
-                        "attempt_id": rec["attempt_id"],
-                        "duplicate": rec.get("status") != "queued" and False,
-                    }
-                ),
-            )
+            resp = {
+                "job_id": rec["job_id"],
+                "status": rec["status"],
+                "run_id": rec["run_id"],
+                "job_type": rec["job_type"],
+                "attempt_id": rec["attempt_id"],
+                "duplicate": rec.get("status") != "queued" and False,
+            }
+            res = rec.get("harness_resolution")
+            if res:
+                resp["harness"] = {
+                    "resolved_harness_id": res.get("resolved_harness_id"),
+                    "harness_version": res.get("harness_version"),
+                    "fingerprint": res.get("fingerprint"),
+                    "is_fallback": res.get("is_fallback"),
+                }
+            self._send(202, ok(resp))
             return
         if self.path == "/v1/batches":
             batch_id = body.get("batch_id")
@@ -1956,6 +2164,10 @@ class Handler(BaseHTTPRequestHandler):
                     fixture=j.get("fixture"),
                     timeout_s=j.get("timeout_s"),
                     sleep_seconds=j.get("sleep_seconds"),
+                    provider=j.get("provider"),
+                    model=j.get("model"),
+                    model_revision=j.get("model_revision"),
+                    task_class=j.get("task_class"),
                 )
                 if e is not None:
                     errors.append({"job_id": j.get("job_id"), "error": e})
