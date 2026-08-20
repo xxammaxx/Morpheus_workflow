@@ -25,9 +25,15 @@ import urllib.request
 
 HOME = os.path.expanduser("~")
 STORAGE = os.path.join(HOME, ".local", "share", "opencode", "storage")
-FIXTURE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "fixtures", "task_fixture"
-)
+FIXTURES = {
+    "v1": os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "fixtures", "task_fixture"
+    ),
+    "v2": os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "fixtures", "task_fixture_v2"
+    ),
+}
+FIXTURE = FIXTURES["v1"]
 RESOLVE_URL = os.environ.get("HAMH_RESOLVE_URL", "http://192.168.1.136:8090/v1/resolve")
 
 # Pricing snapshot 2026-08-20 (USD/1M, off-peak) — used ONLY for cost
@@ -324,7 +330,10 @@ def run():
     ap.add_argument("--timeout", type=int, default=420)
     ap.add_argument("--reasoning-effort", default="high")
     ap.add_argument("--no-resolve", action="store_true")
+    ap.add_argument("--fixture", default="v1", choices=sorted(FIXTURES))
     args = ap.parse_args()
+
+    fixture = FIXTURES[args.fixture]
 
     workspace = os.path.join(args.work_root, args.run_id)
     shutil.rmtree(workspace, ignore_errors=True)
@@ -333,12 +342,28 @@ def run():
     # 1. copy fixture CONTENTS into disposable workspace (files must sit in
     #    the workspace ROOT where the tests run; note: cp -r src/ dst would
     #    nest the folder — use src/. to copy the contents)
-    subprocess.run(["cp", "-r", FIXTURE + os.sep + ".", workspace], check=True)
+    subprocess.run(["cp", "-r", fixture + os.sep + ".", workspace], check=True)
     # PRE-CHECK: the fixture must be RED before the agent run (1 failing
     # test). If it is green, the fixture is corrupted and the run would be
     # silently invalid — abort instead.
+    test_file = None
+    for fn in sorted(os.listdir(workspace)):
+        if fn.startswith("test_") and fn.endswith(".py"):
+            test_file = fn
+            break
+    if not test_file:
+        print(
+            json.dumps(
+                {
+                    "run_id": args.run_id,
+                    "error": "NO_TEST_FILE_FOUND",
+                    "detail": "workspace has no test_*.py",
+                }
+            )
+        )
+        return 1
     pre = subprocess.run(
-        ["python3", "-m", "pytest", "test_calc.py", "-q"],
+        ["python3", "-m", "pytest", test_file, "-q"],
         cwd=workspace,
         capture_output=True,
         text=True,
@@ -400,7 +425,7 @@ def run():
 
     # 4. verification
     ver = subprocess.run(
-        ["python3", "-m", "pytest", "test_calc.py", "-q"],
+        ["python3", "-m", "pytest", test_file, "-q"],
         cwd=workspace,
         capture_output=True,
         text=True,
