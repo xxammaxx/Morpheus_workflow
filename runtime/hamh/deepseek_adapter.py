@@ -23,6 +23,13 @@ Verified live facts encoded here:
     usage.prompt_cache_miss_tokens
   - errors by HTTP status only: 400/401/402/422/429/500/503
   - concurrency (account level): flash 2500, pro 500; optional user_id
+  - concurrency is an ACCOUNT-RUNTIME configuration (mutable external fact),
+    NOT an intrinsic model property — see provider_limits below
+  - thinking-mode-dead parameters (temperature/top_p/presence_penalty/
+    frequency_penalty) are NON_OPTIMIZABLE for the HAMH evolver: they have no
+    causal effect on the model (documented no-ops)
+  - HAMH evolution may ONLY optimize reasoning_effort over (high, max):
+    low/medium/xhigh are compatibility values, not evolution dimensions
 """
 
 import copy
@@ -34,13 +41,25 @@ MODEL_IDS = {
         "full_version": "DeepSeek-V4-Flash-0731",
         "context_window": 1_000_000,
         "max_output": 384_000,
-        "concurrency_limit": 2500,
+        "provider_limits": {
+            "concurrency": {
+                "documented_value": 2500,
+                "scope": "account",
+                "mutable_external_fact": True,
+            }
+        },
     },
     "deepseek-v4-pro": {
         "full_version": "DeepSeek-V4-Pro-0813",
         "context_window": 1_000_000,
         "max_output": 384_000,
-        "concurrency_limit": 500,
+        "provider_limits": {
+            "concurrency": {
+                "documented_value": 500,
+                "scope": "account",
+                "mutable_external_fact": True,
+            }
+        },
     },
 }
 
@@ -49,6 +68,23 @@ RETIRED_MODEL_IDS = ("deepseek-chat", "deepseek-reasoner")
 THINKING_TYPES = ("enabled", "disabled")
 REASONING_EFFORTS = ("low", "high", "max")
 REASONING_EFFORT_MAP = {"medium": "high", "xhigh": "high"}
+
+# Kanonische Optimierungswerte fuer die HAMH-Evolution (order section 26):
+# low/medium/xhigh sind Kompatibilitaets-Mappings und KEINE eigenstaendigen
+# Evolutionsdimensionen. Nur high und max sind kausal unterscheidbar.
+EVOLUTION_REASONING_EFFORTS = ("high", "max")
+
+# Thinking-Mode-tote Parameter (offiziell dokumentiert als wirkungslos):
+# temperature, top_p, presence_penalty, frequency_penalty. Sie duerfen aus
+# Kompatibilitaetsgruenden gesendet werden, beeinflussen das Modell aber
+# nicht. Der HAMH-Evolver darf daraus KEINE kausalen Schlussfolgerungen
+# ziehen -> als NON_OPTIMIZABLE markiert und als Evolutionsdimension blockiert.
+NON_OPTIMIZABLE_IN_THINKING_MODE = (
+    "temperature",
+    "top_p",
+    "presence_penalty",
+    "frequency_penalty",
+)
 
 BASE_URLS = {
     "openai": "https://api.deepseek.com",
@@ -106,6 +142,43 @@ def normalize_reasoning_effort(effort):
         return "high"
     effort = str(effort).lower()
     return REASONING_EFFORT_MAP.get(effort, effort)
+
+
+def validate_evolution_reasoning_effort(effort):
+    """Guard: HAMH evolution may ONLY optimize over (high, max).
+
+    low/medium/xhigh are compatibility values (accepted for plain API
+    requests via normalize_reasoning_effort) but must NEVER be treated as
+    standalone HAMH evolution dimensions (order section 4/26). This guard
+    accepts EXACTLY "high" or "max" (case-insensitive) and raises
+    DeepSeekProtocolError for anything else. NOTE: medium/xhigh are NOT
+    collapsed to high here — an evolver requesting them is treating a
+    compatibility value as an evolution dimension, which is a governance
+    violation. evolution.propose() enforces the same rule.
+    """
+    if effort is None:
+        raise DeepSeekProtocolError(
+            "reasoning_effort is required for HAMH evolution dimensions; "
+            "canonical optimization values are %s"
+            % ", ".join(EVOLUTION_REASONING_EFFORTS)
+        )
+    effort = str(effort).lower()
+    if effort not in EVOLUTION_REASONING_EFFORTS:
+        raise DeepSeekProtocolError(
+            "reasoning_effort %r is not a HAMH evolution dimension; canonical "
+            "optimization values are %s (low/medium/xhigh are compatibility "
+            "values only)" % (effort, ", ".join(EVOLUTION_REASONING_EFFORTS))
+        )
+    return effort
+
+
+def is_non_optimizable_in_thinking_mode(param):
+    """True for parameters that are documented no-ops in thinking mode.
+
+    The evolver must never treat these as causal harness variables
+    (order section 5: THINKING.temperature etc. = NON_OPTIMIZABLE).
+    """
+    return param in NON_OPTIMIZABLE_IN_THINKING_MODE
 
 
 def validate_thinking(thinking):

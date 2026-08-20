@@ -25,6 +25,10 @@ import hashlib
 import re
 
 from . import registry as _registry_mod
+from .deepseek_adapter import (
+    EVOLUTION_REASONING_EFFORTS as _EVO_EFFORTS,
+    is_non_optimizable_in_thinking_mode as _non_optimizable,
+)
 
 EVOLVER_CAN_PROPOSE = True
 EVOLVER_CAN_TEST = True
@@ -150,6 +154,46 @@ class EvolutionSandbox:
                 "detail": "exactly one valid component per experiment, got %r"
                 % (comps,),
             }
+
+        # NON_OPTIMIZABLE guard (order section 5): thinking-mode-dead
+        # parameters must never be treated as causal harness variables.
+        for comp in comps:
+            delta = (candidate.minimal_delta or {}).get(comp)
+            if not isinstance(delta, dict):
+                return {
+                    "ok": False,
+                    "code": "INVALID_MINIMAL_DELTA",
+                    "detail": (
+                        "minimal_delta[%r] must be a dict of {param: value}, "
+                        "got %r" % (comp, type(delta).__name__)
+                    ),
+                }
+            for key in delta:
+                if _non_optimizable(key):
+                    return {
+                        "ok": False,
+                        "code": "NON_OPTIMIZABLE_PARAMETER",
+                        "detail": (
+                            "%r is a documented no-op in thinking mode; "
+                            "it is NON_OPTIMIZABLE and cannot be an "
+                            "evolution dimension" % key
+                        ),
+                    }
+            # reasoning_effort may only be optimized over (high, max);
+            # case-insensitive, consistent with the adapter guard
+            if "reasoning_effort" in delta:
+                effort = str(delta["reasoning_effort"]).lower()
+                if effort not in _EVO_EFFORTS:
+                    return {
+                        "ok": False,
+                        "code": "NON_CANONICAL_REASONING_EFFORT",
+                        "detail": (
+                            "reasoning_effort %r is not a HAMH evolution "
+                            "dimension; canonical optimization values "
+                            "are %s"
+                            % (delta["reasoning_effort"], ", ".join(_EVO_EFFORTS))
+                        ),
+                    }
 
         # leakage sentinel: candidate material must not reference holdout
         leak = self.leakage_check(candidate, profile_patch)

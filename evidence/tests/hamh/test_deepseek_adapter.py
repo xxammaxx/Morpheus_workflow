@@ -214,15 +214,100 @@ def main():
     check("DS_CACHE_MISS", u["prompt_cache_miss_tokens"] == 20)
     check("DS_REASONING_TOKENS", u["reasoning_tokens"] == 30)
 
-    # --- concurrency limits documented (account level)
+    # --- concurrency is an ACCOUNT-RUNTIME configuration (order section 8),
+    # NOT an intrinsic model property or harness evolution parameter
     check(
         "DS_CONCURRENCY_FLASH",
-        ds.MODEL_IDS["deepseek-v4-flash"]["concurrency_limit"] == 2500,
+        ds.MODEL_IDS["deepseek-v4-flash"]["provider_limits"]["concurrency"][
+            "documented_value"
+        ]
+        == 2500,
     )
     check(
         "DS_CONCURRENCY_PRO",
-        ds.MODEL_IDS["deepseek-v4-pro"]["concurrency_limit"] == 500,
+        ds.MODEL_IDS["deepseek-v4-pro"]["provider_limits"]["concurrency"][
+            "documented_value"
+        ]
+        == 500,
     )
+    check(
+        "DS_CONCURRENCY_SCOPE_ACCOUNT",
+        ds.MODEL_IDS["deepseek-v4-flash"]["provider_limits"]["concurrency"]["scope"]
+        == "account",
+    )
+    check(
+        "DS_CONCURRENCY_MUTABLE_EXTERNAL_FACT",
+        ds.MODEL_IDS["deepseek-v4-flash"]["provider_limits"]["concurrency"][
+            "mutable_external_fact"
+        ]
+        is True,
+    )
+    check(
+        "DS_CONCURRENCY_NOT_MODEL_PROPERTY",
+        "concurrency_limit" not in ds.MODEL_IDS["deepseek-v4-flash"],
+    )
+
+    # --- NON_OPTIMIZABLE thinking-mode parameters (order section 5):
+    # temperature/top_p/presence_penalty/frequency_penalty are documented
+    # no-ops in thinking mode and must never become evolution dimensions
+    for p in (
+        "temperature",
+        "top_p",
+        "presence_penalty",
+        "frequency_penalty",
+    ):
+        check(
+            "DS_NON_OPTIMIZABLE_%s" % p.upper(),
+            ds.is_non_optimizable_in_thinking_mode(p),
+        )
+    check(
+        "DS_OPTIMIZABLE_ABSENT",
+        not ds.is_non_optimizable_in_thinking_mode("max_tokens"),
+    )
+    check(
+        "DS_NON_OPTIMIZABLE_CONSTANT",
+        set(ds.NON_OPTIMIZABLE_IN_THINKING_MODE)
+        == {"temperature", "top_p", "presence_penalty", "frequency_penalty"},
+    )
+
+    # --- reasoning_effort evolution guard (order section 4/26):
+    # canonical HAMH optimization values are high|max ONLY
+    check(
+        "DS_EVOLUTION_EFFORT_HIGH",
+        ds.validate_evolution_reasoning_effort("high") == "high",
+    )
+    check(
+        "DS_EVOLUTION_EFFORT_MAX",
+        ds.validate_evolution_reasoning_effort("max") == "max",
+    )
+    expect_protocol_error(
+        "DS_EVOLUTION_EFFORT_LOW_BLOCKED",
+        lambda: ds.validate_evolution_reasoning_effort("low"),
+    )
+    # medium/xhigh are compatibility values; requesting them as an evolution
+    # dimension is a governance violation (NOT collapsed to high) — the
+    # mapping medium/xhigh->high exists only on the plain API request path
+    expect_protocol_error(
+        "DS_EVOLUTION_EFFORT_MEDIUM_BLOCKED",
+        lambda: ds.validate_evolution_reasoning_effort("medium"),
+    )
+    expect_protocol_error(
+        "DS_EVOLUTION_EFFORT_XHIGH_BLOCKED",
+        lambda: ds.validate_evolution_reasoning_effort("xhigh"),
+    )
+    expect_protocol_error(
+        "DS_EVOLUTION_EFFORT_NONE_BLOCKED",
+        lambda: ds.validate_evolution_reasoning_effort(None),
+    )
+    check(
+        "DS_EVOLUTION_EFFORT_CASE_INSENSITIVE",
+        ds.validate_evolution_reasoning_effort("MAX") == "max",
+    )
+    # API compatibility is untouched: low stays a valid request value
+    req_low = ds.build_chat_request(
+        "deepseek-v4-flash", [], thinking="disabled", reasoning_effort="low"
+    )
+    check("DS_API_EFFORT_LOW_COMPAT", req_low["reasoning_effort"] == "low")
 
     # --- chat prefix completion (Beta) message shape
     msg = ds.build_assistant_prefix_message(

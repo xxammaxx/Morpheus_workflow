@@ -95,6 +95,92 @@ def main():
     r = sandbox.propose(cand_multi, registry_entry=make_entry("cand/multi/v1"))
     check("ONE_COMPONENT_RULE", r.get("code") == "ONE_COMPONENT_RULE")
 
+    # --- NON_OPTIMIZABLE guard (order section 5): thinking-mode-dead
+    # parameters (temperature/top_p/presence_penalty/frequency_penalty) are
+    # documented no-ops and must be BLOCKED as evolution dimensions
+    for bad_param in (
+        "temperature",
+        "top_p",
+        "presence_penalty",
+        "frequency_penalty",
+    ):
+        cand_bad = evolution.Candidate(
+            hypothesis="h",
+            observed_failure_pattern="excessive_reasoning",
+            affected_component="thinking_policy",
+            minimal_delta={"thinking_policy": {bad_param: 0.7}},
+            expected_effect="e",
+            risk="r",
+            rollback_path="p",
+            evaluation_plan="p",
+        )
+        r = sandbox.propose(
+            cand_bad, registry_entry=make_entry("cand/nonopt-%s" % bad_param)
+        )
+        check(
+            "EVO_NON_OPTIMIZABLE_%s_BLOCKED" % bad_param.upper(),
+            r.get("code") == "NON_OPTIMIZABLE_PARAMETER",
+        )
+
+    # --- canonical reasoning_effort guard (order section 4/26):
+    # only high|max are HAMH evolution dimensions; low/medium/xhigh blocked
+    for bad_effort in ("low", "medium", "xhigh"):
+        cand_bad_effort = evolution.Candidate(
+            hypothesis="h",
+            observed_failure_pattern="excessive_reasoning",
+            affected_component="thinking_policy",
+            minimal_delta={"thinking_policy": {"reasoning_effort": bad_effort}},
+            expected_effect="e",
+            risk="r",
+            rollback_path="p",
+            evaluation_plan="p",
+        )
+        r = sandbox.propose(
+            cand_bad_effort,
+            registry_entry=make_entry("cand/effort-%s" % bad_effort),
+        )
+        check(
+            "EVO_EFFORT_%s_BLOCKED" % bad_effort.upper(),
+            r.get("code") == "NON_CANONICAL_REASONING_EFFORT",
+        )
+    for good_effort in ("high", "max"):
+        cand_good_effort = evolution.Candidate(
+            hypothesis="h",
+            observed_failure_pattern="excessive_reasoning",
+            affected_component="thinking_policy",
+            minimal_delta={"thinking_policy": {"reasoning_effort": good_effort}},
+            expected_effect="e",
+            risk="r",
+            rollback_path="p",
+            evaluation_plan="p",
+        )
+        r = sandbox.propose(
+            cand_good_effort,
+            registry_entry=make_entry("cand/effort-%s" % good_effort),
+        )
+        check(
+            "EVO_EFFORT_%s_ALLOWED" % good_effort.upper(),
+            r["ok"] is True
+            and reg.get("cand/effort-%s" % good_effort)["status"] == "CANDIDATE",
+        )
+
+    # --- malformed minimal_delta shape is rejected (INVALID_MINIMAL_DELTA)
+    cand_scalar = evolution.Candidate(
+        hypothesis="h",
+        observed_failure_pattern="excessive_reasoning",
+        affected_component="thinking_policy",
+        minimal_delta={"thinking_policy": "max"},
+        expected_effect="e",
+        risk="r",
+        rollback_path="p",
+        evaluation_plan="p",
+    )
+    r = sandbox.propose(cand_scalar, registry_entry=make_entry("cand/scalar-delta"))
+    check(
+        "EVO_INVALID_MINIMAL_DELTA_REJECTED",
+        r.get("code") == "INVALID_MINIMAL_DELTA",
+    )
+
     # --- leakage sentinel: candidate referencing holdout content -> REJECTED
     cand_leak = evolution.Candidate(
         hypothesis="improve by using SECRET_HOLDOUT_7 ideas",
