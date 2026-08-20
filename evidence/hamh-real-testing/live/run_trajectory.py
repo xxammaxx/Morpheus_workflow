@@ -330,9 +330,24 @@ def run():
     shutil.rmtree(workspace, ignore_errors=True)
     os.makedirs(workspace)
 
-    # 1. clone fixture (disposable workspace)
+    # 1. copy fixture into disposable workspace (no nested git repos)
+    subprocess.run(["cp", "-r", FIXTURE, workspace], check=True)
+    # keep the workspace deterministic: re-init a fresh git repo so the
+    # agent's edits are diffable
+    subprocess.run(["git", "init", "-q"], cwd=workspace, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=workspace, check=True)
     subprocess.run(
-        ["git", "clone", "-q", "--depth", "1", FIXTURE, workspace],
+        [
+            "git",
+            "-c",
+            "user.email=hamh@test",
+            "-c",
+            "user.name=HAMH",
+            "commit",
+            "-qm",
+            "fixture baseline",
+        ],
+        cwd=workspace,
         check=True,
     )
     with open(os.path.join(workspace, "evidence_run.txt"), "w") as f:
