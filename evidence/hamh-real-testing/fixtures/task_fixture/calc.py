@@ -10,7 +10,8 @@ def subtract(a, b):
 
 
 def multiply(a, b):
-    return a * b
+    # BUG (intentional): returns a + b instead of a * b
+    return a + b
 
 
 def divide(a, b):

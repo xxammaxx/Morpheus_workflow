@@ -330,26 +330,32 @@ def run():
     shutil.rmtree(workspace, ignore_errors=True)
     os.makedirs(workspace)
 
-    # 1. copy fixture into disposable workspace (no nested git repos)
-    subprocess.run(["cp", "-r", FIXTURE, workspace], check=True)
-    # keep the workspace deterministic: re-init a fresh git repo so the
-    # agent's edits are diffable
-    subprocess.run(["git", "init", "-q"], cwd=workspace, check=True)
-    subprocess.run(["git", "add", "-A"], cwd=workspace, check=True)
-    subprocess.run(
-        [
-            "git",
-            "-c",
-            "user.email=hamh@test",
-            "-c",
-            "user.name=HAMH",
-            "commit",
-            "-qm",
-            "fixture baseline",
-        ],
+    # 1. copy fixture CONTENTS into disposable workspace (files must sit in
+    #    the workspace ROOT where the tests run; note: cp -r src/ dst would
+    #    nest the folder — use src/. to copy the contents)
+    subprocess.run(["cp", "-r", FIXTURE + os.sep + ".", workspace], check=True)
+    # PRE-CHECK: the fixture must be RED before the agent run (1 failing
+    # test). If it is green, the fixture is corrupted and the run would be
+    # silently invalid — abort instead.
+    pre = subprocess.run(
+        ["python3", "-m", "pytest", "test_calc.py", "-q"],
         cwd=workspace,
-        check=True,
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
+    if pre.returncode == 0:
+        print(
+            json.dumps(
+                {
+                    "run_id": args.run_id,
+                    "error": "FIXTURE_PRE_CHECK_FAILED",
+                    "detail": "fixture tests passed before agent run — corrupted "
+                    "fixture, refusing to run",
+                }
+            )
+        )
+        return 1
     with open(os.path.join(workspace, "evidence_run.txt"), "w") as f:
         f.write("run_id=%s\n" % args.run_id)
 
