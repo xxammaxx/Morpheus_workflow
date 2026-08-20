@@ -1,0 +1,151 @@
+{
+  "generated": 24,
+  "sealed": true,
+  "seed": "HAMH-HOLDOUT-2026-08-21",
+  "tasks": {
+    "ho-001": {
+      "fn": "slugify",
+      "module": "slugger",
+      "sha256": "769ba684ecfb07a69ce1e29c3aa1a43e2eee7db64307a0161b0344c10ffc1af7",
+      "variant": 0
+    },
+    "ho-002": {
+      "fn": "slugify",
+      "module": "slugger",
+      "sha256": "0ed1f74584787b02b3dace70343065816077645cb25bb3ea178dd09a7d48bb4d",
+      "variant": 1
+    },
+    "ho-003": {
+      "fn": "slugify",
+      "module": "slugger",
+      "sha256": "a3c0a8308319f65dd3e91a196017b6bec34c3386ab57d09f77d1c715b499a614",
+      "variant": 2
+    },
+    "ho-004": {
+      "fn": "slugify",
+      "module": "slugger",
+      "sha256": "30a7f9ad81c74c5e37282ab994c7c8346fcd2ab0737e01c98e1f08856a7abeeb",
+      "variant": 3
+    },
+    "ho-005": {
+      "fn": "word_count",
+      "module": "counter",
+      "sha256": "9ea16ca70225c00d811f780f1fe4f2572c8770d88ab4ed4e57a8dd18ae6bd649",
+      "variant": 0
+    },
+    "ho-006": {
+      "fn": "word_count",
+      "module": "counter",
+      "sha256": "48a9958380e56a36378ffd2022eafaf77c7b82dd347de979c2269369679f6108",
+      "variant": 1
+    },
+    "ho-007": {
+      "fn": "word_count",
+      "module": "counter",
+      "sha256": "68b51283e93e8639a7e822fcdcb69cac0f0afab82f0f248e3b92d12cc6f6fb24",
+      "variant": 2
+    },
+    "ho-008": {
+      "fn": "word_count",
+      "module": "counter",
+      "sha256": "6b1d3010788a726144f80d8aa5ee0dae4cddd6513bf60cd547c6358dcdc2c00d",
+      "variant": 3
+    },
+    "ho-009": {
+      "fn": "extract_numbers",
+      "module": "numextract",
+      "sha256": "a77b0871b9cedbbb028433864e60071501d8af01f75c5b8b718890c3e134915d",
+      "variant": 0
+    },
+    "ho-010": {
+      "fn": "extract_numbers",
+      "module": "numextract",
+      "sha256": "15266f8e49a0c420e26fea4f77bb9feef03b683dfc89894e32354acfb8388fba",
+      "variant": 1
+    },
+    "ho-011": {
+      "fn": "extract_numbers",
+      "module": "numextract",
+      "sha256": "ece1a78a985d5c0c52dc9cf9b2c75f8a84f144fab9d19953ddb6669fcf801efe",
+      "variant": 2
+    },
+    "ho-012": {
+      "fn": "extract_numbers",
+      "module": "numextract",
+      "sha256": "fdd4769ea2a4b94ef468d55ea07e18e065f5b60072d708593a73952ed1c6a9cb",
+      "variant": 3
+    },
+    "ho-013": {
+      "fn": "camel_to_snake",
+      "module": "namer",
+      "sha256": "a1919101eaacdebc718fd99d98ccb3e53df5a3badce4fff859129388217bc829",
+      "variant": 0
+    },
+    "ho-014": {
+      "fn": "camel_to_snake",
+      "module": "namer",
+      "sha256": "7d97988da0f5d16c344ac0da6c8777643eeb7dadc7ef823353f838940dc14a41",
+      "variant": 1
+    },
+    "ho-015": {
+      "fn": "camel_to_snake",
+      "module": "namer",
+      "sha256": "7d7f119c9892e005748781eeaf8dfd143120d0d6786200c8f93ccc4bce3e3a46",
+      "variant": 2
+    },
+    "ho-016": {
+      "fn": "camel_to_snake",
+      "module": "namer",
+      "sha256": "49aafc7d740bb3a5810e00d7e2d299055efaa2dca8d48c319e826e38c302dff9",
+      "variant": 3
+    },
+    "ho-017": {
+      "fn": "truncate",
+      "module": "truncator",
+      "sha256": "f5f25438369495c681d0a907ded7bdf49d9eddffbe077cee57ab07ef1bccf7a5",
+      "variant": 0
+    },
+    "ho-018": {
+      "fn": "truncate",
+      "module": "truncator",
+      "sha256": "1b3a883e39b853c245ce84d647d31bf95c7b0e1cdbb3d5f896c8de9a04bf79f0",
+      "variant": 1
+    },
+    "ho-019": {
+      "fn": "truncate",
+      "module": "truncator",
+      "sha256": "e5d2fa09854a967f8b4a7551b8d7185c8ef3919a1dc2458f98d333d88200ffec",
+      "variant": 2
+    },
+    "ho-020": {
+      "fn": "truncate",
+      "module": "truncator",
+      "sha256": "19a7d492bafdaa92d263c29a8e7343114af4a3ca4c29cefdac97a743c1fb0000",
+      "variant": 3
+    },
+    "ho-021": {
+      "fn": "title_case",
+      "module": "capitalizer",
+      "sha256": "6f9bfd5fc517b2a67352a0eaa8dfc0d0c1d9224b97e5aa1268f0d30e130cf65c",
+      "variant": 0
+    },
+    "ho-022": {
+      "fn": "title_case",
+      "module": "capitalizer",
+      "sha256": "9b1195a31191ef009492e84163160898b5075151d0255592772c17719aab3706",
+      "variant": 1
+    },
+    "ho-023": {
+      "fn": "title_case",
+      "module": "capitalizer",
+      "sha256": "2c8de062debd2d80e785ccfd24a4205367d683f21069ced4dcc064b67073da5a",
+      "variant": 2
+    },
+    "ho-024": {
+      "fn": "title_case",
+      "module": "capitalizer",
+      "sha256": "faf9145159fec9ab5b1cea250e0643025882a9d597bf921a1451b1c0974f3dff",
+      "variant": 3
+    }
+  }
+}
