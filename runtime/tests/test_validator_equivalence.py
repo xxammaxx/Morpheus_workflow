@@ -170,6 +170,43 @@ def build_fixtures():
             "state": {"previous_state": "ACCEPTED", "new_state": "BASELINING"},
             "reason_code": "INTAKE_OK",
         },
+        # --- HAMH contracts (ADR-2026-08-20): Py/JS twins must agree too
+        "hamh.harness.v1": {
+            "contract": "hamh.harness.v1",
+            "version": "v1",
+            "harness_id": "deepseek/v4-flash/0731/thinking/build/v1",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "model_revision": "0731",
+            "task_class": "build",
+            "runtime_mode": "thinking",
+            "harness_version": "v1",
+            "status": "CANDIDATE",
+            "fingerprint": "a" * 64,
+            "prompt_profile": {"style": "baseline"},
+            "context_profile": {"stable_prefix": ["system"]},
+            "tool_profile": {"capabilities": {"read": True}, "presentation": "flat"},
+        },
+        "hamh.resolution.v1": {
+            "contract": "hamh.resolution.v1",
+            "version": "v1",
+            "resolved_harness_id": "baseline/shared/default/auto/plan/v1",
+            "harness_version": "v1",
+            "fingerprint": "b" * 64,
+            "provider": "unknown",
+            "model": "unknown",
+            "model_revision": None,
+            "task_class": "plan",
+            "runtime_mode": "auto",
+            "is_fallback": True,
+            "effective_tool_profile": {
+                "capabilities": {"read": True},
+                "presentation": "flat",
+            },
+            "effective_context_profile": {"stable_prefix": ["system"]},
+            "effective_reasoning_profile": {"thinking": "auto"},
+            "fallback_profile": {"name": "baseline"},
+        },
     }
 
     for cid, sample in valid.items():
@@ -252,6 +289,31 @@ def build_fixtures():
     fixtures["invalid_oneof_alt"] = {
         "schema": schemas["autodev.verification.v1"],
         "payload": dict(valid["autodev.verification.v1"], failure_class="NONSENSE"),
+    }
+    # HAMH invalid variants (Py/JS twins must agree on the new contracts)
+    fixtures["invalid_hamh_bad_status"] = {
+        "schema": schemas["hamh.harness.v1"],
+        "payload": dict(valid["hamh.harness.v1"], status="SUPER_ACTIVE"),
+    }
+    fixtures["invalid_hamh_bad_fingerprint"] = {
+        "schema": schemas["hamh.harness.v1"],
+        "payload": dict(valid["hamh.harness.v1"], fingerprint="not-hex"),
+    }
+    fixtures["invalid_hamh_bad_task_class"] = {
+        "schema": schemas["hamh.harness.v1"],
+        "payload": dict(valid["hamh.harness.v1"], task_class="hacking"),
+    }
+    fixtures["invalid_hamh_resolution_missing"] = {
+        "schema": schemas["hamh.resolution.v1"],
+        "payload": {
+            k: v
+            for k, v in valid["hamh.resolution.v1"].items()
+            if k != "effective_reasoning_profile"
+        },
+    }
+    fixtures["invalid_hamh_resolution_bad_fp"] = {
+        "schema": schemas["hamh.resolution.v1"],
+        "payload": dict(valid["hamh.resolution.v1"], fingerprint="xyz"),
     }
     return fixtures
 

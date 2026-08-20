@@ -25,6 +25,8 @@ CONTRACTS = [
     "autodev.decision.v1",
     "autodev.split.v1",
     "autodev.run-event.v1",
+    "hamh.harness.v1",
+    "hamh.resolution.v1",
 ]
 
 _SCHEMAS = {}

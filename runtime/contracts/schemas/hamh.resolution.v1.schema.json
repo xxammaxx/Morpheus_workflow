@@ -1,0 +1,40 @@
+{
+  "$id": "hamh.resolution.v1",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HAMH Harness Resolution",
+  "description": "Deterministic output of the harness resolver for one model job. Unknown models resolve to the explicit baseline fallback profile.",
+  "type": "object",
+  "required": [
+    "contract",
+    "version",
+    "resolved_harness_id",
+    "harness_version",
+    "fingerprint",
+    "provider",
+    "model",
+    "task_class",
+    "runtime_mode",
+    "effective_tool_profile",
+    "effective_context_profile",
+    "effective_reasoning_profile",
+    "fallback_profile"
+  ],
+  "properties": {
+    "contract": { "type": "string", "const": "hamh.resolution.v1" },
+    "version": { "type": "string", "const": "v1" },
+    "resolved_harness_id": { "type": "string" },
+    "harness_version": { "type": "string" },
+    "fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "provider": { "type": "string" },
+    "model": { "type": "string" },
+    "model_revision": { "type": ["string", "null"] },
+    "task_class": { "type": "string" },
+    "runtime_mode": { "type": "string" },
+    "is_fallback": { "type": "boolean" },
+    "effective_tool_profile": { "type": "object" },
+    "effective_context_profile": { "type": "object" },
+    "effective_reasoning_profile": { "type": "object" },
+    "fallback_profile": { "type": ["object", "null"] },
+    "x-metadata": { "type": "object" }
+  }
+}

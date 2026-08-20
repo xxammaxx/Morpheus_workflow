@@ -1,0 +1,50 @@
+{
+  "$id": "hamh.harness.v1",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HAMH Harness Registry Entry",
+  "description": "Versioned harness configuration entry for the Hierarchical Adaptive Model Harness registry. ACTIVE may only be set through the authorized promotion path.",
+  "type": "object",
+  "required": [
+    "contract",
+    "version",
+    "harness_id",
+    "provider",
+    "model",
+    "task_class",
+    "runtime_mode",
+    "status",
+    "fingerprint"
+  ],
+  "properties": {
+    "contract": { "type": "string", "const": "hamh.harness.v1" },
+    "version": { "type": "string", "const": "v1" },
+    "harness_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._/-]{0,127}$"
+    },
+    "provider": { "type": "string", "pattern": "^[A-Za-z0-9._/-]{1,64}$" },
+    "model": { "type": "string", "pattern": "^[A-Za-z0-9._/-]{1,64}$" },
+    "model_revision": { "type": "string", "pattern": "^[A-Za-z0-9._/-]{0,64}$" },
+    "task_class": {
+      "type": "string",
+      "enum": ["research", "plan", "build", "review", "verify", "baseline"]
+    },
+    "runtime_mode": { "type": "string", "enum": ["thinking", "non-thinking", "auto"] },
+    "harness_version": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,32}$" },
+    "status": {
+      "type": "string",
+      "enum": ["DRAFT", "CANDIDATE", "SHADOW", "CANARY", "ACTIVE", "RETIRED", "REJECTED"]
+    },
+    "fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "parent_version": { "type": "string", "pattern": "^[A-Za-z0-9._-]{0,32}$" },
+    "created_at": { "type": "string" },
+    "promotion_state": { "type": "string" },
+    "prompt_profile": { "type": "object" },
+    "context_profile": { "type": "object" },
+    "tool_profile": { "type": "object" },
+    "editing_profile": { "type": "object" },
+    "stop_profile": { "type": "object" },
+    "evaluation_reference": { "type": "object" },
+    "x-metadata": { "type": "object" }
+  }
+}

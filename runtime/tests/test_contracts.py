@@ -207,8 +207,16 @@ def main():
             "reason": "retry exhausted",
             "reason_code": "RETRY_DENIED_ATTEMPT_LIMIT",
             "subtasks": [
-                {"id": "st-1", "title": "Subtask A", "description": "do thing A properly"},
-                {"id": "st-2", "title": "Subtask B", "description": "do thing B properly"},
+                {
+                    "id": "st-1",
+                    "title": "Subtask A",
+                    "description": "do thing A properly",
+                },
+                {
+                    "id": "st-2",
+                    "title": "Subtask B",
+                    "description": "do thing B properly",
+                },
             ],
             "dependencies": [["st-1", "st-2"]],
             "acceptance_criteria": ["A and B done"],
@@ -223,6 +231,66 @@ def main():
             "timestamp": "2026-08-17T00:00:00Z",
             "state": {"previous_state": "ACCEPTED", "new_state": "BASELINING"},
             "reason_code": "INTAKE_OK",
+            "x-metadata": {},
+        },
+        # --- HAMH contracts (ADR-2026-08-20) ---
+        "hamh.harness.v1": {
+            "contract": "hamh.harness.v1",
+            "version": "v1",
+            "harness_id": "deepseek/v4-flash/0731/thinking/build/v1",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "model_revision": "0731",
+            "task_class": "build",
+            "runtime_mode": "thinking",
+            "harness_version": "v1",
+            "status": "CANDIDATE",
+            "fingerprint": "a" * 64,
+            "parent_version": "",
+            "created_at": "2026-08-20T00:00:00Z",
+            "promotion_state": "OFFLINE_EVAL_PENDING",
+            "prompt_profile": {"style": "baseline"},
+            "context_profile": {
+                "stable_prefix": ["system", "tools"],
+                "variable": ["task"],
+            },
+            "tool_profile": {
+                "capabilities": {"read": True, "edit": True},
+                "presentation": "flat",
+            },
+            "editing_profile": {"strategy": "direct_edit"},
+            "stop_profile": {"stop_on_complete": True},
+            "evaluation_reference": {
+                "suite": "hamh-micro-tasks",
+                "split": "EVOLUTION_TRAIN",
+            },
+            "x-metadata": {"created_by": "test"},
+        },
+        "hamh.resolution.v1": {
+            "contract": "hamh.resolution.v1",
+            "version": "v1",
+            "resolved_harness_id": "baseline/shared/default/non-thinking/plan/v1",
+            "harness_version": "v1",
+            "fingerprint": "b" * 64,
+            "provider": "unknown-provider",
+            "model": "unknown-model",
+            "model_revision": None,
+            "task_class": "plan",
+            "runtime_mode": "non-thinking",
+            "is_fallback": True,
+            "effective_tool_profile": {
+                "capabilities": {"read": True, "edit": False},
+                "presentation": "flat",
+            },
+            "effective_context_profile": {
+                "stable_prefix": ["system"],
+                "variable": ["task"],
+            },
+            "effective_reasoning_profile": {
+                "thinking": "disabled",
+                "reasoning_effort": None,
+            },
+            "fallback_profile": {"name": "baseline"},
             "x-metadata": {},
         },
     }
@@ -316,6 +384,48 @@ def main():
     ev2 = json.loads(json.dumps(ev))
     ev2["x-metadata"]["session_id"] = "zzz"
     check("FP_RUNEVENT_META", registry.fingerprint(ev) == registry.fingerprint(ev2))
+
+    # --- HAMH contract negatives (extend, never replace) ---
+    hh = valid_samples["hamh.harness.v1"]
+    bad_hh = dict(hh)
+    bad_hh.pop("fingerprint")
+    r = registry.validate(bad_hh, "hamh.harness.v1")
+    check(
+        "INVALID_HARNESS_NO_FINGERPRINT",
+        not r["ok"] and any("fingerprint is required" in e for e in r["errors"]),
+        json.dumps(r),
+    )
+
+    bad_hh2 = dict(hh)
+    bad_hh2["status"] = "SUPER_ACTIVE"
+    r = registry.validate(bad_hh2, "hamh.harness.v1")
+    check("INVALID_HARNESS_BAD_STATUS", not r["ok"], json.dumps(r))
+
+    bad_hh3 = dict(hh)
+    bad_hh3["fingerprint"] = "zzz-not-hex"
+    r = registry.validate(bad_hh3, "hamh.harness.v1")
+    check("INVALID_HARNESS_BAD_FP", not r["ok"], json.dumps(r))
+
+    hr = valid_samples["hamh.resolution.v1"]
+    bad_hr = dict(hr)
+    bad_hr.pop("effective_reasoning_profile")
+    r = registry.validate(bad_hr, "hamh.resolution.v1")
+    check(
+        "INVALID_RESOLUTION_MISSING_FIELD",
+        not r["ok"]
+        and any("effective_reasoning_profile is required" in e for e in r["errors"]),
+        json.dumps(r),
+    )
+
+    # HAMH fingerprint: metadata-insensitive, semantic-sensitive
+    fp_a = registry.fingerprint(hh)
+    hh_meta = dict(hh)
+    hh_meta["x-metadata"] = {"created_by": "someone-else"}
+    check("FP_HARNESS_META_INSENSITIVE", registry.fingerprint(hh_meta) == fp_a)
+
+    hh_sem = dict(hh)
+    hh_sem["prompt_profile"] = {"style": "changed-semantically"}
+    check("FP_HARNESS_SEMANTIC_SENSITIVE", registry.fingerprint(hh_sem) != fp_a)
 
     print("\nRESULT %d passed, %d failed" % (passed, failed))
     return 0 if failed == 0 else 1
