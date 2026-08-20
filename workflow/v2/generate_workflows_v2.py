@@ -432,6 +432,30 @@ return [{json: {
     wf.add_node(c)
     wf.add_node(h)
     return c, h
+    c = code_node(name_prefix + " Prep", js, pos)
+    h = http_node(
+        name_prefix + " Dispatch",
+        "POST",
+        cfg.jobs(),
+        "JSON.stringify($json)",
+        (pos[0] + 1, pos[1]),
+        cfg.cr_harness,
+    )
+    wf.add_node(c)
+    wf.add_node(h)
+    return c, h
+
+
+def hamh_passthrough_js(task_class):
+    """HAMH identity passthrough (ADR H15/AC-17): provider/model/
+    model_revision/task_class travel with the job dispatch. Backend routing
+    is untouched."""
+    return (
+        "  provider: (s.provider || null),\n"
+        "  model: (s.model || null),\n"
+        "  model_revision: (s.model_revision || null),\n"
+        "  task_class: '%s'" % task_class
+    )
 
 
 def poll_cycle(wf, cfg, name_prefix, get_url_expr, status_field, completed_value, pos):
@@ -527,8 +551,12 @@ const schema = %s;
 const v = validateAutodevContract(issue, schema);
 const fixture = (raw.fixture && ['invalid_plan','verify_fail_delta','verify_fail_no_delta','no_signature','attempt_limit','security_critical_blocking','review_fix','review_split'].includes(raw.fixture)) ? raw.fixture : null;
 const backend = (raw.backend === 'embedded' || raw.backend === 'opencode-builder-8001') ? raw.backend : 'opencode-builder-8001';
+const provider = (typeof raw.provider === 'string' && ['embedded','lmstudio','deepseek'].includes(raw.provider)) ? raw.provider : null;
+const model = (typeof raw.model === 'string' && raw.model.length <= 64) ? raw.model : null;
+const modelRevision = (typeof raw.model_revision === 'string' && raw.model_revision.length <= 64) ? raw.model_revision : null;
 return [{ json: { intake_valid: v.ok, errors: v.errors, issue: issue,
-  fixture: fixture, backend: backend, run_id: runId } }];
+  fixture: fixture, backend: backend, provider: provider, model: model,
+  model_revision: modelRevision, run_id: runId } }];
 """
         % embed_schema("autodev.issue.v1")
     )
@@ -545,7 +573,9 @@ return [{ json: { intake_valid: v.ok, errors: v.errors, issue: issue,
         code_node(
             "Prepare Run Row",
             """const s = $json;
-return [{json: {intake: {issue: s.issue, fixture: s.fixture, backend: s.backend},
+return [{json: {intake: {issue: s.issue, fixture: s.fixture, backend: s.backend,
+  provider: s.provider || null, model: s.model || null,
+  model_revision: s.model_revision || null},
   data: [{run_id: s.issue.run_id, state: 'ACCEPTED', task_ref: s.issue.task_ref || '',
   repository_ref: s.issue.repository_ref || '', current_job: 'intake', decision: '',
   reason_code: 'INTAKE_OK', created_at: s.issue.created_at, updated_at: s.issue.created_at,
@@ -735,6 +765,9 @@ const issue = s.issue || s;
 return [{json: {
   issue: issue, fixture: s.fixture || null,
   backend: s.backend || 'opencode-builder-8001',
+  provider: s.provider || null,
+  model: s.model || null,
+  model_revision: s.model_revision || null,
   run_row: {state: 'ACCEPTED', current_job: 'baseline', reason_code: 'INTAKE_OK'},
   baseline: null, research: null, plan: null, gate: null,
   build: null, verification: null, review: null, decision: null,
@@ -1075,14 +1108,26 @@ return [{json: Object.assign({}, s, {
         )
     )
     wf.add("Retry SPLIT?", "Run Split (Retry)", 0)
-    wf.add_node(code_node("Post-Split (Retry)", """const out = $json;
+    wf.add_node(
+        code_node(
+            "Post-Split (Retry)",
+            """const out = $json;
 const sp = out.split || {};
 const s = Object.assign({}, $('Retry Policy').first().json || {});
-return [{json: Object.assign({}, s, {split: sp, split_ok: !!sp && !!sp.contract})}];""", P(30, 1)))
+return [{json: Object.assign({}, s, {split: sp, split_ok: !!sp && !!sp.contract})}];""",
+            P(30, 1),
+        )
+    )
     wf.add("Run Split (Retry)", "Post-Split (Retry)")
-    c, h, r = state_update_nodes(wf, cfg, "Split Retry State", "SPLIT_REQUIRED", "split",
-                                 "row.decision = 'SPLIT'; row.reason_code = $json.split.reason_code || 'SPLIT_REQUIRED';",
-                                 P(31, 1))
+    c, h, r = state_update_nodes(
+        wf,
+        cfg,
+        "Split Retry State",
+        "SPLIT_REQUIRED",
+        "split",
+        "row.decision = 'SPLIT'; row.reason_code = $json.split.reason_code || 'SPLIT_REQUIRED';",
+        P(31, 1),
+    )
     wf.add("Post-Split (Retry)", c)
     wf.add(c, h)
 
@@ -1263,14 +1308,26 @@ return [{json: Object.assign({}, s, {
         )
     )
     wf.add("Decision SPLIT?", "Run Split (Decision)", 0)
-    wf.add_node(code_node("Post-Split (Decision)", """const out = $json;
+    wf.add_node(
+        code_node(
+            "Post-Split (Decision)",
+            """const out = $json;
 const sp = out.split || {};
 const s = Object.assign({}, $('Post-Decision').first().json || {});
-return [{json: Object.assign({}, s, {split: sp, split_ok: !!sp && !!sp.contract})}];""", P(36, 4)))
+return [{json: Object.assign({}, s, {split: sp, split_ok: !!sp && !!sp.contract})}];""",
+            P(36, 4),
+        )
+    )
     wf.add("Run Split (Decision)", "Post-Split (Decision)")
-    c, h, r = state_update_nodes(wf, cfg, "Split Decision State", "SPLIT_REQUIRED", "split",
-                                 "row.decision = 'SPLIT'; row.reason_code = $json.split.reason_code || 'SPLIT_REQUIRED';",
-                                 P(37, 4))
+    c, h, r = state_update_nodes(
+        wf,
+        cfg,
+        "Split Decision State",
+        "SPLIT_REQUIRED",
+        "split",
+        "row.decision = 'SPLIT'; row.reason_code = $json.split.reason_code || 'SPLIT_REQUIRED';",
+        P(37, 4),
+    )
     wf.add("Post-Split (Decision)", c)
     wf.add(c, h)
     # BLOCKED from decision
@@ -1340,12 +1397,17 @@ def build_single_job_workflow(
             )
         )
         wf.add("Sub-Workflow Trigger", "Prep %s" % job_type)
+        _task_class = "plan" if job_type == "plan" else "baseline"
         prep_js = """const s = $json;
 const input = %s;
 return [{json: {
   run_id: s.issue.run_id, job_id: %s, job_type: '%s',
   attempt_id: %s, input_contract: '%s', input: input,
-  backend: %s, fixture: %s
+  backend: %s, fixture: %s,
+  provider: (s.provider || null),
+  model: (s.model || null),
+  model_revision: (s.model_revision || null),
+  task_class: '%s'
 }}];""" % (
             input_expr,
             job_id_expr,
@@ -1354,6 +1416,7 @@ return [{json: {
             input_contract,
             backend_expr,
             fixture_expr,
+            _task_class,
         )
         prep = code_node("Prep %s" % job_type, prep_js, P(0, 0))
         dispatch = http_node(
@@ -1585,7 +1648,11 @@ return [{json: {
   run_id: issue.run_id, job_id: issue.run_id + ':build:' + ((s.attempt_build || 0) + 1),
   job_type: 'build', attempt_id: input.attempt_id,
   input_contract: 'autodev.build-input.v1', input: input,
-  backend: s.backend || 'opencode-builder-8001', fixture: s.fixture || null
+  backend: s.backend || 'opencode-builder-8001', fixture: s.fixture || null,
+  provider: (s.provider || null),
+  model: (s.model || null),
+  model_revision: (s.model_revision || null),
+  task_class: 'build'
 }}];"""
         prep = code_node("Prep Build Input", prep_js, P(0, 0))
         wf.add("Sub-Workflow Trigger", prep)
@@ -1738,7 +1805,11 @@ return [{json: {
   run_id: issue.run_id, job_id: issue.run_id + ':verify:' + attemptId.split(':').pop(),
   job_type: 'verify', attempt_id: attemptId,
   input_contract: 'autodev.build-input.v1', input: input,
-  backend: s.backend || 'opencode-builder-8001', fixture: s.fixture || null
+  backend: s.backend || 'opencode-builder-8001', fixture: s.fixture || null,
+  provider: (s.provider || null),
+  model: (s.model || null),
+  model_revision: (s.model_revision || null),
+  task_class: 'verify'
 }}];"""
         prep = code_node("Prep Verify Input", prep_js, P(0, 0))
         wf.add("Sub-Workflow Trigger", prep)
@@ -1895,7 +1966,11 @@ return [{json: {
   run_id: issue.run_id, job_id: issue.run_id + ':fix:' + attemptNo,
   job_type: 'fix', attempt_id: input.attempt_id,
   input_contract: 'autodev.build-input.v1', input: input,
-  backend: s.backend || 'opencode-builder-8001', fixture: s.fixture || null
+  backend: s.backend || 'opencode-builder-8001', fixture: s.fixture || null,
+  provider: (s.provider || null),
+  model: (s.model || null),
+  model_revision: (s.model_revision || null),
+  task_class: 'build'
 }}];"""
         prep = code_node("Prep Fix Input", prep_js, P(0, 0))
         wf.add("Sub-Workflow Trigger", prep)
@@ -2036,7 +2111,11 @@ const jobs = ['code', 'docs', 'tests'].map((area) => ({
   input_contract: 'autodev.issue.v1',
   input: s.issue,
   backend: backend,
-  fixture: s.fixture || null
+  fixture: s.fixture || null,
+  provider: s.provider || null,
+  model: s.model || null,
+  model_revision: s.model_revision || null,
+  task_class: 'research'
 }));
 return [{json: {
   run_id: runId, batch_id: runId + ':research-batch',
@@ -2203,7 +2282,11 @@ const jobs = ['correctness', 'security', 'quality'].map((area) => ({
   input_contract: 'autodev.build-result.v1',
   input: buildInput,
   backend: backend,
-  fixture: s.fixture || null
+  fixture: s.fixture || null,
+  provider: s.provider || null,
+  model: s.model || null,
+  model_revision: s.model_revision || null,
+  task_class: 'review'
 }));
 return [{json: {
   run_id: runId, batch_id: runId + ':review-batch:' + attemptNo,
@@ -2412,14 +2495,21 @@ return [{json: {artifact: s.decision_contract}}];""",
             P(2, 0),
             cfg.cr_harness,
             params_extra={
-                "url": cfg.adapter + "/v1/artifacts/{{ $json.artifact.run_id }}/decision"
+                "url": cfg.adapter
+                + "/v1/artifacts/{{ $json.artifact.run_id }}/decision"
             },
         )
     )
     wf.add("Decision Policy", "Prep Artifact")
     wf.add("Prep Artifact", "Store Decision Artifact")
-    wf.add_node(code_node("Return Decision", """const s = $('Decision Policy').first().json;
-return [{json: {ok: true, decision_contract: s.decision_contract}}];""", P(3, 0)))
+    wf.add_node(
+        code_node(
+            "Return Decision",
+            """const s = $('Decision Policy').first().json;
+return [{json: {ok: true, decision_contract: s.decision_contract}}];""",
+            P(3, 0),
+        )
+    )
     wf.add("Store Decision Artifact", "Return Decision")
     return wf
 
@@ -2490,8 +2580,14 @@ return [{json: {artifact: s.split}}];""",
     )
     wf.add("Split Policy", "Prep Artifact")
     wf.add("Prep Artifact", "Store Split Artifact")
-    wf.add_node(code_node("Return Split", """const s = $('Split Policy').first().json;
-return [{json: {ok: true, split: s.split}}];""", P(3, 0)))
+    wf.add_node(
+        code_node(
+            "Return Split",
+            """const s = $('Split Policy').first().json;
+return [{json: {ok: true, split: s.split}}];""",
+            P(3, 0),
+        )
+    )
     wf.add("Store Split Artifact", "Return Split")
     return wf
 

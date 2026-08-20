@@ -14,7 +14,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst input = s.issue;\nreturn [{json: {\n  run_id: s.issue.run_id, job_id: s.issue.run_id + ':plan:1', job_type: 'plan',\n  attempt_id: s.issue.run_id + ':plan:1', input_contract: 'autodev.issue.v1', input: input,\n  backend: s.backend, fixture: s.fixture\n}}];"
+        "jsCode": "const s = $json;\nconst input = s.issue;\nreturn [{json: {\n  run_id: s.issue.run_id, job_id: s.issue.run_id + ':plan:1', job_type: 'plan',\n  attempt_id: s.issue.run_id + ':plan:1', input_contract: 'autodev.issue.v1', input: input,\n  backend: s.backend, fixture: s.fixture,\n  provider: (s.provider || null),\n  model: (s.model || null),\n  model_revision: (s.model_revision || null),\n  task_class: 'plan'\n}}];"
       },
       "id": "prep-plan",
       "name": "Prep plan",

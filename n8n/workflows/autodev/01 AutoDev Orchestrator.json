@@ -14,7 +14,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst issue = s.issue || s;\nreturn [{json: {\n  issue: issue, fixture: s.fixture || null,\n  backend: s.backend || 'opencode-builder-8001',\n  run_row: {state: 'ACCEPTED', current_job: 'baseline', reason_code: 'INTAKE_OK'},\n  baseline: null, research: null, plan: null, gate: null,\n  build: null, verification: null, review: null, decision: null,\n  attempt_build: 0, attempt_fix: 0,\n  max_attempts: issue.max_attempts || 2\n}}];"
+        "jsCode": "const s = $json;\nconst issue = s.issue || s;\nreturn [{json: {\n  issue: issue, fixture: s.fixture || null,\n  backend: s.backend || 'opencode-builder-8001',\n  provider: s.provider || null,\n  model: s.model || null,\n  model_revision: s.model_revision || null,\n  run_row: {state: 'ACCEPTED', current_job: 'baseline', reason_code: 'INTAKE_OK'},\n  baseline: null, research: null, plan: null, gate: null,\n  build: null, verification: null, review: null, decision: null,\n  attempt_build: 0, attempt_fix: 0,\n  max_attempts: issue.max_attempts || 2\n}}];"
       },
       "id": "init-run-state",
       "name": "Init Run State",
