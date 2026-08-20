@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.join(HERE, "runtime"))
 sys.path.insert(0, os.path.join(HERE, "runtime", "hamh"))
 sys.path.insert(0, os.path.join(HERE, "runtime", "contracts"))
 
-from hamh.resolver import resolve  # noqa: E402
+from hamh.resolver import resolve, resolve_replay  # noqa: E402
 from hamh.registry import HarnessRegistry  # noqa: E402
 
 VERSION = "1.0.0"
@@ -79,21 +79,53 @@ class _Handler(BaseHTTPRequestHandler):
             return
         try:
             reg = HarnessRegistry(REGISTRY_PATH)
-            resolution = resolve(
-                provider=payload.get("provider"),
-                model=payload.get("model"),
-                task_class=payload.get("task_class", "baseline"),
-                runtime_mode=payload.get("runtime_mode", "auto"),
-                model_revision=payload.get("model_revision"),
-                requested_capabilities=payload.get("requested_capabilities"),
-                runtime_constraints=payload.get("runtime_constraints"),
-                registry=reg,
-                controller_allowlist=payload.get("controller_allowlist"),
-            )
+            harness_id = payload.get("harness_id")
+            if harness_id:
+                # explicit replay resolution (audit/candidate path): returns
+                # the entry regardless of status (CANDIDATE/SHADOW/CANARY)
+                entry = resolve_replay(reg, harness_id)
+                if entry is None:
+                    self._json(
+                        404, {"status": "error", "error": "harness_id not found"}
+                    )
+                    return
+                resolution = _entry_to_resolution(entry)
+            else:
+                resolution = resolve(
+                    provider=payload.get("provider"),
+                    model=payload.get("model"),
+                    task_class=payload.get("task_class", "baseline"),
+                    runtime_mode=payload.get("runtime_mode", "auto"),
+                    model_revision=payload.get("model_revision"),
+                    requested_capabilities=payload.get("requested_capabilities"),
+                    runtime_constraints=payload.get("runtime_constraints"),
+                    registry=reg,
+                    controller_allowlist=payload.get("controller_allowlist"),
+                )
         except Exception as exc:  # resolution must never crash the caller
             self._json(500, {"status": "error", "error": "resolution failed: %s" % exc})
             return
         self._json(200, resolution)
+
+
+def _entry_to_resolution(entry):
+    """Build a hamh.resolution.v1 payload from a registry entry (replay)."""
+    from hamh.resolver import _entry_resolution  # noqa: PLC0415
+
+    return _entry_resolution(
+        entry,
+        requested_capabilities=[],
+        runtime_constraints={},
+        allowlist=_controller_allowlist_for(entry),
+    )
+
+
+def _controller_allowlist_for(entry):
+    from hamh import profiles as _profiles  # noqa: PLC0415
+
+    return _profiles.CONTROLLER_ALLOWED_TOOLS.get(
+        entry.get("task_class"), _profiles.READONLY_TOOLS
+    )
 
 
 def main():

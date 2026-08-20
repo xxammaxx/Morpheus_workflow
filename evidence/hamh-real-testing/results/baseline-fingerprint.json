@@ -1,0 +1,17 @@
+{
+  "effective_context": {
+    "cache_layout": "stable_first"
+  },
+  "effective_reasoning": {
+    "reasoning_effort": "high",
+    "thinking": "enabled"
+  },
+  "frozen": true,
+  "harness_fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+  "model": "deepseek-v4-flash",
+  "model_revision": "0731",
+  "provider": "deepseek",
+  "runtime_mode": "thinking",
+  "task_class": "build"
+}

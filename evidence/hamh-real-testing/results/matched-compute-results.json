@@ -1,0 +1,332 @@
+{
+  "runs": {
+    "a": [
+      {
+        "cost_usd": 0.00297696,
+        "edits": 3,
+        "effort": "high",
+        "failed_edits": 0,
+        "input_tokens": 37720,
+        "latency_s": 45,
+        "output_tokens": 2576,
+        "reasoning_tokens": 717,
+        "resolution": {
+          "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+          "is_fallback": false,
+          "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+          "resolver_error": null
+        },
+        "run_id": "pilot-a1",
+        "tool_calls": 11,
+        "verified": true
+      },
+      {
+        "cost_usd": 0.00302254,
+        "edits": 3,
+        "effort": "high",
+        "failed_edits": 0,
+        "input_tokens": 37084,
+        "latency_s": 36,
+        "output_tokens": 2660,
+        "reasoning_tokens": 389,
+        "resolution": {
+          "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+          "is_fallback": false,
+          "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+          "resolver_error": null
+        },
+        "run_id": "pilot-a2",
+        "tool_calls": 11,
+        "verified": true
+      },
+      {
+        "cost_usd": 0.00276382,
+        "edits": 3,
+        "effort": "high",
+        "failed_edits": 0,
+        "input_tokens": 36980,
+        "latency_s": 40,
+        "output_tokens": 2268,
+        "reasoning_tokens": 619,
+        "resolution": {
+          "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+          "is_fallback": false,
+          "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+          "resolver_error": null
+        },
+        "run_id": "pilot-a3",
+        "tool_calls": 11,
+        "verified": true
+      },
+      {
+        "cost_usd": 0.00217251,
+        "edits": 2,
+        "effort": "high",
+        "failed_edits": 0,
+        "input_tokens": 35962,
+        "latency_s": 29,
+        "output_tokens": 2040,
+        "reasoning_tokens": 356,
+        "resolution": {
+          "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+          "is_fallback": false,
+          "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+          "resolver_error": null
+        },
+        "run_id": "pilot-a4",
+        "tool_calls": 8,
+        "verified": true
+      },
+      {
+        "cost_usd": 0.00178854,
+        "edits": 1,
+        "effort": "high",
+        "failed_edits": 0,
+        "input_tokens": 35574,
+        "latency_s": 29,
+        "output_tokens": 1670,
+        "reasoning_tokens": 524,
+        "resolution": {
+          "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+          "is_fallback": false,
+          "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+          "resolver_error": null
+        },
+        "run_id": "pilot-a5",
+        "tool_calls": 7,
+        "verified": true
+      }
+    ],
+    "b": [
+      {
+        "cost_usd": 0.00429395,
+        "edits": 4,
+        "effort": "high",
+        "failed_edits": 0,
+        "input_tokens": 38316,
+        "latency_s": 54,
+        "output_tokens": 3632,
+        "reasoning_tokens": 542,
+        "resolution": {
+          "fingerprint": "9f70f7e7a31c6370a59cf8040e48a26e0b58ab943b4dd3f329b0417c020c32d8",
+          "is_fallback": false,
+          "resolved_harness_id": "hamh/candidate/build/precision-edit/v1",
+          "resolver_error": null
+        },
+        "run_id": "pilot-b1",
+        "tool_calls": 15,
+        "verified": true
+      },
+      {
+        "cost_usd": 0.00309576,
+        "edits": 3,
+        "effort": "high",
+        "failed_edits": 0,
+        "input_tokens": 37156,
+        "latency_s": 46,
+        "output_tokens": 2532,
+        "reasoning_tokens": 711,
+        "resolution": {
+          "fingerprint": "9f70f7e7a31c6370a59cf8040e48a26e0b58ab943b4dd3f329b0417c020c32d8",
+          "is_fallback": false,
+          "resolved_harness_id": "hamh/candidate/build/precision-edit/v1",
+          "resolver_error": null
+        },
+        "run_id": "pilot-b2",
+        "tool_calls": 12,
+        "verified": true
+      },
+      {
+        "cost_usd": 0.00302038,
+        "edits": 3,
+        "effort": "high",
+        "failed_edits": 0,
+        "input_tokens": 36880,
+        "latency_s": 40,
+        "output_tokens": 2654,
+        "reasoning_tokens": 354,
+        "resolution": {
+          "fingerprint": "9f70f7e7a31c6370a59cf8040e48a26e0b58ab943b4dd3f329b0417c020c32d8",
+          "is_fallback": false,
+          "resolved_harness_id": "hamh/candidate/build/precision-edit/v1",
+          "resolver_error": null
+        },
+        "run_id": "pilot-b3",
+        "tool_calls": 11,
+        "verified": true
+      },
+      {
+        "cost_usd": 0.0032296,
+        "edits": 3,
+        "effort": "high",
+        "failed_edits": 0,
+        "input_tokens": 37930,
+        "latency_s": 46,
+        "output_tokens": 2728,
+        "reasoning_tokens": 629,
+        "resolution": {
+          "fingerprint": "9f70f7e7a31c6370a59cf8040e48a26e0b58ab943b4dd3f329b0417c020c32d8",
+          "is_fallback": false,
+          "resolved_harness_id": "hamh/candidate/build/precision-edit/v1",
+          "resolver_error": null
+        },
+        "run_id": "pilot-b4",
+        "tool_calls": 12,
+        "verified": true
+      },
+      {
+        "cost_usd": 0.00327425,
+        "edits": 3,
+        "effort": "high",
+        "failed_edits": 0,
+        "input_tokens": 37192,
+        "latency_s": 45,
+        "output_tokens": 2778,
+        "reasoning_tokens": 788,
+        "resolution": {
+          "fingerprint": "9f70f7e7a31c6370a59cf8040e48a26e0b58ab943b4dd3f329b0417c020c32d8",
+          "is_fallback": false,
+          "resolved_harness_id": "hamh/candidate/build/precision-edit/v1",
+          "resolver_error": null
+        },
+        "run_id": "pilot-b5",
+        "tool_calls": 12,
+        "verified": true
+      }
+    ],
+    "c": [
+      {
+        "cost_usd": 0.00306643,
+        "edits": 3,
+        "effort": "max",
+        "failed_edits": 0,
+        "input_tokens": 35880,
+        "latency_s": 42,
+        "output_tokens": 2736,
+        "reasoning_tokens": 657,
+        "resolution": {
+          "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+          "is_fallback": false,
+          "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+          "resolver_error": null
+        },
+        "run_id": "pilot-c1",
+        "tool_calls": 10,
+        "verified": true
+      },
+      {
+        "cost_usd": 0.00375411,
+        "edits": 4,
+        "effort": "max",
+        "failed_edits": 0,
+        "input_tokens": 37968,
+        "latency_s": 44,
+        "output_tokens": 3520,
+        "reasoning_tokens": 679,
+        "resolution": {
+          "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+          "is_fallback": false,
+          "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+          "resolver_error": null
+        },
+        "run_id": "pilot-c2",
+        "tool_calls": 12,
+        "verified": true
+      },
+      {
+        "cost_usd": 0.00176228,
+        "edits": 1,
+        "effort": "max",
+        "failed_edits": 0,
+        "input_tokens": 35814,
+        "latency_s": 30,
+        "output_tokens": 1618,
+        "reasoning_tokens": 937,
+        "resolution": {
+          "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+          "is_fallback": false,
+          "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+          "resolver_error": null
+        },
+        "run_id": "pilot-c3",
+        "tool_calls": 7,
+        "verified": true
+      },
+      {
+        "cost_usd": 0.00302872,
+        "edits": 3,
+        "effort": "max",
+        "failed_edits": 0,
+        "input_tokens": 36824,
+        "latency_s": 41,
+        "output_tokens": 2668,
+        "reasoning_tokens": 543,
+        "resolution": {
+          "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+          "is_fallback": false,
+          "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+          "resolver_error": null
+        },
+        "run_id": "pilot-c4",
+        "tool_calls": 11,
+        "verified": true
+      },
+      {
+        "cost_usd": 0.00185411,
+        "edits": 1,
+        "effort": "max",
+        "failed_edits": 0,
+        "input_tokens": 35480,
+        "latency_s": 29,
+        "output_tokens": 1768,
+        "reasoning_tokens": 629,
+        "resolution": {
+          "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+          "is_fallback": false,
+          "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+          "resolver_error": null
+        },
+        "run_id": "pilot-c5",
+        "tool_calls": 7,
+        "verified": true
+      }
+    ]
+  },
+  "summary": {
+    "a": {
+      "mean_cost_usd": 0.002544874,
+      "mean_edits": 2.4,
+      "mean_latency_s": 35.8,
+      "mean_tool_calls": 9.6,
+      "n": 5,
+      "total_cost_usd": 0.01272437,
+      "verified": 5,
+      "verified_rate": 1.0
+    },
+    "b": {
+      "mean_cost_usd": 0.003382788,
+      "mean_edits": 3.2,
+      "mean_latency_s": 46.2,
+      "mean_tool_calls": 12.4,
+      "n": 5,
+      "total_cost_usd": 0.01691394,
+      "verified": 5,
+      "verified_rate": 1.0
+    },
+    "c": {
+      "mean_cost_usd": 0.00269313,
+      "mean_edits": 2.4,
+      "mean_latency_s": 37.2,
+      "mean_tool_calls": 9.4,
+      "n": 5,
+      "total_cost_usd": 0.013465650000000001,
+      "verified": 5,
+      "verified_rate": 1.0
+    },
+    "n_per_condition": 5,
+    "pilot": true,
+    "reason": "B (precision-edit) does not beat A on verified success (5/5 == 5/5) and is economically WORSE (cost +33%, latency +28%, edits +33%, tool calls +29%). C (matched compute) \u2248 A, so the effect is not compute-driven; B is simply worse. Per order \u00a727: reject candidate, no unnecessary larger holdout.",
+    "train_set": "task_fixture_v2",
+    "verdict": "CANDIDATE_REJECTED_PILOT"
+  }
+}

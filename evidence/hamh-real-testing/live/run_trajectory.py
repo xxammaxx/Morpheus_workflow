@@ -45,8 +45,13 @@ PRICE = {
 }
 
 
-def resolve_hamh(run_id, workspace):
-    """Call the deployed HAMH resolver; write artifact into workspace."""
+def resolve_hamh(run_id, workspace, harness="a"):
+    """Call the deployed HAMH resolver; write artifact into workspace.
+
+    harness a = ACTIVE baseline (is_fallback=false via registry)
+    harness b = CANDIDATE replay resolution (precision-edit)
+    harness c = ACTIVE baseline (same as a; extra compute via reasoning max)
+    """
     payload = {
         "provider": "deepseek",
         "model": "deepseek-v4-flash",
@@ -54,6 +59,8 @@ def resolve_hamh(run_id, workspace):
         "task_class": "build",
         "runtime_mode": "thinking",
     }
+    if harness == "b":
+        payload["harness_id"] = "hamh/candidate/build/precision-edit/v1"
     req = urllib.request.Request(
         RESOLVE_URL,
         data=json.dumps(payload).encode(),
@@ -71,6 +78,7 @@ def resolve_hamh(run_id, workspace):
         json.dump(
             {
                 "run_id": run_id,
+                "harness": harness,
                 "resolution": resolution,
             },
             f,
@@ -331,6 +339,13 @@ def run():
     ap.add_argument("--reasoning-effort", default="high")
     ap.add_argument("--no-resolve", action="store_true")
     ap.add_argument("--fixture", default="v1", choices=sorted(FIXTURES))
+    ap.add_argument(
+        "--harness",
+        default="a",
+        choices=["a", "b", "c"],
+        help="a=baseline ACTIVE, b=candidate precision-edit, "
+        "c=matched-compute (baseline + reasoning max)",
+    )
     args = ap.parse_args()
 
     fixture = FIXTURES[args.fixture]
@@ -384,8 +399,21 @@ def run():
     with open(os.path.join(workspace, "evidence_run.txt"), "w") as f:
         f.write("run_id=%s\n" % args.run_id)
 
-    # 2. HAMH resolution
-    resolution = resolve_hamh(args.run_id, workspace)
+    # 2. HAMH resolution (harness condition A/B/C)
+    resolution = resolve_hamh(args.run_id, workspace, harness=args.harness)
+
+    # harness-dependent prompt/effort (single variable per condition)
+    extra_prompt = ""
+    if args.harness == "b":
+        # candidate: precision-edit protocol (ONLY change vs A)
+        extra_prompt = (
+            "\n\nEdit protocol: use small, unique oldString anchors; before "
+            "each edit read the exact lines you intend to change; keep diffs "
+            "minimal; one logical change per edit."
+        )
+    if args.harness == "c":
+        # matched-compute control: same harness as A, extra inference budget
+        args.reasoning_effort = "max"
 
     # 3. opencode build run (cwd MUST be the workspace — verified: opencode
     #    records the process cwd as session directory)
@@ -393,8 +421,8 @@ def run():
     prompt = (
         "In this repository, the test suite has a failing test. "
         "Inspect the code and tests, find the root cause, fix the bug in "
-        "calc.py ONLY (never modify the test file), and verify all tests "
-        "pass by running: python3 -m pytest test_calc.py -q"
+        "the module ONLY (never modify the test file), and verify all tests "
+        "pass by running: python3 -m pytest %s -q%s" % (test_file, extra_prompt)
     )
     title = "hamh-run-%s" % args.run_id
     cmd = [
@@ -451,6 +479,7 @@ def run():
 
     summary = {
         "run_id": args.run_id,
+        "harness": args.harness,
         "provider": "deepseek",
         "model": "deepseek-v4-flash",
         "model_revision": "0731",

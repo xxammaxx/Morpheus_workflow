@@ -1,0 +1,13 @@
+{
+  "candidate_id": "hamh/candidate/build/precision-edit/v1",
+  "changed_component": "editing_strategy",
+  "fingerprint": "88d575f606768ac33efa19aa91c31af5bd8a8d9199bfb5a5e12481c10fbf26c4",
+  "minimal_delta": {
+    "editing_profile": {
+      "strategy": "precision_edit"
+    }
+  },
+  "parent_fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "rejection_reason": "PILOT_REJECTED: B not better than A (5/5==5/5), cost +33%, latency +28%",
+  "status": "REJECTED"
+}

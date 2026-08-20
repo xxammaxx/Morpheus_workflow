@@ -71,3 +71,18 @@ n je Bedingung klein (Pilot 3, Holdout 20). Paired-Design: jede Holdout-
 Aufgabe laeuft unter A, B UND C (gepaarte Daten). Kein Pseudogenauigkeit:
 kleine n werden als SAMPLE_SIZE_LIMITED gekennzeichnet; Bootstrap-CI wo
 sinnvoll.
+
+## Ergebnis (2026-08-21)
+
+```
+PILOT A/B/C (n=5 je Bedingung, Trainings-Task v2):
+  A: verified 5/5, cost $0.002545, lat 36s, edits 2.4, tools 9.6
+  B: verified 5/5, cost $0.003383, lat 46s, edits 3.2, tools 12.4
+  C: verified 5/5, cost $0.002693, lat 37s, edits 2.4, tools 9.4
+VERDICT: CANDIDATE_REJECTED (B wirtschaftlich schlechter bei gleicher
+Success; C≈A -> kein Compute-Effekt; order §27: kein Holdout)
+VALUE_PROOF: AMBER_HAMH_VALUE_NOT_PROVEN
+```
+
+Der Candidate wurde NICHT gerettet. Der Holdout (24 versiegelte Tasks)
+bleibt unbenutzt und leak-frei für zukünftige Experimente.
