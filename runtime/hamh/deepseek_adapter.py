@@ -245,6 +245,15 @@ def build_chat_request(
             "strict mode is Beta and requires base_url https://api.deepseek.com/beta"
         )
     validate_tools(tools, strict=strict)
+    # LIVE-VERIFIED invariant (2026-08-20): thinking mode does NOT support
+    # tool_choice="required" (provider: "Thinking mode does not support this
+    # tool_choice", HTTP 400). Guard offline so the harness never sends a
+    # request the provider would reject.
+    if thinking == "enabled" and tool_choice == "required":
+        raise DeepSeekProtocolError(
+            "thinking mode does not support tool_choice='required' "
+            "(live-verified provider invariant 2026-08-20); use 'auto'"
+        )
     if max_tokens is not None:
         if max_tokens < 1:
             raise DeepSeekProtocolError("max_tokens must be >= 1")

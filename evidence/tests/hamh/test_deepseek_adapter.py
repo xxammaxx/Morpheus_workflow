@@ -98,7 +98,11 @@ def main():
         }
     ]
     req = ds.build_chat_request(
-        "deepseek-v4-flash", [], tools=tools, tool_choice="required"
+        "deepseek-v4-flash",
+        [],
+        thinking="disabled",
+        tools=tools,
+        tool_choice="required",
     )
     check("DS_TOOLS_PASSED", req["tools"] == tools and req["tool_choice"] == "required")
     expect_protocol_error(
@@ -148,6 +152,29 @@ def main():
             "deepseek-v4-flash", [], tools=tools, strict=True, beta=True
         ),
     )
+
+    # --- LIVE-VERIFIED invariant (2026-08-20): thinking mode rejects
+    # tool_choice="required" (provider HTTP 400: "Thinking mode does not
+    # support this tool_choice")
+    expect_protocol_error(
+        "DS_THINKING_REQUIRED_TOOLCHOICE_BLOCKED",
+        lambda: ds.build_chat_request(
+            "deepseek-v4-flash",
+            [],
+            thinking="enabled",
+            tools=tools,
+            tool_choice="required",
+        ),
+    )
+    # non-thinking mode may still use required
+    req = ds.build_chat_request(
+        "deepseek-v4-flash",
+        [],
+        thinking="disabled",
+        tools=tools,
+        tool_choice="required",
+    )
+    check("DS_NONTHINKING_REQUIRED_TOOLCHOICE_OK", req["tool_choice"] == "required")
 
     # --- THE 400 RULE: reasoning_content must be echoed across tool turns
     assistant_tool_turn = {

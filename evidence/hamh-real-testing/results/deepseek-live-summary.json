@@ -1,0 +1,25 @@
+{
+  "max_external_api_cost_usd": 5.45,
+  "price_snapshot": {
+    "currency": "USD",
+    "input_cache_hit_per_1m": 0.007,
+    "input_cache_miss_per_1m": 0.22,
+    "output_per_1m": 0.66,
+    "peak_hours_utc": [
+      "01:00-04:00",
+      "06:00-10:00"
+    ],
+    "snapshot_date": "2026-08-20",
+    "tier": "off-peak"
+  },
+  "results": {
+    "NEGATIVE_PROTOCOL_TEST": true,
+    "NON_THINKING_LIVE": true,
+    "REASONING_CONTENT_CONTINUITY": true,
+    "THINKING_LIVE": true,
+    "TOOL_CALL_LIVE": true
+  },
+  "run_ts": 1787263364.0240412,
+  "total_cost_usd": 8.761e-05,
+  "verdict": "PARTIAL"
+}
