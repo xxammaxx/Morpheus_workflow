@@ -1,0 +1,5 @@
+Work protocol: after at most 3 research/exploration tool calls, form a
+concrete hypothesis about the root cause and TEST it: make a small code
+edit that implements your hypothesis, then run the test suite. Use the
+test feedback to refine. Do not continue researching without having
+tested at least one hypothesis in code.

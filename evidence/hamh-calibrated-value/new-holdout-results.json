@@ -1,0 +1,9 @@
+{
+  "stage": "new-sealed-holdout",
+  "status": "NOT_OPENED",
+  "split_id": "new-sealed-holdout",
+  "sealed": true,
+  "reason": "No candidate passed the development gate (matched-compute explains the gain). Per order 29 the new sealed holdout remains LOCKED. It was never inspected, calibrated against, or used for candidate generation.",
+  "task_ids": ["t-003", "t-004", "t-005", "t-006", "t-007", "t-009", "t-010", "t-011", "t-012", "t-013", "t-014"],
+  "date": "2026-08-21"
+}

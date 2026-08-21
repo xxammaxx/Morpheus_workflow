@@ -1,0 +1,270 @@
+{
+ "cost_usd": {
+  "mean": 0.002449,
+  "total": 0.164057
+ },
+ "duplicate_calls_total": 0,
+ "failure_classification": {
+  "CAPABILITY_FAILURE": 0,
+  "EXECUTION_FAILURE": 0,
+  "HARNESS_FAILURE": 0,
+  "STRATEGY_FAILURE": 3,
+  "UNKNOWN": 0
+ },
+ "file_edits_mean": 1.12,
+ "file_reads_mean": 3.36,
+ "finish_reasons": {
+  "stop": 63,
+  "tool-calls": 4
+ },
+ "first_pass_success": 64,
+ "latency_s": {
+  "max": 480,
+  "mean": 63.9
+ },
+ "per_task": {
+  "t-001": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.013009,
+   "mean_latency_s": 26.0,
+   "n": 1,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 35.0,
+   "verified": 1
+  },
+  "t-002": {
+   "edits_mean": 1.67,
+   "mean_cost": 0.005449,
+   "mean_latency_s": 109.0,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 16.33,
+   "verified": 3
+  },
+  "t-003": {
+   "edits_mean": 1.33,
+   "mean_cost": 0.002175,
+   "mean_latency_s": 41.0,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 8.0,
+   "verified": 3
+  },
+  "t-004": {
+   "edits_mean": 1.33,
+   "mean_cost": 0.001853,
+   "mean_latency_s": 30.0,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 7.33,
+   "verified": 3
+  },
+  "t-005": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.001665,
+   "mean_latency_s": 31.0,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 7.67,
+   "verified": 3
+  },
+  "t-006": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.001901,
+   "mean_latency_s": 35.3,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 6.67,
+   "verified": 3
+  },
+  "t-007": {
+   "edits_mean": 2.0,
+   "mean_cost": 0.002157,
+   "mean_latency_s": 46.0,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 8.33,
+   "verified": 3
+  },
+  "t-008": {
+   "edits_mean": 0.0,
+   "mean_cost": 0.007054,
+   "mean_latency_s": 480.0,
+   "n": 3,
+   "rate": 0.0,
+   "timeouts": 3,
+   "tool_calls_mean": 13.67,
+   "verified": 0
+  },
+  "t-009": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.001777,
+   "mean_latency_s": 30.7,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 6.67,
+   "verified": 3
+  },
+  "t-010": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.001809,
+   "mean_latency_s": 41.7,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 7.0,
+   "verified": 3
+  },
+  "t-011": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.001549,
+   "mean_latency_s": 31.0,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 6.67,
+   "verified": 3
+  },
+  "t-012": {
+   "edits_mean": 1.33,
+   "mean_cost": 0.002596,
+   "mean_latency_s": 79.0,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 8.0,
+   "verified": 3
+  },
+  "t-013": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.001977,
+   "mean_latency_s": 38.7,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 7.0,
+   "verified": 3
+  },
+  "t-014": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.001783,
+   "mean_latency_s": 30.0,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 7.0,
+   "verified": 3
+  },
+  "t-015": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.001405,
+   "mean_latency_s": 22.3,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 6.67,
+   "verified": 3
+  },
+  "t-016": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.001551,
+   "mean_latency_s": 25.7,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 8.0,
+   "verified": 3
+  },
+  "t-017": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.001559,
+   "mean_latency_s": 26.7,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 6.33,
+   "verified": 3
+  },
+  "t-018": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.001658,
+   "mean_latency_s": 25.3,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 6.67,
+   "verified": 3
+  },
+  "t-019": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.001607,
+   "mean_latency_s": 24.3,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 7.0,
+   "verified": 3
+  },
+  "t-020": {
+   "edits_mean": 2.0,
+   "mean_cost": 0.004622,
+   "mean_latency_s": 202.0,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 11.67,
+   "verified": 3
+  },
+  "t-021": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.001448,
+   "mean_latency_s": 22.7,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 6.67,
+   "verified": 3
+  },
+  "t-022": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.001444,
+   "mean_latency_s": 24.0,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 6.67,
+   "verified": 3
+  },
+  "t-023": {
+   "edits_mean": 1.0,
+   "mean_cost": 0.001311,
+   "mean_latency_s": 22.7,
+   "n": 3,
+   "rate": 1.0,
+   "timeouts": 0,
+   "tool_calls_mean": 6.33,
+   "verified": 3
+  }
+ },
+ "pytest_runs_mean": 2.03,
+ "run_count": 67,
+ "steps_mean": 7.06,
+ "task_count": 23,
+ "timeouts": 3,
+ "tokens": {
+  "cache_read_mean": 152572,
+  "input_mean": 39630,
+  "output_mean": 2092
+ },
+ "tool_calls_mean": 8.42,
+ "verified_success": 64,
+ "verified_success_rate": 0.9552
+}

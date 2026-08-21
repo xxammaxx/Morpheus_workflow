@@ -1,0 +1,145 @@
+{
+ "first_pass_success": false,
+ "harness": "c",
+ "latency_s": 480,
+ "model": "deepseek-v4-flash",
+ "model_revision": "0731",
+ "opencode_rc": "TIMEOUT",
+ "provider": "deepseek",
+ "pytest": {
+  "failed": 0,
+  "passed": 10
+ },
+ "reasoning_effort": "max",
+ "resolution": {
+  "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "is_fallback": false,
+  "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+  "resolver_error": null
+ },
+ "run_id": "abc-t008-C2",
+ "runtime_mode": "thinking",
+ "task": "t-008",
+ "task_class": "build",
+ "trajectory": {
+  "assistant_messages": 12,
+  "bash_commands": [
+   "ls -la",
+   "python3 -m pytest test_timetable.py -q 2>&1 | tail -30",
+   "cat > /tmp/opencode/search_ref.py << 'EOF'\nfrom datetime import datetime, timedelta\n\nD = \"2026-08-21T\"\ncases = [\n    # (busy, dur, start, end, expecte",
+   "cd /tmp/opencode && sed -i 's/def ref(busy, duration_min, start, end, merge_le, clip, pseudo, gap_boundary, final_boundary,\\n        gap_ret, final_re",
+   "python3 /tmp/opencode/search_ref.py",
+   "python3 /tmp/opencode/search_ref2.py",
+   "python3 -m pytest test_timetable.py -q"
+  ],
+  "cost_usd": 0.01221375,
+  "duplicate_calls": 0,
+  "file_edits": [
+   "/tmp/opencode/search_ref.py",
+   "/tmp/opencode/search_ref2.py",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-C2/timetable.py"
+  ],
+  "file_reads": [
+   "/tmp/opencode/hamh-cal-runs/abc-t008-C2/timetable.py",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-C2/test_timetable.py",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-C2/README.md"
+  ],
+  "finish": "tool-calls",
+  "messages": 13,
+  "retries": 2,
+  "session_id": "ses_fdc353ddbffeoXKH0ii034U3pd",
+  "steps": 11,
+  "text_output_chars": 1114,
+  "tokens": {
+   "cache_read": 561536,
+   "cache_write": 0,
+   "input": 39586,
+   "output": 12550,
+   "reasoning": 56603
+  },
+  "tool_call_ids": [
+   "call_00_mV3pIKKNFGeuN66OiYsU0473",
+   "call_00_ET_IxZvNnO6ib4R0xz3Hqu49834",
+   "call_01_ET_4oPIE1o5BJz0hk9iOQcU7730",
+   "call_02_ET_eqC5c2xq3ddwVy0pABGY1386",
+   "call_00_9TjR6zC5GucvwrYoWW479609",
+   "call_00_2rTkGzOQqLY1VtpWEFo00049",
+   "call_00_ET_gAjUmmab8c1tmXOZuMUM1294",
+   "call_00_4I5DIsLJx7HhyFX6bi2N5011",
+   "call_00_ET_6VqP2W9DpCUYtXdcKPYZ7020",
+   "call_00_4O9TnOyeq1xKgfHKx0es1817",
+   "call_00_ET_O3F4y2hpxIDywycZAYVR3053",
+   "call_00_WZyMCpAn0HOeVK55wIsX4259",
+   "call_00_ET_Q8IDgrPK0ZcabqjJPj3x3927"
+  ],
+  "tool_calls": [
+   {
+    "call_id": "call_00_mV3pIKKNFGeuN66OiYsU0473",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_IxZvNnO6ib4R0xz3Hqu49834",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_ET_4oPIE1o5BJz0hk9iOQcU7730",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_02_ET_eqC5c2xq3ddwVy0pABGY1386",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_9TjR6zC5GucvwrYoWW479609",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_2rTkGzOQqLY1VtpWEFo00049",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_gAjUmmab8c1tmXOZuMUM1294",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_4I5DIsLJx7HhyFX6bi2N5011",
+    "tool": "write",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_6VqP2W9DpCUYtXdcKPYZ7020",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_4O9TnOyeq1xKgfHKx0es1817",
+    "tool": "write",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_O3F4y2hpxIDywycZAYVR3053",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_WZyMCpAn0HOeVK55wIsX4259",
+    "tool": "edit",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_Q8IDgrPK0ZcabqjJPj3x3927",
+    "tool": "bash",
+    "ts": null
+   }
+  ]
+ },
+ "ts": 1787307367.9605558,
+ "verified_success": true
+}

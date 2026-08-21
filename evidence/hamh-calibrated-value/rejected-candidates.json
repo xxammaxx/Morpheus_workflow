@@ -1,0 +1,27 @@
+{
+  "rejected_candidates": [
+    {
+      "candidate_id": "hamh/candidate/build/precision-edit/v1",
+      "run": "HAMH_REAL_TESTING",
+      "date": "2026-08-21",
+      "weakness": {
+        "patterns": ["frequent_malformed_edits", "late_editing", "same_file_repeatedly_reopened"],
+        "evidence_runs": 3,
+        "evidence_tasks": 1
+      },
+      "intervention": {
+        "component": "editing_strategy",
+        "delta": "precision-edit protocol prompt: small unique oldString anchors, read exact lines before edit, minimal diffs"
+      },
+      "outcome": {
+        "success_delta": 0,
+        "cost_delta_pct": 33.0,
+        "latency_delta_pct": 28.3,
+        "edits_delta_pct": 33.3,
+        "tool_calls_delta_pct": 29.2
+      },
+      "classification": "REJECTED",
+      "reuse_guard": "This candidate MUST NOT be re-proposed without new causal evidence. The new run's candidate (edit-early policy) targets a DIFFERENT causal site: edit INITIATION (0 edits in 3 runs) vs edit PRECISION. Evidence for edit-early: research_loop_no_edit pattern, 3/3 runs on t-008, 0 edits."
+    }
+  ]
+}

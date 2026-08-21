@@ -1,0 +1,89 @@
+{
+ "first_pass_success": true,
+ "harness": "b",
+ "latency_s": 17,
+ "model": "deepseek-v4-flash",
+ "model_revision": "0731",
+ "opencode_rc": 0,
+ "provider": "deepseek",
+ "pytest": {
+  "failed": 0,
+  "passed": 10
+ },
+ "reasoning_effort": "high",
+ "resolution": {
+  "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "is_fallback": false,
+  "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+  "resolver_error": null
+ },
+ "run_id": "abc-t-022-B1",
+ "runtime_mode": "thinking",
+ "task": "t-022",
+ "task_class": "build",
+ "trajectory": {
+  "assistant_messages": 5,
+  "bash_commands": [
+   "ls -la",
+   "python3 -m pytest test_rangevalidator.py -q"
+  ],
+  "cost_usd": 0.0011571,
+  "duplicate_calls": 0,
+  "file_edits": [
+   "/tmp/opencode/hamh-cal-runs/abc-t-022-B1/rangevalidator.py"
+  ],
+  "file_reads": [
+   "/tmp/opencode/hamh-cal-runs/abc-t-022-B1/test_rangevalidator.py",
+   "/tmp/opencode/hamh-cal-runs/abc-t-022-B1/rangevalidator.py"
+  ],
+  "finish": "stop",
+  "messages": 6,
+  "retries": 1,
+  "session_id": "ses_fdc25b71affeKE4qlEFgrL6ba6",
+  "steps": 5,
+  "text_output_chars": 378,
+  "tokens": {
+   "cache_read": 76672,
+   "cache_write": 0,
+   "input": 34162,
+   "output": 940,
+   "reasoning": 157
+  },
+  "tool_call_ids": [
+   "call_00_E1JAgVPlDS87msZT4n142512",
+   "call_01_HfLqQpllKa5ZZm8LdFkG1267",
+   "call_00_ET_kj2dgXfdgBcix3ypUx850071",
+   "call_00_t2zqDYfcT4qXN5cHMVbe9240",
+   "call_00_ET_d6gYe6Ct7nxducF2hEgz1717"
+  ],
+  "tool_calls": [
+   {
+    "call_id": "call_00_E1JAgVPlDS87msZT4n142512",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_HfLqQpllKa5ZZm8LdFkG1267",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_kj2dgXfdgBcix3ypUx850071",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_t2zqDYfcT4qXN5cHMVbe9240",
+    "tool": "edit",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_d6gYe6Ct7nxducF2hEgz1717",
+    "tool": "bash",
+    "ts": null
+   }
+  ]
+ },
+ "ts": 1787307922.991407,
+ "verified_success": true
+}

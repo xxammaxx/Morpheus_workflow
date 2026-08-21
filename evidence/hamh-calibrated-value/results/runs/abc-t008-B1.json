@@ -1,0 +1,159 @@
+{
+ "first_pass_success": true,
+ "harness": "b",
+ "latency_s": 404,
+ "model": "deepseek-v4-flash",
+ "model_revision": "0731",
+ "opencode_rc": 0,
+ "provider": "deepseek",
+ "pytest": {
+  "failed": 0,
+  "passed": 10
+ },
+ "reasoning_effort": "high",
+ "resolution": {
+  "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "is_fallback": false,
+  "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+  "resolver_error": null
+ },
+ "run_id": "abc-t008-B1",
+ "runtime_mode": "thinking",
+ "task": "t-008",
+ "task_class": "build",
+ "trajectory": {
+  "assistant_messages": 14,
+  "bash_commands": [
+   "ls -la",
+   "python3 -m pytest test_timetable.py -q 2>&1 | tail -30",
+   "ls -la evidence/ .deepeval/ .benchmarks/ 2>/dev/null; find . -name \"*.json\" -o -name \"*.md\" -o -name \"*.py\" 2>/dev/null | grep -v __pycache__",
+   "cat > /tmp/opencode/hamh-cal-runs/abc-t008-B1/probe.py << 'EOF'\nfrom datetime import datetime, timedelta\n\ndef parse(iso):\n    return datetime.strptime",
+   "cd /tmp/opencode/hamh-cal-runs/abc-t008-B1 && sed -i 's/solve(b,d,s,e,x, head, mid, tail, ge, adj)/solve(b,d,s,e, head, mid, tail, ge, adj)/' probe.py",
+   "cd /tmp/opencode/hamh-cal-runs/abc-t008-B1 && python3 - << 'EOF'\nimport re\nsrc = open('probe.py').read()\nold = \"\"\"    for s,e in blocks:\n        touch",
+   "cd /tmp/opencode/hamh-cal-runs/abc-t008-B1 && cat > probe2.py << 'EOF'\nfrom datetime import datetime, timedelta\n\ndef parse(iso): return datetime.strpt",
+   "cd /tmp/opencode/hamh-cal-runs/abc-t008-B1 && cat > probe3.py << 'EOF'\nfrom datetime import datetime, timedelta\n\ndef parse(iso): return datetime.strpt",
+   "cd /tmp/opencode/hamh-cal-runs/abc-t008-B1 && python3 -m pytest test_timetable.py -q",
+   "cd /tmp/opencode/hamh-cal-runs/abc-t008-B1 && rm -f probe.py probe2.py probe3.py && ls"
+  ],
+  "cost_usd": 0.01283442,
+  "duplicate_calls": 0,
+  "file_edits": [
+   "/tmp/opencode/hamh-cal-runs/abc-t008-B1/timetable.py"
+  ],
+  "file_reads": [
+   "/tmp/opencode/hamh-cal-runs/abc-t008-B1/test_timetable.py",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-B1/timetable.py",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-B1/README.md",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-B1/evidence/hamh-resolution.json"
+  ],
+  "finish": "stop",
+  "messages": 15,
+  "retries": 2,
+  "session_id": "ses_fdc4cffccffeVIJ7Lts4uzqr06",
+  "steps": 14,
+  "text_output_chars": 1743,
+  "tokens": {
+   "cache_read": 662272,
+   "cache_write": 0,
+   "input": 42348,
+   "output": 12422,
+   "reasoning": 53337
+  },
+  "tool_call_ids": [
+   "call_00_ksA15h8mnAosZydTGuJm1033",
+   "call_01_K4SEQvZNlpJYRzKgRsPi3906",
+   "call_00_RoDnpu8WOUkj55wuBGcU3471",
+   "call_00_tSoFRtWtSKD6lBXWQRA39653",
+   "call_01_UAQIaqUl76SPQk2lAnla7227",
+   "call_00_BuGf9Mq4SictxwFgXsPT0207",
+   "call_00_ET_Feq749c3WT6nuWMUhAYk5153",
+   "call_00_uHFXFbOB3ICe743aJA0A8719",
+   "call_00_idE7DjIwnVo3JcRDur0O9137",
+   "call_00_ET_bX54qbbJYhUzPIPFJbfg3755",
+   "call_00_BKy7BZYisNcnp6FcfFno6962",
+   "call_00_NYP5QDk6yviNSPAfhDbI3104",
+   "call_00_5CVIP5Vp4TbZKQobpARk5082",
+   "call_00_ET_ZdNNIyuwfSRVtVUgys2L7319",
+   "call_00_UebE5e3uqYi2fOZZiFt32173"
+  ],
+  "tool_calls": [
+   {
+    "call_id": "call_00_ksA15h8mnAosZydTGuJm1033",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_K4SEQvZNlpJYRzKgRsPi3906",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_RoDnpu8WOUkj55wuBGcU3471",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_tSoFRtWtSKD6lBXWQRA39653",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_UAQIaqUl76SPQk2lAnla7227",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_BuGf9Mq4SictxwFgXsPT0207",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_Feq749c3WT6nuWMUhAYk5153",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_uHFXFbOB3ICe743aJA0A8719",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_idE7DjIwnVo3JcRDur0O9137",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_bX54qbbJYhUzPIPFJbfg3755",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_BKy7BZYisNcnp6FcfFno6962",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_NYP5QDk6yviNSPAfhDbI3104",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_5CVIP5Vp4TbZKQobpARk5082",
+    "tool": "write",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_ZdNNIyuwfSRVtVUgys2L7319",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_UebE5e3uqYi2fOZZiFt32173",
+    "tool": "bash",
+    "ts": null
+   }
+  ]
+ },
+ "ts": 1787305733.877447,
+ "verified_success": true
+}

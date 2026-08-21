@@ -1,0 +1,159 @@
+{
+ "first_pass_success": true,
+ "harness": "a",
+ "latency_s": 249,
+ "model": "deepseek-v4-flash",
+ "model_revision": "0731",
+ "opencode_rc": 0,
+ "provider": "deepseek",
+ "pytest": {
+  "failed": 0,
+  "passed": 12
+ },
+ "reasoning_effort": "high",
+ "resolution": {
+  "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "is_fallback": false,
+  "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+  "resolver_error": null
+ },
+ "run_id": "cal-t-020-r2",
+ "runtime_mode": "thinking",
+ "task": "t-020",
+ "task_class": "build",
+ "trajectory": {
+  "assistant_messages": 12,
+  "bash_commands": [
+   "ls -la",
+   "python3 -m pytest test_legacy_parser.py -q",
+   "ls -la __pycache__ .benchmarks .deepeval evidence 2>/dev/null",
+   "python3 -c 'print(\"x\\ty\\n\\n\".splitlines()); print(\"a,b\\nc,d\\n\\n\".splitlines())'",
+   "python3 -c \"\nimport dis, marshal, importlib.util, sys\nf = open('__pycache__/legacy_parser.cpython-312.pyc','rb')\ndata = f.read()\nf.close()\ncode = mars",
+   "python3 -c \"\nfor s in ['a,b\\nc,d\\n\\n', 'x\\ty\\n\\n', 'a\\tb\\n\\n']:\n    print(repr(s), '->', repr(s.splitlines()))\n\"",
+   "python3 -m pytest test_legacy_parser.py -q",
+   "python3 -c \"\nimport legacy_parser as m\nprint(repr(m.normalize_line('a  b,c')))\nprint(repr('a  b,c'.split(' ')))\nprint(repr(m.parse_csv('a  b,c')))\npri",
+   "python3 -m pytest test_legacy_parser.py -q"
+  ],
+  "cost_usd": 0.00583214,
+  "duplicate_calls": 0,
+  "file_edits": [
+   "/tmp/opencode/hamh-cal-runs/cal-t-020-r2/legacy_parser.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t-020-r2/legacy_parser.py"
+  ],
+  "file_reads": [
+   "/tmp/opencode/hamh-cal-runs/cal-t-020-r2/legacy_parser.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t-020-r2/test_legacy_parser.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t-020-r2/README.md",
+   "/tmp/opencode/hamh-cal-runs/cal-t-020-r2/evidence/hamh-resolution.json"
+  ],
+  "finish": "stop",
+  "messages": 13,
+  "retries": 3,
+  "session_id": "ses_fdc5cc77dffeUBCplloyZAdoT1",
+  "steps": 12,
+  "text_output_chars": 1880,
+  "tokens": {
+   "cache_read": 425472,
+   "cache_write": 0,
+   "input": 43156,
+   "output": 4324,
+   "reasoning": 29920
+  },
+  "tool_call_ids": [
+   "call_00_DPm5du94DOPT4XAf7b0V2105",
+   "call_00_ET_AbjXcHvxRp9KL1n2bqgD8180",
+   "call_01_ET_CuZsylJaEsADuNpwqEvu7554",
+   "call_02_ET_SxLb2o2z2fhYAqRrgABg8478",
+   "call_00_yt7EvAv70GOiXJOH9yLi2428",
+   "call_00_KnIGxBZtV4JETOt0rchg6132",
+   "call_01_ak5MYzvm6PXUnTkqgzsI9289",
+   "call_00_Ejcj3mVt3N84AOMrFdsg4589",
+   "call_01_Tt8BO9c2gJmSoyfGVBYp5284",
+   "call_00_BtV95a47aSoSGvfcDMmy2503",
+   "call_00_E0KZ1nPJATounifL0pr00998",
+   "call_00_ET_sswwWD5RMHiTCmuOro8h2059",
+   "call_00_PnNQVQqIn7ltf4jNpr3W0128",
+   "call_00_dya6l8vECLhq7OUkmT2k7110",
+   "call_00_ET_d4di8S8Rp75EeISzCVum5528"
+  ],
+  "tool_calls": [
+   {
+    "call_id": "call_00_DPm5du94DOPT4XAf7b0V2105",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_AbjXcHvxRp9KL1n2bqgD8180",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_ET_CuZsylJaEsADuNpwqEvu7554",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_02_ET_SxLb2o2z2fhYAqRrgABg8478",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_yt7EvAv70GOiXJOH9yLi2428",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_KnIGxBZtV4JETOt0rchg6132",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_ak5MYzvm6PXUnTkqgzsI9289",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_Ejcj3mVt3N84AOMrFdsg4589",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_Tt8BO9c2gJmSoyfGVBYp5284",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_BtV95a47aSoSGvfcDMmy2503",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_E0KZ1nPJATounifL0pr00998",
+    "tool": "write",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_sswwWD5RMHiTCmuOro8h2059",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_PnNQVQqIn7ltf4jNpr3W0128",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_dya6l8vECLhq7OUkmT2k7110",
+    "tool": "edit",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_d4di8S8Rp75EeISzCVum5528",
+    "tool": "bash",
+    "ts": null
+   }
+  ]
+ },
+ "ts": 1787304545.9617777,
+ "verified_success": true
+}

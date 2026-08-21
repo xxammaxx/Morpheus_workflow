@@ -1,0 +1,103 @@
+{
+ "first_pass_success": true,
+ "harness": "a",
+ "latency_s": 28,
+ "model": "deepseek-v4-flash",
+ "model_revision": "0731",
+ "opencode_rc": 0,
+ "provider": "deepseek",
+ "pytest": {
+  "failed": 0,
+  "passed": 8
+ },
+ "reasoning_effort": "high",
+ "resolution": {
+  "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "is_fallback": false,
+  "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+  "resolver_error": null
+ },
+ "run_id": "cal-t-014-r2",
+ "runtime_mode": "thinking",
+ "task": "t-014",
+ "task_class": "build",
+ "trajectory": {
+  "assistant_messages": 6,
+  "bash_commands": [
+   "ls -la",
+   "python3 -m pytest test_eventpipeline.py -q 2>&1",
+   "python3 -m pytest test_eventpipeline.py -q 2>&1"
+  ],
+  "cost_usd": 0.00178703,
+  "duplicate_calls": 0,
+  "file_edits": [
+   "/tmp/opencode/hamh-cal-runs/cal-t-014-r2/eventpipeline.py"
+  ],
+  "file_reads": [
+   "/tmp/opencode/hamh-cal-runs/cal-t-014-r2/eventpipeline.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t-014-r2/test_eventpipeline.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t-014-r2/README.md"
+  ],
+  "finish": "stop",
+  "messages": 7,
+  "retries": 2,
+  "session_id": "ses_fdc6a5c48ffesEKqqBLHeErGxK",
+  "steps": 6,
+  "text_output_chars": 525,
+  "tokens": {
+   "cache_read": 100096,
+   "cache_write": 0,
+   "input": 36660,
+   "output": 1646,
+   "reasoning": 676
+  },
+  "tool_call_ids": [
+   "call_00_tBq8PKoo847WN3dRiRbC0491",
+   "call_00_ET_rzjA9KUTty64T4wHh3MK4115",
+   "call_01_ET_lR5WLhUqPWlHhuup4ph05912",
+   "call_02_ET_fW7JgcmNXqIbpq5Ck5Vq2368",
+   "call_00_KuJP50HoAQibJ5rONADU9383",
+   "call_00_uXx3bPmyy6pU7zF0DKPn1295",
+   "call_00_ET_VyLCoh4Rv7583IIUBsKs5419"
+  ],
+  "tool_calls": [
+   {
+    "call_id": "call_00_tBq8PKoo847WN3dRiRbC0491",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_rzjA9KUTty64T4wHh3MK4115",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_ET_lR5WLhUqPWlHhuup4ph05912",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_02_ET_fW7JgcmNXqIbpq5Ck5Vq2368",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_KuJP50HoAQibJ5rONADU9383",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_uXx3bPmyy6pU7zF0DKPn1295",
+    "tool": "edit",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_VyLCoh4Rv7583IIUBsKs5419",
+    "tool": "bash",
+    "ts": null
+   }
+  ]
+ },
+ "ts": 1787303436.7908473,
+ "verified_success": true
+}

@@ -1,0 +1,79 @@
+{
+ "A": {
+  "cost_mean_usd": 0.007054,
+  "edits_mean": 0.0,
+  "first_pass": 0,
+  "latency_mean_s": 480.0,
+  "n": 3,
+  "rate": 0.0,
+  "timeouts": 3,
+  "tools_mean": 13.67,
+  "verified": 0
+ },
+ "B": {
+  "cost_mean_usd": 0.009202,
+  "edits_mean": 0.67,
+  "first_pass": 2,
+  "latency_mean_s": 378.3,
+  "n": 3,
+  "rate": 0.667,
+  "timeouts": 1,
+  "tools_mean": 13.67,
+  "verified": 2
+ },
+ "C": {
+  "cost_mean_usd": 0.010968,
+  "edits_mean": 2.0,
+  "first_pass": 1,
+  "latency_mean_s": 448.7,
+  "n": 3,
+  "rate": 0.667,
+  "timeouts": 2,
+  "tools_mean": 17.67,
+  "verified": 2
+ },
+ "caveat_C2": "C2 verified_success=True (tests green) but opencode_rc=TIMEOUT \u2014 fix complete within 480s, CLI session not returned before timeout; post-timeout verification passed.",
+ "cost_per_verified_success": {
+  "A": null,
+  "B": 0.013802,
+  "C": 0.016452
+ },
+ "note": "A = calibration runs (3x, frozen baseline, same window); B = edit-early candidate (3x); C = matched-compute baseline+reasoning_max (3x)",
+ "paired": {
+  "B_vs_A": {
+   "losses": 1,
+   "success_delta": "+0.667",
+   "ties": 0,
+   "wins": 2
+  },
+  "B_vs_C": {
+   "losses": 0,
+   "success_delta": "0.0",
+   "ties": 3,
+   "wins": 0
+  },
+  "C_vs_A": {
+   "losses": 1,
+   "success_delta": "+0.667",
+   "ties": 0,
+   "wins": 2
+  }
+ },
+ "regression_check_B_on_100pct_tasks": {
+  "conclusion": "no regression",
+  "t-021": {
+   "latency_s": 18,
+   "verified": true
+  },
+  "t-022": {
+   "latency_s": 17,
+   "verified": true
+  },
+  "t-023": {
+   "latency_s": 33,
+   "verified": true
+  }
+ },
+ "stage": "development",
+ "task": "t-008"
+}

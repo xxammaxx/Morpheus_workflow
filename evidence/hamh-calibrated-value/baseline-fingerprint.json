@@ -1,0 +1,35 @@
+{
+  "baseline_model": "deepseek-v4-flash",
+  "baseline_model_revision": "0731",
+  "baseline_provider": "deepseek",
+  "baseline_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+  "baseline_harness_version": "v1",
+  "baseline_harness_fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "baseline_runtime_revision": "opencode-1.15.13",
+  "baseline_runtime_mode": "thinking",
+  "baseline_reasoning_profile": {
+    "reasoning_effort": "high",
+    "thinking": "enabled",
+    "variant_flag": "--variant high"
+  },
+  "baseline_tool_profile": {
+    "agent": "build",
+    "capabilities": ["bash", "read", "edit", "write", "glob", "grep", "list"],
+    "restricted_by_controller": false
+  },
+  "baseline_context_profile": {
+    "cache_layout": "stable_first",
+    "stable_prefix": ["system_instructions", "tool_schemas"],
+    "variable": ["task", "retrieved_files", "execution_state"]
+  },
+  "baseline_task_manifest": "calibration-task-pool.json (v1.1, 23 tasks, SHA256 per file)",
+  "resolution_verified_live": {
+    "date": "2026-08-21",
+    "endpoint": "http://192.168.1.136:8090/v1/resolve",
+    "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+    "is_fallback": false,
+    "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271"
+  },
+  "frozen": true,
+  "note": "Frozen 2026-08-21 for HAMH_CALIBRATED_VALUE run. Harness fingerprint equals previous run's registry fingerprint; runtime revision (opencode 1.15.13) differs from HAMH_REAL_TESTING (1.17.9) and is recorded as part of this baseline. Baseline MUST NOT be modified for the remainder of this experiment."
+}

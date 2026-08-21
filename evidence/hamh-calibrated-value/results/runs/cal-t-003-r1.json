@@ -1,0 +1,110 @@
+{
+ "first_pass_success": true,
+ "harness": "a",
+ "latency_s": 37,
+ "model": "deepseek-v4-flash",
+ "model_revision": "0731",
+ "opencode_rc": 0,
+ "provider": "deepseek",
+ "pytest": {
+  "failed": 0,
+  "passed": 11
+ },
+ "reasoning_effort": "high",
+ "resolution": {
+  "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "is_fallback": false,
+  "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+  "resolver_error": null
+ },
+ "run_id": "cal-t-003-r1",
+ "runtime_mode": "thinking",
+ "task": "t-003",
+ "task_class": "build",
+ "trajectory": {
+  "assistant_messages": 6,
+  "bash_commands": [
+   "ls -la",
+   "python3 -m pytest test_csvfields.py -q",
+   "python3 -m pytest test_csvfields.py -q"
+  ],
+  "cost_usd": 0.00196495,
+  "duplicate_calls": 0,
+  "file_edits": [
+   "/tmp/opencode/hamh-cal-runs/cal-t-003-r1/csvfields.py"
+  ],
+  "file_reads": [
+   "**/*.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t-003-r1/csvfields.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t-003-r1/test_csvfields.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t-003-r1/README.md"
+  ],
+  "finish": "stop",
+  "messages": 7,
+  "retries": 2,
+  "session_id": "ses_fdc985b77ffecYYhMHtx4OL0JZ",
+  "steps": 6,
+  "text_output_chars": 633,
+  "tokens": {
+   "cache_read": 101376,
+   "cache_write": 0,
+   "input": 36460,
+   "output": 1902,
+   "reasoning": 1487
+  },
+  "tool_call_ids": [
+   "call_00_uaO4CWMabA81yyfAMZ6V7647",
+   "call_01_yDgmBBnPoe8wlCdNgFAn3500",
+   "call_00_ET_29P9wZ8qsbJTlLTvieBL2294",
+   "call_01_ET_GK3MFKFH4gbKdCoFbwwD9838",
+   "call_02_ET_8TTJla4bKPSM2UEZwDvi3632",
+   "call_00_CVnE2lDoBeXwKGSqxcPg4931",
+   "call_00_6C4jWnl3ex8P6xyra3FQ5618",
+   "call_00_ET_VL7EgR5QRm2TgsZSjp4T9181"
+  ],
+  "tool_calls": [
+   {
+    "call_id": "call_00_uaO4CWMabA81yyfAMZ6V7647",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_yDgmBBnPoe8wlCdNgFAn3500",
+    "tool": "glob",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_29P9wZ8qsbJTlLTvieBL2294",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_ET_GK3MFKFH4gbKdCoFbwwD9838",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_02_ET_8TTJla4bKPSM2UEZwDvi3632",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_CVnE2lDoBeXwKGSqxcPg4931",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_6C4jWnl3ex8P6xyra3FQ5618",
+    "tool": "edit",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_VL7EgR5QRm2TgsZSjp4T9181",
+    "tool": "bash",
+    "ts": null
+   }
+  ]
+ },
+ "ts": 1787300430.3124065,
+ "verified_success": true
+}

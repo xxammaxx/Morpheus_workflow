@@ -1,0 +1,7 @@
+{
+  "stage": "validation",
+  "status": "NOT_RUN",
+  "reason": "Candidate hamh/candidate/build/edit-early/v1 was rejected at the development stage: the matched-compute control (C, baseline + reasoning max) explains the entire success gain (B=2/3, C=2/3, paired ties 3/3). Per order 29 the candidate does not qualify for validation; no holdout is consumed.",
+  "decision": "CANDIDATE_REJECTED",
+  "date": "2026-08-21"
+}

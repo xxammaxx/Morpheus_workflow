@@ -1,0 +1,123 @@
+{
+ "first_pass_success": false,
+ "harness": "b",
+ "latency_s": 480,
+ "model": "deepseek-v4-flash",
+ "model_revision": "0731",
+ "opencode_rc": "TIMEOUT",
+ "provider": "deepseek",
+ "pytest": {
+  "failed": 4,
+  "passed": 6
+ },
+ "reasoning_effort": "high",
+ "resolution": {
+  "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "is_fallback": false,
+  "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+  "resolver_error": null
+ },
+ "run_id": "abc-t008-B3",
+ "runtime_mode": "thinking",
+ "task": "t-008",
+ "task_class": "build",
+ "trajectory": {
+  "assistant_messages": 10,
+  "bash_commands": [
+   "ls -la",
+   "python3 -m pytest test_timetable.py -q 2>&1 | tail -30",
+   "ls -la evidence .deepeval .benchmarks 2>/dev/null; find . -maxdepth 3 -name '*.py' -o -maxdepth 3 -name '*.json' -o -maxdepth 3 -name '*.md' 2>/dev/nu",
+   "cat > /tmp/search.py << 'EOF'\nfrom datetime import datetime, timedelta\nimport itertools\n\ndef parse(iso): return datetime.strptime(iso, \"%Y-%m-%dT%H:%M",
+   "cd /tmp && python3 - << 'EOF'\nimport re\nsrc = open('search.py').read()\nsrc = src.replace(\"def run(busy, dur, start, end, mode, merge_mode, pos):\",\n   ",
+   "python3 -m pytest test_timetable.py -q 2>&1 | grep -E \"PASSED|FAILED\" ; echo \"---\"; python3 -m pytest test_timetable.py -v 2>&1 | grep -E \"PASSED|FAIL"
+  ],
+  "cost_usd": 0.00534262,
+  "duplicate_calls": 0,
+  "file_edits": [],
+  "file_reads": [
+   "/tmp/opencode/hamh-cal-runs/abc-t008-B3/test_timetable.py",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-B3/timetable.py",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-B3/README.md",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-B3/evidence/hamh-resolution.json"
+  ],
+  "finish": "tool-calls",
+  "messages": 11,
+  "retries": 2,
+  "session_id": "ses_fdc42d0e6ffeX7z4ykiTawqTwz",
+  "steps": 9,
+  "text_output_chars": 196,
+  "tokens": {
+   "cache_read": 303872,
+   "cache_write": 0,
+   "input": 40798,
+   "output": 4872,
+   "reasoning": 46877
+  },
+  "tool_call_ids": [
+   "call_00_At3WzLefuBjtQtZdh1Oz9334",
+   "call_01_c6RXePCoWMD8d6DURYE91363",
+   "call_00_OnIFN3IqJu9HTnb0mvaE0488",
+   "call_00_IpC3H0NOoKSpTdB5LJe24861",
+   "call_00_hhld7jbsnbJQvqKYXYtI9960",
+   "call_00_fr3Qms8A2CXDjay9nM8i3685",
+   "call_00_ET_I1toG3q6Nyar7hLtsTue2534",
+   "call_00_iQv7eZj5C0JqERuCTzpZ2646",
+   "call_00_ET_cc4v0sDdChcEBQYCe5CJ8238",
+   "call_00_bFt1gcFa7Q47tnMYkFqp8571"
+  ],
+  "tool_calls": [
+   {
+    "call_id": "call_00_At3WzLefuBjtQtZdh1Oz9334",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_c6RXePCoWMD8d6DURYE91363",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_OnIFN3IqJu9HTnb0mvaE0488",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_IpC3H0NOoKSpTdB5LJe24861",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_hhld7jbsnbJQvqKYXYtI9960",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_fr3Qms8A2CXDjay9nM8i3685",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_I1toG3q6Nyar7hLtsTue2534",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_iQv7eZj5C0JqERuCTzpZ2646",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_cc4v0sDdChcEBQYCe5CJ8238",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_bFt1gcFa7Q47tnMYkFqp8571",
+    "tool": "bash",
+    "ts": null
+   }
+  ]
+ },
+ "ts": 1787306478.3658438,
+ "verified_success": false
+}

@@ -1,0 +1,103 @@
+{
+ "first_pass_success": true,
+ "harness": "a",
+ "latency_s": 35,
+ "model": "deepseek-v4-flash",
+ "model_revision": "0731",
+ "opencode_rc": 0,
+ "provider": "deepseek",
+ "pytest": {
+  "failed": 0,
+  "passed": 9
+ },
+ "reasoning_effort": "high",
+ "resolution": {
+  "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "is_fallback": false,
+  "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+  "resolver_error": null
+ },
+ "run_id": "cal-t-013-r3",
+ "runtime_mode": "thinking",
+ "task": "t-013",
+ "task_class": "build",
+ "trajectory": {
+  "assistant_messages": 6,
+  "bash_commands": [
+   "ls -la",
+   "python3 -m pytest test_consistent_cache.py -q",
+   "python3 -m pytest test_consistent_cache.py -q"
+  ],
+  "cost_usd": 0.00188104,
+  "duplicate_calls": 0,
+  "file_edits": [
+   "/tmp/opencode/hamh-cal-runs/cal-t-013-r3/consistent_cache.py"
+  ],
+  "file_reads": [
+   "/tmp/opencode/hamh-cal-runs/cal-t-013-r3/consistent_cache.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t-013-r3/test_consistent_cache.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t-013-r3/README.md"
+  ],
+  "finish": "stop",
+  "messages": 7,
+  "retries": 2,
+  "session_id": "ses_fdc6b9a52ffev5WLZ2EuFKGyMo",
+  "steps": 6,
+  "text_output_chars": 556,
+  "tokens": {
+   "cache_read": 102400,
+   "cache_write": 0,
+   "input": 38106,
+   "output": 1764,
+   "reasoning": 753
+  },
+  "tool_call_ids": [
+   "call_00_fjegEwdFnr5YfYrxzHvu9374",
+   "call_00_ET_3LKgFlkZZlfeNgbnAJVi9929",
+   "call_01_ET_0fx19kzToG6Efrsp2yBg3265",
+   "call_02_ET_5QFEHEAGasg5O2ed0NIE5103",
+   "call_00_HxMndi7yDDpFRDcZ3jbH7819",
+   "call_00_kxqETVjeQ337FPgVIkX95087",
+   "call_00_ET_K99XvtF2a3MjMaeFbryc8728"
+  ],
+  "tool_calls": [
+   {
+    "call_id": "call_00_fjegEwdFnr5YfYrxzHvu9374",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_3LKgFlkZZlfeNgbnAJVi9929",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_ET_0fx19kzToG6Efrsp2yBg3265",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_02_ET_5QFEHEAGasg5O2ed0NIE5103",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_HxMndi7yDDpFRDcZ3jbH7819",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_kxqETVjeQ337FPgVIkX95087",
+    "tool": "edit",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_K99XvtF2a3MjMaeFbryc8728",
+    "tool": "bash",
+    "ts": null
+   }
+  ]
+ },
+ "ts": 1787303360.4055498,
+ "verified_success": true
+}

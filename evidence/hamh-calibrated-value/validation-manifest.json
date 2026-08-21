@@ -1,0 +1,27 @@
+{
+ "baseline_fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+ "created_at": "2026-08-21T14:30:00Z",
+ "model_revision": "0731",
+ "sealed": false,
+ "split_id": "validation-set",
+ "task_hashes": {
+  "t-001": "9f9339986b6480511ee36c9608c517c5040c3ec223aab76e3a64075370e17969",
+  "t-002": "2e940e4a7a29b26fcbe2feee0b3013bfa95a535cd8f776b4a0f04474d4a22262",
+  "t-015": "0f65fd5c908de275849428d177c7581f8c7c73ddf03be8c59a5340799d552396",
+  "t-016": "9c19ab5025e2a319fef584a4ace3c8c5dd8b6b0adef4f0b7bf897b4be1486d2d",
+  "t-017": "f15b373e285bf383040d83e52e377ee21d140f928d4328905dbe8fb94bca84dd",
+  "t-018": "a54a7b029c8748660dd9d25f0f0d27f881ade21578e7624873274db13b87c3dd",
+  "t-019": "5eeabb2bfc06a6784efee4b9f307a19f6ff44075f7d1587b336af9effe7022ff",
+  "t-020": "6f05e6552b78ad81c5c75f108e386c67b731604e02adfc515b4efa24f5388119"
+ },
+ "task_ids": [
+  "t-001",
+  "t-002",
+  "t-015",
+  "t-016",
+  "t-017",
+  "t-018",
+  "t-019",
+  "t-020"
+ ]
+}

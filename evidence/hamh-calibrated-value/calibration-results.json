@@ -1,0 +1,41 @@
+{
+  "pool_version": "1.1",
+  "calibration_date": "2026-08-21",
+  "method": "3 baseline runs per task, harness=a (frozen baseline), opencode 1.15.13, deepseek-v4-flash, build agent, reasoning high, timeout 480s",
+  "runs_total": 70,
+  "runs_per_task": {
+    "t-001": 1,
+    "t-002": 3, "t-003": 3, "t-004": 3, "t-005": 3, "t-006": 3, "t-007": 3,
+    "t-008": 3, "t-009": 3, "t-010": 3, "t-011": 3, "t-012": 3, "t-013": 3, "t-014": 3,
+    "t-015": 3, "t-016": 3, "t-017": 3, "t-018": 3, "t-019": 3, "t-020": 3,
+    "t-021": 3, "t-022": 3, "t-023": 3
+  },
+  "observed_rates": {
+    "t-001": 1.0, "t-002": 1.0, "t-003": 1.0, "t-004": 1.0, "t-005": 1.0,
+    "t-006": 1.0, "t-007": 1.0, "t-008": 0.0, "t-009": 1.0, "t-010": 1.0,
+    "t-011": 1.0, "t-012": 1.0, "t-013": 1.0, "t-014": 1.0, "t-015": 1.0,
+    "t-016": 1.0, "t-017": 1.0, "t-018": 1.0, "t-019": 1.0, "t-020": 1.0,
+    "t-021": 1.0, "t-022": 1.0, "t-023": 1.0
+  },
+  "verified_counts": {
+    "t-001": [1, 1], "t-002": [3, 3], "t-003": [3, 3], "t-004": [3, 3], "t-005": [3, 3],
+    "t-006": [3, 3], "t-007": [3, 3], "t-008": [0, 3], "t-009": [3, 3], "t-010": [3, 3],
+    "t-011": [3, 3], "t-012": [3, 3], "t-013": [3, 3], "t-014": [3, 3], "t-015": [3, 3],
+    "t-016": [3, 3], "t-017": [3, 3], "t-018": [3, 3], "t-019": [3, 3], "t-020": [3, 3],
+    "t-021": [3, 3], "t-022": [3, 3], "t-023": [3, 3]
+  },
+  "difficulty_bucket_observed": {
+    "EASY_CEILING_90_100": ["t-001", "t-002", "t-003", "t-004", "t-005", "t-006", "t-007", "t-009", "t-010", "t-011", "t-012", "t-013", "t-014", "t-015", "t-016", "t-017", "t-018", "t-019", "t-020", "t-021", "t-022", "t-023"],
+    "MEDIUM_70_85": [],
+    "HARD_30_60": [],
+    "CAPABILITY_BOUNDARY_0_20": ["t-008"]
+  },
+  "assessment": {
+    "ceiling_effect": "22/23 tasks at 100% verified success. DeepSeek V4 Flash + opencode build solves all conventional single/multi-module bug-fix, refactor, state-sequence, cross-file contract, exception-contract, sorting-stability, invariant and boundary-semantics tasks within 60s (t-020 refactor: 131-249s but solved). The 60-85% harness-recoverable zone is EMPTY on this task family.",
+    "t-008_anomaly": "0/3 verified; ALL THREE runs TIMEOUT at 480s with ZERO edits. The agent enters a research/exploration loop (searches old /tmp artifacts in r1, inspects bytecode, cache files) and never performs an edit. Boundary-condition bugs (strict vs non-strict interval comparisons at two sites) are not discovered. Attempts to replicate this failure class on other domains (t-021 half-open intervals, t-022 reversed comparisons, t-023 inclusive end) were ALL SOLVED at 100% — so the failure is NOT the boundary-semantics class per se, but something task-specific about t-008 (merged-interval + two hidden boundary sites + README phrasing).",
+    "harness_recoverable_zone": "EMPTY — no task with baseline success in 20-90%.",
+    "weakness_mining_implication": "Only reproducible failure: t-008 research-loop (3/3 runs, 0 edits). Weakness observed on 1 distinct task only; cross-task replication failed by design probes t-021/022/023. Candidate justification threshold (>=2 runs) met; cross-task requirement (preferred) NOT met.",
+    "action_taken": "Proceed with formal splits, baseline freeze, trajectory summary from calibration runs (70 baseline trajectories), weakness analysis, then candidate-gate decision."
+  },
+  "cost_usd_total_estimate": 0.16
+}

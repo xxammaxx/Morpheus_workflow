@@ -1,0 +1,201 @@
+{
+ "first_pass_success": true,
+ "harness": "a",
+ "latency_s": 110,
+ "model": "deepseek-v4-flash",
+ "model_revision": "0731",
+ "opencode_rc": 0,
+ "provider": "deepseek",
+ "pytest": {
+  "failed": 0,
+  "passed": 13
+ },
+ "reasoning_effort": "high",
+ "resolution": {
+  "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "is_fallback": false,
+  "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+  "resolver_error": null
+ },
+ "run_id": "cal-t002-r1",
+ "runtime_mode": "thinking",
+ "task": "t-002",
+ "task_class": "build",
+ "trajectory": {
+  "assistant_messages": 18,
+  "bash_commands": [
+   "ls -la",
+   "python3 -m pytest test_daterange.py -q 2>&1 | tail -40",
+   "python3 -m pytest test_daterange.py -q",
+   "ls -la evidence .benchmarks .deepeval 2>&1; cat .benchmarks/* 2>/dev/null | head -50",
+   "ls /tmp/opencode/hamh-cal-runs/ 2>/dev/null; ls -d /tmp/opencode/hamh-cal-runs/*/ 2>/dev/null",
+   "ls -la /tmp/opencode/hamh-cal-runs/cal-t001-r1/; echo \"---\"; cat /tmp/opencode/hamh-cal-runs/cal-t001-r1/daterange.py 2>/dev/null; echo \"---TEST---\"; ",
+   "python3 -c \"\nfrom datetime import date\nprint('2023 leap:', (date(2024,1,1)-date(2023,1,1)).days)\nprint('2024 leap:', (date(2025,1,1)-date(2024,1,1)).d",
+   "ls -la /tmp/opencode/hamh-cal-runs/; find /tmp/opencode/hamh-cal-runs -maxdepth 2 -name \"*.py\" -not -path \"*/__pycache__/*\" 2>/dev/null; find / -maxde",
+   "ls -la /tmp/hamh-evidence-4sgPDJ 2>/dev/null; echo \"---\"; ls -la /tmp/hamh-evidence-GJZ7vX 2>/dev/null; echo \"---\"; ls -la /tmp/hamh-evo2-jWUKSc 2>/de",
+   "cat /tmp/hamh-evo2-jWUKSc/active.json 2>/dev/null; echo; echo \"===\"; find /tmp -maxdepth 2 -name \"*.json\" -path \"*hamh*\" 2>/dev/null | head; find /tmp",
+   "cat /tmp/hamh-suite-o3i64u0x/registry.json 2>/dev/null | head -100",
+   "python3 -m pytest test_daterange.py -q"
+  ],
+  "cost_usd": 0.00696152,
+  "duplicate_calls": 0,
+  "file_edits": [
+   "/tmp/opencode/hamh-cal-runs/cal-t002-r1/daterange.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t002-r1/daterange.py"
+  ],
+  "file_reads": [
+   "/tmp/opencode/hamh-cal-runs/cal-t002-r1/daterange.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t002-r1/test_daterange.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t002-r1/README.md",
+   "/tmp/opencode/hamh-cal-runs/cal-t002-r1/evidence/hamh-resolution.json",
+   "/tmp/opencode/hamh-cal-runs/cal-t001-r1/stringutils.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t001-r1/test_stringutils.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t001-r1/README.md"
+  ],
+  "finish": "stop",
+  "messages": 19,
+  "retries": 3,
+  "session_id": "ses_fdc9e0f1effeczOsOM6assBQaH",
+  "steps": 18,
+  "text_output_chars": 1761,
+  "tokens": {
+   "cache_read": 435200,
+   "cache_write": 0,
+   "input": 46290,
+   "output": 5932,
+   "reasoning": 7289
+  },
+  "tool_call_ids": [
+   "call_00_6MNQ1M89dImf9NR6GUvC3581",
+   "call_00_ET_dUkdsEHs8jOzIGLpSFkO8417",
+   "call_01_ET_zeu7sfn8LMPKVEgMPHbG2249",
+   "call_02_ET_g7yfmcIppMbVTxAJOhYP3957",
+   "call_00_S1jI3slnu7yfOmIptRyR1902",
+   "call_00_FnrU1mgsR7q2nkSJrkrd2953",
+   "call_00_ET_iYRYx6GPHwFZTnSthDGb1056",
+   "call_00_6A6U29XCRV7rUnUfsxeR0442",
+   "call_00_ET_okyXCVMbbG6ioGGZSnE80606",
+   "call_00_28UjEHJ9SLlhaEXi6mqf0440",
+   "call_00_ET_IQfvwv6Mb02AzuP9fIgG1316",
+   "call_00_ET_X968TQRt6fzdfK36d2C23977",
+   "call_01_ET_VJbvK2HYAAGqzsG8JuEZ9846",
+   "call_02_ET_0Gpqw0aBqTeCr27Nf2zs1251",
+   "call_00_EQ3nMXuzvjtwDiccFChb9334",
+   "call_00_2KIJAXQa5ou4stUYIwya2398",
+   "call_00_ITuJrVwmaL0oyok3I3yb6889",
+   "call_00_ET_r2Oa9YACmvz1KAwzMfEs2933",
+   "call_00_ET_TM09eynJgN3qu9IJVFVY5132",
+   "call_00_JnJ1SNFGV3WMUl3tbXej4981",
+   "call_00_ET_CGNuwy8QFqOi4Yk3BWFr3125"
+  ],
+  "tool_calls": [
+   {
+    "call_id": "call_00_6MNQ1M89dImf9NR6GUvC3581",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_dUkdsEHs8jOzIGLpSFkO8417",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_ET_zeu7sfn8LMPKVEgMPHbG2249",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_02_ET_g7yfmcIppMbVTxAJOhYP3957",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_S1jI3slnu7yfOmIptRyR1902",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_FnrU1mgsR7q2nkSJrkrd2953",
+    "tool": "edit",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_iYRYx6GPHwFZTnSthDGb1056",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_6A6U29XCRV7rUnUfsxeR0442",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_okyXCVMbbG6ioGGZSnE80606",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_28UjEHJ9SLlhaEXi6mqf0440",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_IQfvwv6Mb02AzuP9fIgG1316",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_X968TQRt6fzdfK36d2C23977",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_ET_VJbvK2HYAAGqzsG8JuEZ9846",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_02_ET_0Gpqw0aBqTeCr27Nf2zs1251",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_EQ3nMXuzvjtwDiccFChb9334",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_2KIJAXQa5ou4stUYIwya2398",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ITuJrVwmaL0oyok3I3yb6889",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_r2Oa9YACmvz1KAwzMfEs2933",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_TM09eynJgN3qu9IJVFVY5132",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_JnJ1SNFGV3WMUl3tbXej4981",
+    "tool": "edit",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_CGNuwy8QFqOi4Yk3BWFr3125",
+    "tool": "bash",
+    "ts": null
+   }
+  ]
+ },
+ "ts": 1787300129.3180091,
+ "verified_success": true
+}

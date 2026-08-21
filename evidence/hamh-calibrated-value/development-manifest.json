@@ -1,0 +1,19 @@
+{
+ "baseline_fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+ "created_at": "2026-08-21T14:30:00Z",
+ "model_revision": "0731",
+ "sealed": false,
+ "split_id": "development-set",
+ "task_hashes": {
+  "t-008": "87aaa808e9fe16a63c0165d6e660304de465ecddffca41472b1f7580210ae52a",
+  "t-021": "383b5787c8adb33a2d62b4ae94358cc61feb75d78406b268b2ee92164f2a4db9",
+  "t-022": "97181ed56e4d3f1b426c1d49f88a8e1ef0bbb20e443d6bb99bba8b7c64c46098",
+  "t-023": "7c81917c3f45c4f4269b6bcbcd90fe744b547064410eeef6c08211585f52c279"
+ },
+ "task_ids": [
+  "t-008",
+  "t-021",
+  "t-022",
+  "t-023"
+ ]
+}

@@ -1,0 +1,103 @@
+{
+ "first_pass_success": true,
+ "harness": "a",
+ "latency_s": 25,
+ "model": "deepseek-v4-flash",
+ "model_revision": "0731",
+ "opencode_rc": 0,
+ "provider": "deepseek",
+ "pytest": {
+  "failed": 0,
+  "passed": 10
+ },
+ "reasoning_effort": "high",
+ "resolution": {
+  "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "is_fallback": false,
+  "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+  "resolver_error": null
+ },
+ "run_id": "cal-t-021-r1",
+ "runtime_mode": "thinking",
+ "task": "t-021",
+ "task_class": "build",
+ "trajectory": {
+  "assistant_messages": 6,
+  "bash_commands": [
+   "ls -la",
+   "python3 -m pytest test_overbook.py -q 2>&1 | tail -20",
+   "python3 -m pytest test_overbook.py -q 2>&1 | tail -5"
+  ],
+  "cost_usd": 0.00152435,
+  "duplicate_calls": 0,
+  "file_edits": [
+   "/tmp/opencode/hamh-cal-runs/cal-t-021-r1/overbook.py"
+  ],
+  "file_reads": [
+   "/tmp/opencode/hamh-cal-runs/cal-t-021-r1/overbook.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t-021-r1/test_overbook.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t-021-r1/README.md"
+  ],
+  "finish": "stop",
+  "messages": 7,
+  "retries": 2,
+  "session_id": "ses_fdc53cbfdffeUv53tVnDpIq53x",
+  "steps": 6,
+  "text_output_chars": 423,
+  "tokens": {
+   "cache_read": 100096,
+   "cache_write": 0,
+   "input": 37042,
+   "output": 1248,
+   "reasoning": 528
+  },
+  "tool_call_ids": [
+   "call_00_tZ9WcG8DcUkMz95hWUh76791",
+   "call_00_ET_3D8zt7PToaTBO7ToUycN9561",
+   "call_01_ET_3HuqfJZzJzCRF32427xS1539",
+   "call_02_ET_lrft4cCOIiz4AR3EKmn37140",
+   "call_00_1jLXkIKEss9KdAkbirT83337",
+   "call_00_ro3u1dWD4UXIRUixMf7c3562",
+   "call_00_ET_ldkaqs6qTl3YPlBtvoR29607"
+  ],
+  "tool_calls": [
+   {
+    "call_id": "call_00_tZ9WcG8DcUkMz95hWUh76791",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_3D8zt7PToaTBO7ToUycN9561",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_ET_3HuqfJZzJzCRF32427xS1539",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_02_ET_lrft4cCOIiz4AR3EKmn37140",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_1jLXkIKEss9KdAkbirT83337",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ro3u1dWD4UXIRUixMf7c3562",
+    "tool": "edit",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_ldkaqs6qTl3YPlBtvoR29607",
+    "tool": "bash",
+    "ts": null
+   }
+  ]
+ },
+ "ts": 1787304910.3034434,
+ "verified_success": true
+}

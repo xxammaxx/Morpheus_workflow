@@ -1,0 +1,33 @@
+{
+ "baseline_fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+ "created_at": "2026-08-21T14:30:00Z",
+ "model_revision": "0731",
+ "sealed": true,
+ "split_id": "new-sealed-holdout",
+ "task_hashes": {
+  "t-003": "35dbb24fb36cdabb9feae2df34a45ad837f7eff54790b33c2537c108a6971055",
+  "t-004": "c846c576ac6b2560b90f567a0715f7021a67dfe1831a7242f0c09e170ac93909",
+  "t-005": "d13128cf162b9a39ed0baad2ff5411ff23215dd1cd79b1f4b0a47625c3854a23",
+  "t-006": "62f752f29f2e480e92f8ba0056471eb231b52b116353f9974f909a2622bb27a9",
+  "t-007": "6eb7a52fa2fae39adecf1f81ee4e72c2676c49b54b74c9d7ab4afef134100a48",
+  "t-009": "52a7670f0d76db3ec7b3dce12af9874b11061f23b97d3c499652305282c46923",
+  "t-010": "35658483c19a60a8df23435ecb643da1abfaf1bc64a24c604a191f6080883ac7",
+  "t-011": "446a2fd4a6ef472adb19a095b7dbef8c0852875963f6be74d492b80fead1e49c",
+  "t-012": "e325ff8ddd42eba7dffb136214b055ce8dfde95c9153d5727f1ee6d0ffec28da",
+  "t-013": "4fd08415275ca5082a65d8a554fa1207dfb237b76b92e08c82fc9157f8f70025",
+  "t-014": "093fc71f709eeade5aa2f1a536dfc205133bdc523c0ffb7fb421e8d923ceba32"
+ },
+ "task_ids": [
+  "t-003",
+  "t-004",
+  "t-005",
+  "t-006",
+  "t-007",
+  "t-009",
+  "t-010",
+  "t-011",
+  "t-012",
+  "t-013",
+  "t-014"
+ ]
+}

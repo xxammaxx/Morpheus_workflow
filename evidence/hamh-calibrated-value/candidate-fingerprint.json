@@ -1,0 +1,9 @@
+{
+ "candidate_fingerprint": "f1b34868fccc99cc3d118b570e14782c782e6250abbcee914821137512ff5117",
+ "candidate_id": "hamh/candidate/build/edit-early/v1",
+ "changed_component": "prompt/editing-protocol (edit-early hypothesis testing)",
+ "date": "2026-08-21",
+ "frozen": true,
+ "intervention_hash": "f1b34868fccc99cc3d118b570e14782c782e6250abbcee914821137512ff5117",
+ "parent_fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271"
+}

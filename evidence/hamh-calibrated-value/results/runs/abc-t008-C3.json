@@ -1,0 +1,173 @@
+{
+ "first_pass_success": false,
+ "harness": "c",
+ "latency_s": 480,
+ "model": "deepseek-v4-flash",
+ "model_revision": "0731",
+ "opencode_rc": "TIMEOUT",
+ "provider": "deepseek",
+ "pytest": {
+  "failed": 4,
+  "passed": 6
+ },
+ "reasoning_effort": "max",
+ "resolution": {
+  "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "is_fallback": false,
+  "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+  "resolver_error": null
+ },
+ "run_id": "abc-t008-C3",
+ "runtime_mode": "thinking",
+ "task": "t-008",
+ "task_class": "build",
+ "trajectory": {
+  "assistant_messages": 13,
+  "bash_commands": [
+   "ls -la",
+   "python3 -m pytest test_timetable.py -q",
+   "python3 brute.py",
+   "python3 brute.py",
+   "ls -la .benchmarks .deepeval evidence __pycache__ .pytest_cache 2>/dev/null",
+   "for d in /tmp/opencode/hamh-cal-runs/*/; do echo \"=== $d ===\"; if [ -f \"$d/.pytest_cache/v/cache/lastfailed\" ]; then cat \"$d/.pytest_cache/v/cache/las"
+  ],
+  "cost_usd": 0.00884949,
+  "duplicate_calls": 0,
+  "file_edits": [
+   "/tmp/opencode/hamh-cal-runs/abc-t008-C3/brute.py",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-C3/brute.py"
+  ],
+  "file_reads": [
+   "/tmp/opencode/hamh-cal-runs/abc-t008-C3/timetable.py",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-C3/test_timetable.py",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-C3/README.md",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-C3/evidence/hamh-resolution.json",
+   "exact-fit gap|distance to busy start|find_free_slot",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-B1/timetable.py",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-B2/timetable.py",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-C1/timetable.py",
+   "/tmp/opencode/hamh-cal-runs/abc-t008-C2/timetable.py"
+  ],
+  "finish": "tool-calls",
+  "messages": 14,
+  "retries": 3,
+  "session_id": "ses_fdc2dd1cfffez0MS6NSG55x36o",
+  "steps": 12,
+  "text_output_chars": 624,
+  "tokens": {
+   "cache_read": 684544,
+   "cache_write": 0,
+   "input": 68674,
+   "output": 6148,
+   "reasoning": 58820
+  },
+  "tool_call_ids": [
+   "call_00_PPcwLJ2yPg92YqedvleL8685",
+   "call_00_ET_Ru9EP3RxLFCLAA1Rr8iQ7910",
+   "call_01_ET_w2daCNp7yGphh4M3L6dV6480",
+   "call_02_ET_e4HoWkel7G3F41pOUiQW9722",
+   "call_00_5c3t7xtgpHMNeFEykhGs4714",
+   "call_00_kGQvK9qVoAHMlY055PxS4161",
+   "call_00_ET_ntBJvzUSYpkl47RHMPjx3796",
+   "call_00_zA48WBKMVPgZkzMNDCSM6535",
+   "call_00_ET_8stBsJqYc4PSiC7FhL3W1750",
+   "call_00_tsL0vooyQRAMKgVEhEj59615",
+   "call_00_ET_wGxlb2Ykrhs0Qa8Wmdr50809",
+   "call_00_E0RFyTZK0F0RZjk5eR4O8446",
+   "call_00_NcTqRN8oJqDUgPpLbSWR6683",
+   "call_00_nbe31TdeCYlGZ1eXvn0y8998",
+   "call_01_pcF6z2GTUHPQcDRvHDUz8025",
+   "call_02_3AZ2oJPtwowiYiwoGMWb6758",
+   "call_03_5Jy4lVf4mxNCen6Ncdcj8272"
+  ],
+  "tool_calls": [
+   {
+    "call_id": "call_00_PPcwLJ2yPg92YqedvleL8685",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_Ru9EP3RxLFCLAA1Rr8iQ7910",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_ET_w2daCNp7yGphh4M3L6dV6480",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_02_ET_e4HoWkel7G3F41pOUiQW9722",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_5c3t7xtgpHMNeFEykhGs4714",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_kGQvK9qVoAHMlY055PxS4161",
+    "tool": "write",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_ntBJvzUSYpkl47RHMPjx3796",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_zA48WBKMVPgZkzMNDCSM6535",
+    "tool": "edit",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_8stBsJqYc4PSiC7FhL3W1750",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_tsL0vooyQRAMKgVEhEj59615",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_wGxlb2Ykrhs0Qa8Wmdr50809",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_E0RFyTZK0F0RZjk5eR4O8446",
+    "tool": "grep",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_NcTqRN8oJqDUgPpLbSWR6683",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_nbe31TdeCYlGZ1eXvn0y8998",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_pcF6z2GTUHPQcDRvHDUz8025",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_02_3AZ2oJPtwowiYiwoGMWb6758",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_03_5Jy4lVf4mxNCen6Ncdcj8272",
+    "tool": "read",
+    "ts": null
+   }
+  ]
+ },
+ "ts": 1787307854.3712435,
+ "verified_success": false
+}

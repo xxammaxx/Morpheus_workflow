@@ -1,0 +1,89 @@
+{
+ "first_pass_success": true,
+ "harness": "b",
+ "latency_s": 18,
+ "model": "deepseek-v4-flash",
+ "model_revision": "0731",
+ "opencode_rc": 0,
+ "provider": "deepseek",
+ "pytest": {
+  "failed": 0,
+  "passed": 10
+ },
+ "reasoning_effort": "high",
+ "resolution": {
+  "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "is_fallback": false,
+  "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+  "resolver_error": null
+ },
+ "run_id": "abc-t-021-B1",
+ "runtime_mode": "thinking",
+ "task": "t-021",
+ "task_class": "build",
+ "trajectory": {
+  "assistant_messages": 5,
+  "bash_commands": [
+   "ls -la",
+   "python3 -m pytest test_overbook.py -q"
+  ],
+  "cost_usd": 0.00117012,
+  "duplicate_calls": 0,
+  "file_edits": [
+   "/tmp/opencode/hamh-cal-runs/abc-t-021-B1/overbook.py"
+  ],
+  "file_reads": [
+   "/tmp/opencode/hamh-cal-runs/abc-t-021-B1/test_overbook.py",
+   "/tmp/opencode/hamh-cal-runs/abc-t-021-B1/overbook.py"
+  ],
+  "finish": "stop",
+  "messages": 6,
+  "retries": 1,
+  "session_id": "ses_fdc261778ffeeYVmosgUazzi2N",
+  "steps": 5,
+  "text_output_chars": 349,
+  "tokens": {
+   "cache_read": 78720,
+   "cache_write": 0,
+   "input": 35726,
+   "output": 938,
+   "reasoning": 268
+  },
+  "tool_call_ids": [
+   "call_00_1F5qSYDu9q5sOFhMEzKZ5961",
+   "call_01_rSL7b5kP05ZOfoXZrLVV9976",
+   "call_00_ET_vt8YzQ3wq5GSyWjHf3YY7083",
+   "call_00_7WPG3ZfEfUHceczej7NV4179",
+   "call_00_ET_C64HcBkBAEiZtvWKYzXu1360"
+  ],
+  "tool_calls": [
+   {
+    "call_id": "call_00_1F5qSYDu9q5sOFhMEzKZ5961",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_rSL7b5kP05ZOfoXZrLVV9976",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_vt8YzQ3wq5GSyWjHf3YY7083",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_7WPG3ZfEfUHceczej7NV4179",
+    "tool": "edit",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_C64HcBkBAEiZtvWKYzXu1360",
+    "tool": "bash",
+    "ts": null
+   }
+  ]
+ },
+ "ts": 1787307899.099054,
+ "verified_success": true
+}

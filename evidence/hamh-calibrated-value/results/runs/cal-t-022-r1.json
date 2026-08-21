@@ -1,0 +1,96 @@
+{
+ "first_pass_success": true,
+ "harness": "a",
+ "latency_s": 20,
+ "model": "deepseek-v4-flash",
+ "model_revision": "0731",
+ "opencode_rc": 0,
+ "provider": "deepseek",
+ "pytest": {
+  "failed": 0,
+  "passed": 10
+ },
+ "reasoning_effort": "high",
+ "resolution": {
+  "fingerprint": "a1e6955fa0f1aadf099a331f7c34d6068445fa221ef82827c459d07e15625271",
+  "is_fallback": false,
+  "resolved_harness_id": "hamh/baseline/deepseek-v4-flash/build/thinking/v1",
+  "resolver_error": null
+ },
+ "run_id": "cal-t-022-r1",
+ "runtime_mode": "thinking",
+ "task": "t-022",
+ "task_class": "build",
+ "trajectory": {
+  "assistant_messages": 5,
+  "bash_commands": [
+   "ls -la",
+   "python3 -m pytest test_rangevalidator.py -q"
+  ],
+  "cost_usd": 0.00129,
+  "duplicate_calls": 0,
+  "file_edits": [
+   "/tmp/opencode/hamh-cal-runs/cal-t-022-r1/rangevalidator.py"
+  ],
+  "file_reads": [
+   "/tmp/opencode/hamh-cal-runs/cal-t-022-r1/rangevalidator.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t-022-r1/test_rangevalidator.py",
+   "/tmp/opencode/hamh-cal-runs/cal-t-022-r1/README.md"
+  ],
+  "finish": "stop",
+  "messages": 6,
+  "retries": 1,
+  "session_id": "ses_fdc526876ffe9Xq7DgEn6xCfF1",
+  "steps": 5,
+  "text_output_chars": 395,
+  "tokens": {
+   "cache_read": 76800,
+   "cache_write": 0,
+   "input": 34992,
+   "output": 1140,
+   "reasoning": 207
+  },
+  "tool_call_ids": [
+   "call_00_xfKi2nVoHH8DeCFRMlTR1262",
+   "call_00_ET_ASAPL5N0C4xqIRzfYjbP8783",
+   "call_01_ET_JXAspj4V6paELgxj4zH11592",
+   "call_02_ET_nrThjl0ZjWSCdEHlPSRP1285",
+   "call_00_xTF71XBN8EuExm11vnS00884",
+   "call_00_ET_6ZSiKnkB3Ujx7SGUoY1h1104"
+  ],
+  "tool_calls": [
+   {
+    "call_id": "call_00_xfKi2nVoHH8DeCFRMlTR1262",
+    "tool": "bash",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_ASAPL5N0C4xqIRzfYjbP8783",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_01_ET_JXAspj4V6paELgxj4zH11592",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_02_ET_nrThjl0ZjWSCdEHlPSRP1285",
+    "tool": "read",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_xTF71XBN8EuExm11vnS00884",
+    "tool": "edit",
+    "ts": null
+   },
+   {
+    "call_id": "call_00_ET_6ZSiKnkB3Ujx7SGUoY1h1104",
+    "tool": "bash",
+    "ts": null
+   }
+  ]
+ },
+ "ts": 1787304996.2789905,
+ "verified_success": true
+}

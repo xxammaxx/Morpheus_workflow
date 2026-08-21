@@ -1,0 +1,9 @@
+{
+  "stage": "external-holdout",
+  "status": "NOT_OPENED",
+  "reason": "External holdout (original 24 sealed tasks, HAMH_REAL_TESTING) is only opened after DEVELOPMENT=PASS, VALIDATION=PASS, NEW_HOLDOUT=PASS (order 33). Development gate FAILED (candidate rejected, matched-compute explains gain). The original 24-task holdout remains sealed.",
+  "original_holdout_manifest": "evidence/hamh-real-testing/holdout/eval-split-manifest.json",
+  "original_holdout_tasks": 24,
+  "sealed": true,
+  "date": "2026-08-21"
+}
