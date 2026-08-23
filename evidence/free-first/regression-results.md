@@ -1,17 +1,19 @@
-# Targeted regression results
+# Regression results
 
-All requested local targeted checks passed:
+`TARGETED_REGRESSION=PASS`
 
-- Contract validation: 34 passed, 0 failed.
-- Validator equivalence: 34 passed, 0 failed.
-- Provider runtime: all listed cases passed, including both failover directions, unchanged semantic attempt, dynamic discovery, DeepSeek/paid exclusion, endpoint ownership, and execution-proof contract.
-- Provider adapter integration: selection-to-execution and actual provider/model correlation passed.
-- Provider transport: User-Agent and auth/header-redaction tests passed.
-- Adapter auth: callback allowlist and `X-Harness-Token` tests passed.
-- n8n workflow JSON parse: PASS.
-- `python3 -m compileall -q runtime adapter workflow`: PASS.
+- Contracts: 34 passed.
+- Validator equivalence: 34 passed.
+- Provider runtime: PASS.
+- Provider transport: PASS.
+- Provider adapter integration: PASS.
+- Adapter auth: PASS.
+- Negative paths: PASS.
+- Credential bridge fixture tests: 7 passed.
+- Secret output leak test: PASS.
+- Python compileall: PASS.
+- All n8n workflow JSON files: PASS.
 - `git diff --check`: PASS.
-- Dynamic refresh with ephemeral credentials: 422 OpenRouter models and 13 Groq models discovered; no credential values emitted.
-- Controlled free-pool exhaustion: `NO_ELIGIBLE_FREE_PROVIDER`, no paid/DeepSeek invocation.
+- Public secret scan: PASS; no credential values or fingerprints recorded.
 
-`FULL_REGRESSION=NOT_RUN_SEPARATE_HOLDOUT_SCOPE`.
+No full holdout regression was required for this credential-only continuation.

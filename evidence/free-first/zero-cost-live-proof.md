@@ -1,17 +1,11 @@
 # Zero-cost live proof
 
-## Groq
+Groq zero-cost proof is `NOT_PROVEN`: the authenticated route did not provide
+route-specific account-class evidence, so no completion was sent.
 
-`GROQ_ZERO_COST=NOT_PROVEN_FAIL_CLOSED`: catalog/auth metadata did not establish the account class, so no completion was attempted.
+OpenRouter catalog evidence showed explicit zero-price `:free` routes, but the
+bounded live candidates returned 429/404 and no successful correlated
+selection-to-execution occurred. OpenRouter zero-cost live proof is therefore
+`NOT_PROVEN`.
 
-## OpenRouter
-
-The current provider catalog reported prompt and completion price `0` for explicit `:free` routes, and the route contract has `automatic_paid_fallback=false`. However, both bounded completion attempts failed before a successful correlated response (`429`, then `404`). Therefore:
-
-`OPENROUTER_ZERO_COST=CATALOG_ZERO_PRICE_PROVEN_BUT_LIVE_ROUTE_NOT_PROVEN`.
-
-Global invariants observed in this run:
-
-- `PAID_REQUESTS=0`.
-- `DEEPSEEK_REQUESTS=0`.
-- No automatic paid fallback was enabled or invoked.
+Unknown cost routes remained fail-closed.

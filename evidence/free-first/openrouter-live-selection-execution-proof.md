@@ -1,17 +1,15 @@
-# OpenRouter live selection-to-execution proof
+# OpenRouter live proof
 
-- `OPENROUTER_AUTH=PASS`.
-- `OPENROUTER_CATALOG=PASS`.
-- Dynamic catalog contained 22 free candidates.
-- First explicit route candidate: `cohere/north-mini-code:free`.
-- A committed local provider-runtime probe selected that explicit `:free` route, then the real provider returned HTTP `429` (rate limit); no paid fallback occurred.
-- A bounded second explicit `:free` candidate, `liquid/lfm-2.5-2.6b:free`, returned HTTP `404` (model availability).
-- `OPENROUTER_COMPLETION=FAIL_RATE_LIMIT_AND_MODEL_AVAILABILITY`.
-- `OPENROUTER_SELECTED_PROVIDER=NOT_PROVEN_SUCCESS`.
-- `OPENROUTER_ACTUAL_PROVIDER=NOT_PROVEN_SUCCESS`.
-- `OPENROUTER_SELECTED_MODEL=cohere/north-mini-code:free (attempted)`.
-- `OPENROUTER_RESOLVED_MODEL=NOT_AVAILABLE`.
-- `OPENROUTER_SELECTION_TO_EXECUTION=NOT_PROVEN`.
-- `OPENROUTER_ZERO_COST=CATALOG_ZERO_PRICE_PROVEN_BUT_LIVE_ROUTE_NOT_PROVEN`.
+- Deployed credential presence: PASS, status-only.
+- Deployed catalog refresh: PASS; 422 models discovered.
+- Dynamic filter found 18 current explicit `:free` routes with zero input and
+  output price and healthy discovery status.
+- Maximum live candidate attempts: 3.
+- Candidate 1: `dots-studio/dots-3-note-preview:free`, HTTP 429; one retry,
+  HTTP 429.
+- Candidate 2: `liquid/lfm-2.5-2.6b:free`, HTTP 404.
+- Candidate 3: `nvidia/nemotron-3.5-lightning:free`, HTTP 404.
+- The bounded probe stopped after the third candidate.
+- Completion and selection-to-execution: `NOT_PROVEN`.
 
-The route was explicit and catalog-priced at zero, but no successful correlated completion exists. No further model probing was performed after the bounded attempts.
+No non-free route was attempted and no paid fallback was used.

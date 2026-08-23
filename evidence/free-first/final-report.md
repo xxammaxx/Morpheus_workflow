@@ -1,50 +1,101 @@
-# Free-First closure report
+# Free-first closure continuation report
 
-`FINAL_CLASSIFICATION=AMBER_LIVE_PROVIDER_CLOSURE_BLOCKED_AFTER_GREEN_PUSH`
+FINAL_CLASSIFICATION=AMBER_FREE_FIRST_LIVE_CLOSURE_NOT_PROVEN_AFTER_GREEN_CREDENTIAL_BRIDGE
 
-## Delivery
+START_HEAD=56df88416cacc08b1401c71927c3a29b7a536231
+END_HEAD=f47121773e9cbd70f636894a5e3403950b4ea532
 
-- `START_HEAD=7e215aa6150ecfdb3a4cec399528f074ce81d714`
-- `PRE_LIVE_HEAD=3e9c0ea8d977604b4bc4b233458c28b368661fde`
-- `PUSH_INITIAL=PASS_FAST_FORWARD`
-- `REMOTE_HEAD_AFTER=3e9c0ea8d977604b4bc4b233458c28b368661fde`
-- `FORCE_PUSH_USED=false`
-- `ORIGINAL_FOREIGN_WORKTREE_CHANGES_TOUCHED=false`
+REPOSITORY=xxammaxx/Morpheus_workflow
+REMOTE_MAIN_HEAD_START=56df88416cacc08b1401c71927c3a29b7a536231
+REMOTE_MAIN_HEAD_END=f47121773e9cbd70f636894a5e3403950b4ea532
+ISSUE=1
+ISSUE_CONTINUATION_COMMENT=5388692354
+ISSUE_FINAL_COMMENT=POSTED_AFTER_EVIDENCE_COMMIT
 
-## Credentials and safety
+ROOT_FREE_BYTES=19666702336
+ROOT_USED_PERCENT=72%
+LOCAL_LVM_USED_PERCENT=62.69%
+SATA_LOCAL_USED_PERCENT=30.53%
+DEPLOYED_COMMIT=56df88416cacc08b1401c71927c3a29b7a536231
+ADAPTER_HEALTH=PASS
+HARNESS_AUTH=PASS
 
-- `HARNESS_AUTH=PASS`.
-- `GROQ_CREDENTIAL=PRESENT`.
-- `OPENROUTER_CREDENTIAL=PRESENT`.
-- `SECRET_VALUES_EXPOSED=false`.
-- `CREDENTIAL_PERSISTENCE_CREATED=false`.
-- `PAID_REQUESTS=0`.
-- `DEEPSEEK_REQUESTS=0`.
+CREDENTIAL_BRIDGE_SCRIPT=scripts/sync_opencode_provider_credentials.py
+OPENCODE_AUTH_STORE=~/.local/share/opencode/auth.json
+OPENCODE_AUTH_STORE_MODE=0600
+OPENCODE_GROQ_CREDENTIAL=PRESENT
+OPENCODE_OPENROUTER_CREDENTIAL=PRESENT
+TRANSFER_CHANNEL=SSH_STDIN
+REMOTE_PROVIDER_ENV_PATH=/var/lib/autodev-harness-v2/provider.env
+REMOTE_PROVIDER_ENV_OWNER=root:root
+REMOTE_PROVIDER_ENV_MODE=0600
+SYSTEMD_DROPIN=/etc/systemd/system/autodev-harness-v2.service.d/20-provider-credentials.conf
+SYSTEMD_ENVIRONMENT_FILE_WIRED=true
+DEPLOYMENT_GROQ_CREDENTIAL=PRESENT
+DEPLOYMENT_OPENROUTER_CREDENTIAL=PRESENT
+CREDENTIAL_SYNC=PASS
+CREDENTIAL_PERSISTENCE_CREATED=YES_ROOT_ONLY_RUNTIME_SECRET_STORE
+CREDENTIAL_PERSISTENCE_PUBLIC=false
+CREDENTIAL_PERSISTENCE_REPO=false
+SECRET_VALUES_EXPOSED=false
+CREDENTIAL_BRIDGE_TESTS=PASS
+SECRET_OUTPUT_LEAK_TEST=PASS
 
-## Provider result
+GROQ_AUTH=PASS_DEPLOYED
+GROQ_CATALOG=PASS_DEPLOYED
+GROQ_ADAPTER_HTTP=200_DEPLOYED
+GROQ_TRANSPORT_1010=ABSENT_DEPLOYED
+GROQ_ACCOUNT_CLASS=UNKNOWN
+GROQ_ZERO_COST=NOT_PROVEN_FAIL_CLOSED
+GROQ_FREE_ELIGIBLE=false
+GROQ_COMPLETION=NOT_CALLED_FAIL_CLOSED
+GROQ_SELECTION_TO_EXECUTION=NOT_PROVEN
 
-- Groq auth/catalog: PASS; local provider-adapter catalog HTTP 200 with no Cloudflare 1010.
-- Groq account/free evidence: NOT_PROVEN; completion and selection-to-execution correctly blocked fail-closed.
-- OpenRouter auth/catalog: PASS; 22 current free candidates, explicit `:free` routes present.
-- OpenRouter completion: bounded attempts returned 429 and 404; successful selection-to-execution and live zero-cost correlation not proven.
-- `FREE_POOL_SIZE=0_PROVEN_LIVE`; provider pool closure to 2 was not claimed.
-- `PROVIDER_REDUNDANCY=0_PROVEN_LIVE`.
+OPENROUTER_AUTH=PASS_DEPLOYED
+OPENROUTER_CATALOG=PASS_DEPLOYED
+OPENROUTER_FREE_MODELS_DISCOVERED=18_EXPLICIT_ZERO_PRICE_ROUTES
+OPENROUTER_CANDIDATES_ATTEMPTED=3
+OPENROUTER_429=2
+OPENROUTER_404=2
+OPENROUTER_FREE_ROUTE=NOT_LIVE_PROVEN
+OPENROUTER_COMPLETION=NOT_PROVEN
+OPENROUTER_ZERO_COST=NOT_PROVEN_LIVE
+OPENROUTER_FREE_ELIGIBLE=false
+OPENROUTER_SELECTION_TO_EXECUTION=NOT_PROVEN
 
-## Failover and exclusion
+FREE_POOL_SIZE=0_LIVE_PROVEN
+FREE_POOL_PROVIDERS=NONE
+PROVIDER_REDUNDANCY=NOT_ESTABLISHED
+MODEL_REDUNDANCY=NOT_ESTABLISHED
+PROMOTED_FREE_MODELS=NONE
+FAILOVER_GROQ_TO_OPENROUTER=NOT_RUN_POOL_NOT_GREEN
+FAILOVER_OPENROUTER_TO_GROQ=NOT_RUN_POOL_NOT_GREEN
+SEMANTIC_RETRY_SEPARATION=PASS_OFFLINE
 
-- Bidirectional failover: PASS offline, NOT_RUN live because canonical remote adapter lacks the committed provider runtime and redeploy requires separate approval.
-- Semantic retry separation: PASS offline, not live.
-- Free-pool exhaustion: PASS offline with `NO_ELIGIBLE_FREE_PROVIDER`.
-- Automatic paid escalation: false.
-- DeepSeek runtime exclusion: PASS in implementation/tests; live new provider path not available on the old remote service.
+DEPLOYED_DEEPSEEK_AGENT_ELIGIBLE=false
+DEPLOYED_DEEPSEEK_ESCALATION=false
+AUTOMATIC_PAID_AGENT_ESCALATION=false
+FREE_POOL_EXHAUSTION=PASS_OFFLINE_NO_ELIGIBLE_FREE_PROVIDER
+DEEPSEEK_REQUESTS=0
+PAID_REQUESTS=0
+UNEXPECTED_BILLABLE_USAGE=0
 
-## Observability and tests
+STATUS_API_LIVE=HEALTH_ACTIVE_STATUS_ONLY
+PROVIDER_MODEL_CORRELATION=NOT_PROVEN_EXTERNAL_COMPLETION
+HAMH_STATUS=UNCHANGED_DEPLOYED
 
-- Remote status: baseline health/auth PASS only; provider correlation unavailable on old deployed service.
-- HAMH: expected unavailable on this provider path.
-- Targeted regression: PASS; full holdout regression not run.
-- `SHADOW=POST_CLOSURE`, `CANARY=NOT_RUN`, `PRODUCTION_CUTOVER=NOT_RUN`.
-
-## Limitation and next evidence-driven step
-
-The exact blocker is deployment state, not a newly identified architecture defect: deploy the already pushed provider implementation to `/opt/autodev-harness-v2/` under the documented separate operator approval, inject provider credentials only into the service environment ephemerally/secret-store-backed, restart via the documented systemd path, then rerun the bounded live proof. No keys are requested in chat.
+TARGETED_REGRESSION=PASS
+FULL_REGRESSION=NOT_RUN
+PUBLIC_SECRET_SCAN=PASS
+FILES_CHANGED=3_BRIDGE_FILES_PLUS_SANITIZED_EVIDENCE
+COMMITS=f47121773e9cbd70f636894a5e3403950b4ea532_PLUS_EVIDENCE_COMMIT
+PUSH=FAST_FORWARD
+FORCE_PUSH_USED=false
+PUBLIC_EVIDENCE_SAFE=true
+ORIGINAL_FOREIGN_WORKTREE_CHANGES_TOUCHED=false
+SHADOW=NOT_RUN
+CANARY=NOT_RUN
+PRODUCTION_CUTOVER=NOT_RUN
+USER_ACTION_REQUIRED=Provide route-specific Groq account/free-cost evidence or an eligible current OpenRouter free route if closure is resumed.
+KNOWN_LIMITATIONS=No successful external free completion; no live pool or external failover proof.
+NEXT_EVIDENCE_DRIVEN_STEP=Resume only with route-specific cost/account evidence and a newly current OpenRouter candidate; keep the maximum at three probes.

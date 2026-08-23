@@ -1,11 +1,9 @@
-# Status and observability live proof
+# Status and observability proof
 
-- Remote adapter health: HTTP `200`, service healthy, authenticated token boundary independently verified.
-- Remote authenticated job read for a nonexistent job: HTTP `404`.
-- The remote service exposes the old Baseline adapter and does not expose provider selection/execution fields for this closure implementation.
-- Local provider-runtime tests prove the intended selected/actual provider-model correlation and execution-proof contract.
-- `STATUS_API_LIVE=PASS_BASELINE_AUTH_ONLY`.
-- `PROVIDER_MODEL_CORRELATION=PASS_OFFLINE_IMPLEMENTATION_NOT_LIVE_REMOTE`.
-- `HAMH_STATUS=EXPECTED_NOT_AVAILABLE_ON_OLD_REMOTE_PROVIDER_PATH`.
+The running service reported health and active state after restart. The
+credential bridge verified provider presence status-only in the service
+process. A successful external provider completion was not available, so
+selected/actual model correlation is not claimed for this continuation.
 
-No observability field was invented and no secret/token/header was recorded.
+The deployed runtime and offline integration tests retain provider/model,
+usage, cost, failover, and attempt fields without recording secrets.
