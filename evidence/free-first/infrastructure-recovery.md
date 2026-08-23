@@ -13,8 +13,8 @@ Run date: 2026-08-23. Source repository: `xxammaxx/Morpheus_workflow`.
 - A second read-only consumer refresh identified `/var/backups/n8n` at 15.9 GB:
   a 144-entry, 10-minute SQLite backup ring.
 - After backup-ring cleanup and retention correction: `ROOT_USED_PERCENT=72`,
-  `ROOT_FREE_BYTES=19922583552` (18.55 GiB).
-- `ROOT_BYTES_RECLAIMED=23652995072` by the total initial-to-final `df`
+  `ROOT_FREE_BYTES=19922481152` (18.55 GiB; final verification sample).
+- `ROOT_BYTES_RECLAIMED=23652892672` by the total initial-to-final `df`
   used-byte delta.
 - Inodes remained healthy at 8% used.
 
