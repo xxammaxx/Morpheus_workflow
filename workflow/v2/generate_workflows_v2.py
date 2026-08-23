@@ -551,10 +551,12 @@ const schema = %s;
 const v = validateAutodevContract(issue, schema);
 const fixture = (raw.fixture && ['invalid_plan','verify_fail_delta','verify_fail_no_delta','no_signature','attempt_limit','security_critical_blocking','review_fix','review_split'].includes(raw.fixture)) ? raw.fixture : null;
 const backend = (raw.backend === 'embedded' || raw.backend === 'opencode-builder-8001') ? raw.backend : 'opencode-builder-8001';
-const provider = (typeof raw.provider === 'string' && ['embedded','lmstudio','deepseek'].includes(raw.provider)) ? raw.provider : null;
+const provider = (typeof raw.provider === 'string' && ['embedded','lmstudio','groq','openrouter'].includes(raw.provider)) ? raw.provider : null;
 const model = (typeof raw.model === 'string' && raw.model.length <= 64) ? raw.model : null;
 const modelRevision = (typeof raw.model_revision === 'string' && raw.model_revision.length <= 64) ? raw.model_revision : null;
-return [{ json: { intake_valid: v.ok, errors: v.errors, issue: issue,
+const deepseekRequested = /deepseek/i.test(String(raw.provider || '')) || /deepseek/i.test(String(raw.model || ''));
+const intakeErrors = deepseekRequested ? v.errors.concat(['DEEPSEEK_RETIRED']) : v.errors;
+return [{ json: { intake_valid: v.ok && !deepseekRequested, errors: intakeErrors, issue: issue,
   fixture: fixture, backend: backend, provider: provider, model: model,
   model_revision: modelRevision, run_id: runId } }];
 """

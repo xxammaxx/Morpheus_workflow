@@ -167,6 +167,10 @@ non-secret failure signature.
 
 The candidate list is unique by route identity and capped by
 `AUTODEV_PROVIDER_FAILOVER_MAX`. A provider switch is never a semantic retry.
+The catalog endpoint must exactly equal the configured adapter endpoint before
+the request is sent. POST requests carry the stable outbound request ID as an
+idempotency key. Missing, malformed, negative, or non-finite provider cost is
+not zero-cost proof and fails the execution proof.
 
 ### Groq transport
 
@@ -180,7 +184,8 @@ remain unchanged.
 
 ### DeepSeek and paid escalation
 
-Morpheus route eligibility must reject DeepSeek for agent execution. It must not
+Morpheus route eligibility must reject DeepSeek identifiers in provider names or
+model names, including DeepSeek models exposed through OpenRouter. It must not
 be selected automatically, used as fallback, retried as a provider route, or
 used for paid escalation. `AUTOMATIC_PAID_AGENT_ESCALATION` is hard false in the
 runtime policy. If all free candidates are unavailable, the result is

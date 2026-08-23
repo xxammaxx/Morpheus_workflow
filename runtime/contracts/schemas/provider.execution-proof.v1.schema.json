@@ -1,0 +1,31 @@
+{
+  "$id": "provider.execution-proof.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "version",
+    "routing_event_id",
+    "attempt_id",
+    "selected_provider",
+    "selected_model",
+    "free_eligible",
+    "execution_proof"
+  ],
+  "properties": {
+    "contract": {"const": "provider.execution-proof.v1"},
+    "version": {"const": "v1"},
+    "routing_event_id": {"type": "string", "minLength": 1},
+    "attempt_id": {"type": "string", "minLength": 1},
+    "selected_provider": {"type": "string", "minLength": 1},
+    "selected_model": {"type": "string", "minLength": 1},
+    "actual_provider": {"type": ["string", "null"]},
+    "actual_model": {"type": ["string", "null"]},
+    "free_eligible": {"type": "boolean"},
+    "execution_proof": {"enum": ["PASS", "NOT_PROVEN", "UNEXPECTED_BILLABLE_USAGE"]},
+    "usage": {"type": "object"},
+    "actual_cost": {"type": ["number", "null"]},
+    "failover": {"type": "array", "items": {"type": "object"}},
+    "x-metadata": {"type": "object"}
+  }
+}

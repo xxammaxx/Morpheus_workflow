@@ -29,6 +29,7 @@ LLMs are workers. The adapter is NOT a controller.
 
 import datetime as dt
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -76,6 +77,21 @@ except ImportError:  # pragma: no cover - deployment without hamh
     hamh_resolver = None
     hamh_registry = None
 
+try:
+    from providers.runtime import ProviderRuntime  # noqa: E402
+    from providers.protocol import (
+        NoEligibleProvider,
+        ProviderFailure,
+        RouteRequest,
+        is_deepseek_identifier,
+    )  # noqa: E402
+except ImportError:  # pragma: no cover - legacy deployment without providers
+    ProviderRuntime = None
+    NoEligibleProvider = RuntimeError
+    ProviderFailure = RuntimeError
+    RouteRequest = None
+    is_deepseek_identifier = lambda provider, model: False
+
 # HAMH harness registry: loaded from <STATE_DIR>/hamh/registry.json when
 # present. Without a registry file the resolver keeps the explicit baseline
 # fallback (current production state). The promotion authority token comes
@@ -90,6 +106,8 @@ if hamh_registry is not None:
         )
     except Exception:  # noqa: BLE001 - a broken registry must never break dispatch
         _hamh_registry = None
+
+_provider_runtime = ProviderRuntime() if ProviderRuntime is not None else None
 
 # ------------------------------------------------------------------ config --
 BUILDER_CTID = "8001"
@@ -297,16 +315,41 @@ def classify_job_failure(job_type, exc):
 
 
 def call_resume_url(resume_url, payload):
-    """Best-effort authenticated callback to the n8n wait resume endpoint."""
+    """Best-effort callback to an allowlisted n8n wait resume endpoint."""
+    parsed = urllib.parse.urlparse(resume_url or "")
+    allowlist = os.environ.get(
+        "AUTODEV_CALLBACK_ALLOWLIST", "192.168.1.52:5678,192.168.1.195:18091"
+    )
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return None
+    try:
+        callback_port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    except ValueError:
+        return None
+    if "%s:%s" % (
+        parsed.hostname,
+        callback_port,
+    ) not in {item.strip() for item in allowlist.split(",") if item.strip()}:
+        return None
+    callback_headers = {"Content-Type": "application/json"}
+    if os.path.exists(TOKEN_FILE):
+        with open(TOKEN_FILE) as f:
+            callback_headers["X-Harness-Token"] = f.read().strip()
     req = urllib.request.Request(
         resume_url,
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
+        headers=callback_headers,
         method="POST",
     )
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *_args, **_kwargs):
+            return None
+
+    opener = urllib.request.build_opener(_NoRedirect)
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(req, timeout=15) as r:
+            with opener.open(req, timeout=15) as r:
                 return r.status
         except Exception:
             if attempt < 2:
@@ -353,6 +396,7 @@ def new_job(
     model_revision=None,
     task_class=None,
     harness_resolution=None,
+    route_decision=None,
 ):
     rec = {
         "ts": _now(),
@@ -368,6 +412,19 @@ def new_job(
         or ("lmstudio" if backend == "opencode-builder-8001" else "embedded"),
         "model": model
         or (LMSTUDIO_MODEL if backend == "opencode-builder-8001" else "embedded"),
+        "harness_provider": provider
+        or ("lmstudio" if backend == "opencode-builder-8001" else "embedded"),
+        "harness_model": model
+        or (LMSTUDIO_MODEL if backend == "opencode-builder-8001" else "embedded"),
+        "route_provider": (route_decision or {}).get("route_provider"),
+        "route_model": (route_decision or {}).get("route_model"),
+        "route_endpoint": (route_decision or {}).get("route_endpoint"),
+        "route_account_class": (route_decision or {}).get("route_account_class"),
+        "selected_provider": (route_decision or {}).get("selected_provider"),
+        "selected_model": (route_decision or {}).get("selected_model"),
+        "routing_event_id": (route_decision or {}).get("routing_event_id"),
+        "route_decision": route_decision,
+        "provider_execution": None,
         "model_revision": model_revision,
         "task_class": task_class,
         "harness_resolution": harness_resolution,
@@ -404,6 +461,7 @@ def finalize_job(
     strategy_delta=None,
     provider=None,
     model=None,
+    provider_execution=None,
 ):
     rec = JOBS.get(job_id)
     if not rec:
@@ -423,6 +481,18 @@ def finalize_job(
         rec["provider"] = provider
     if model is not None:
         rec["model"] = model
+    if provider_execution is not None:
+        rec["provider_execution"] = provider_execution
+        rec["selected_provider"] = provider_execution.get("selected_provider")
+        rec["selected_model"] = provider_execution.get("selected_model")
+        rec["actual_provider"] = provider_execution.get("actual_provider")
+        rec["actual_model"] = provider_execution.get("actual_model")
+        rec["resolved_model"] = provider_execution.get("actual_model")
+        rec["usage"] = provider_execution.get("usage", {})
+        rec["actual_cost"] = provider_execution.get("actual_cost", 0)
+        rec["free_eligible"] = provider_execution.get("free_eligible", False)
+        rec["execution_proof"] = provider_execution.get("execution_proof")
+        rec["failover"] = provider_execution.get("failover", [])
     if result is not None:
         rec["result"] = result
         rec["output_contract"] = (
@@ -453,6 +523,23 @@ def finalize_job(
                 "backend",
                 "provider",
                 "model",
+                "harness_provider",
+                "harness_model",
+                "route_provider",
+                "route_model",
+                "route_endpoint",
+                "route_account_class",
+                "selected_provider",
+                "selected_model",
+                "routing_event_id",
+                "actual_provider",
+                "actual_model",
+                "resolved_model",
+                "usage",
+                "actual_cost",
+                "free_eligible",
+                "execution_proof",
+                "failover",
                 "model_revision",
                 "task_class",
                 "harness_id",
@@ -488,6 +575,7 @@ def run_job_thread(
     fixture=None,
     timeout_s=None,
     sleep_seconds=None,
+    route_decision=None,
 ):
     def worker():
         with _sem:
@@ -516,6 +604,17 @@ def run_job_thread(
                 )
                 return
             try:
+                if route_decision is not None:
+                    _provider_direct_completion(
+                        job_id,
+                        run_id,
+                        job_type,
+                        payload,
+                        route_decision,
+                        rec.get("timeout_s", DEFAULT_TIMEOUT_S),
+                        attempt_id,
+                    )
+                    return
                 if backend == "opencode-builder-8001":
                     _opencode_sem.acquire()
                 try:
@@ -556,6 +655,61 @@ def run_job_thread(
                 )
 
     threading.Thread(target=worker, daemon=True, name="job-%s" % job_id).start()
+
+
+def _provider_direct_completion(
+    job_id, run_id, job_type, payload, route_decision, timeout_s, attempt_id
+):
+    """Execute the selected free route and persist only redacted proof fields."""
+    if _provider_runtime is None:
+        raise NoEligibleProvider("NO_ELIGIBLE_FREE_PROVIDER")
+    task_class = _task_class_of(job_type)
+    request = RouteRequest(
+        provider=route_decision.get("selected_provider", ""),
+        model=route_decision.get("selected_model", ""),
+        task_class=task_class,
+        privacy_class="ALLOWED",
+        free_first=True,
+    )
+    messages = [
+        {"role": "user", "content": str(payload.get("task_description", ""))[:12000]}
+    ]
+    execution = _provider_runtime.invoke_with_failover(
+        request,
+        messages,
+        task_class,
+        timeout_s,
+        attempt_id,
+    )
+    proof = execution.execution_proof
+    text = execution.response.text[:12000]
+    if job_type.startswith("research."):
+        area = job_type.split(".", 1)[1]
+        result = {
+            "contract": "autodev.research.v1",
+            "version": "v1",
+            "run_id": run_id,
+            "areas": {
+                "code": text if area == "code" else "",
+                "docs": text if area == "docs" else "",
+                "tests": text if area == "tests" else "",
+            },
+            "findings": [],
+            "recommendations": [],
+            "parallelism": {"jobs": [], "overlap_proven": False},
+        }
+    else:
+        result = {
+            "contract": JOB_TYPES.get(job_type),
+            "version": "v1",
+            "run_id": run_id,
+            "summary": text,
+        }
+    validation = registry.validate(result, result.get("contract"))
+    if not validation["ok"]:
+        raise RuntimeError("provider output contract invalid")
+    result["x-metadata"] = {"provider_execution": True}
+    finalize_job(job_id, "completed", result=result, provider_execution=proof)
 
 
 # ------------------------------------------------------------ embedded jobs --
@@ -1779,6 +1933,8 @@ def _dispatch(
     model=None,
     model_revision=None,
     task_class=None,
+    allow_paid_escalation=False,
+    paid_escalation_reason=None,
 ):
     if job_type not in JOB_TYPES:
         return None, err("BAD_JOB_TYPE", "unknown job_type %r" % job_type)
@@ -1792,6 +1948,14 @@ def _dispatch(
         return None, err("BAD_ATTEMPT_ID", "invalid attempt_id")
     if fixture and fixture not in FIXTURES:
         return None, err("BAD_FIXTURE", "unknown fixture %r" % fixture)
+    if is_deepseek_identifier(provider, model):
+        return None, err(
+            "DEEPSEEK_RETIRED", "DeepSeek is not eligible for Morpheus agent execution"
+        )
+    if allow_paid_escalation:
+        return None, err(
+            "PAID_ESCALATION_DISABLED", "automatic paid agent escalation is disabled"
+        )
     # HAMH identity fields (optional, backwards compatible). Backend routing
     # is NOT touched by these — they only select the harness profile.
     if provider is not None and not HAMH_ID_RE.match(provider):
@@ -1831,13 +1995,46 @@ def _dispatch(
                 "IDEMPOTENCY_CONFLICT",
                 "job_id already used with different attempt/fingerprint",
             )
+    effective_task_class = task_class or _task_class_of(job_type)
+    route_decision = None
+    if (
+        _provider_runtime is not None
+        and _provider_runtime.enabled
+        and backend != "embedded"
+        and effective_task_class not in ("build", "fix", "plan")
+    ):
+        preference_provider = provider if provider in {"groq", "openrouter"} else ""
+        preference_model = model if preference_provider else ""
+        try:
+            route_decision = _provider_runtime.select(
+                RouteRequest(
+                    provider=preference_provider,
+                    model=preference_model,
+                    task_class=effective_task_class,
+                    privacy_class=payload.get("privacy_class", "ALLOWED"),
+                    free_first=True,
+                )
+            )
+        except NoEligibleProvider:
+            if preference_provider or os.environ.get(
+                "AUTODEV_FREE_FIRST_REQUIRED", "false"
+            ).lower() in {"1", "true", "yes"}:
+                return None, err(
+                    "NO_ELIGIBLE_FREE_PROVIDER", "no eligible free provider"
+                )
+    harness_provider = (route_decision or {}).get("selected_provider") or provider
+    harness_model = (route_decision or {}).get("selected_model") or model
     # deterministic harness resolution at dispatch (HAMH seam, ADR H3).
     # Unknown models fall back to the explicit baseline profile.
     harness_resolution = None
     if hamh_resolver is not None:
-        eff_provider = provider or ("embedded" if backend == "embedded" else "lmstudio")
-        eff_model = model or ("embedded" if backend == "embedded" else LMSTUDIO_MODEL)
-        eff_task_class = task_class or _task_class_of(job_type)
+        eff_provider = harness_provider or (
+            "embedded" if backend == "embedded" else "lmstudio"
+        )
+        eff_model = harness_model or (
+            "embedded" if backend == "embedded" else LMSTUDIO_MODEL
+        )
+        eff_task_class = effective_task_class
         harness_resolution = hamh_resolver.resolve(
             eff_provider,
             eff_model,
@@ -1860,12 +2057,13 @@ def _dispatch(
             fixture=fixture,
             timeout_s=timeout_s,
             sleep_seconds=sleep_seconds,
-            provider=provider,
-            model=model,
+            provider=harness_provider,
+            model=harness_model,
             model_revision=model_revision,
             task_class=task_class
             or (None if hamh_resolver is None else _task_class_of(job_type)),
             harness_resolution=harness_resolution,
+            route_decision=route_decision,
         )
         run_job_thread(
             run_id,
@@ -1878,6 +2076,7 @@ def _dispatch(
             resume_url=resume_url,
             fixture=fixture,
             timeout_s=timeout_s,
+            route_decision=route_decision,
         )
         return rec, None
 
@@ -1932,6 +2131,23 @@ def _job_view(rec, with_result=True):
             "backend",
             "provider",
             "model",
+            "harness_provider",
+            "harness_model",
+            "route_provider",
+            "route_model",
+            "route_endpoint",
+            "route_account_class",
+            "selected_provider",
+            "selected_model",
+            "routing_event_id",
+            "resolved_model",
+            "actual_provider",
+            "actual_model",
+            "usage",
+            "actual_cost",
+            "free_eligible",
+            "execution_proof",
+            "failover",
             "model_revision",
             "task_class",
             "harness_id",
@@ -1969,8 +2185,9 @@ class Handler(BaseHTTPRequestHandler):
         if os.path.exists(TOKEN_FILE):
             with open(TOKEN_FILE) as f:
                 expected = f.read().strip()
-        given = self.headers.get("X-Harness-Token", "")
-        return expected and given == expected
+        given_values = self.headers.get_all("X-Harness-Token") or []
+        given = given_values[0].strip() if len(given_values) == 1 else ""
+        return bool(expected and given and hmac.compare_digest(given, expected))
 
     def _send(self, code, obj):
         body = json.dumps(obj).encode()
@@ -2092,6 +2309,8 @@ class Handler(BaseHTTPRequestHandler):
                 model=body.get("model"),
                 model_revision=body.get("model_revision"),
                 task_class=body.get("task_class"),
+                allow_paid_escalation=body.get("allow_paid_escalation", False),
+                paid_escalation_reason=body.get("paid_escalation_reason"),
             )
             if e is not None:
                 self._send(
@@ -2168,6 +2387,8 @@ class Handler(BaseHTTPRequestHandler):
                     model=j.get("model"),
                     model_revision=j.get("model_revision"),
                     task_class=j.get("task_class"),
+                    allow_paid_escalation=j.get("allow_paid_escalation", False),
+                    paid_escalation_reason=j.get("paid_escalation_reason"),
                 )
                 if e is not None:
                     errors.append({"job_id": j.get("job_id"), "error": e})

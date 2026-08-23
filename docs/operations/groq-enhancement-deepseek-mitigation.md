@@ -31,6 +31,14 @@ runtime introduced by this issue defines only these new runtime controls:
 - `AUTODEV_PROVIDER_FAILOVER_MAX`: maximum provider candidates attempted for one
   dispatch; default `3`, minimum effective value `1`. It does not increment a
   semantic harness attempt and does not implement shared quota.
+- `AUTODEV_GROQ_ACCOUNT_CLASS` and `AUTODEV_OPENROUTER_ACCOUNT_CLASS`: explicit
+  deployment account-class evidence; `unknown` is never free eligible.
+- `AUTODEV_GROQ_USAGE_TERMS_APPROVED` and
+  `AUTODEV_OPENROUTER_USAGE_TERMS_APPROVED`: affirmative usage-policy evidence
+  required for discovery entries.
+- `AUTODEV_GROQ_PRIVACY_APPROVED` and
+  `AUTODEV_OPENROUTER_PRIVACY_APPROVED`: affirmative privacy-policy evidence
+  required for private-code routes.
 
 Provider credentials are environment inputs owned by deployment and are never
 written to evidence. The runtime must not infer free eligibility from the mere
@@ -87,6 +95,9 @@ backend handlers and cannot enter external provider failover.
 
 Provider failover is not a semantic retry. A semantic retry remains owned by the
 existing harness attempt loop and is not incremented by provider switching.
+The catalog endpoint must exactly match the configured adapter endpoint; a
+mismatch fails before any request. Provider POSTs carry the stable outbound
+request ID as an idempotency key.
 
 ## Groq Transport Procedure
 
@@ -110,6 +121,8 @@ request without spending beyond the verified free route.
 ## DeepSeek Retirement Procedure
 
 - Reject DeepSeek during eligible catalog/routing selection.
+- Reject DeepSeek identifiers in provider names and model names, including
+  DeepSeek models exposed through OpenRouter.
 - Ignore paid escalation requests for Morpheus agent execution.
 - Do not add or modify local OpenCode configuration.
 - Preserve historical DeepSeek evidence as read-only history.
