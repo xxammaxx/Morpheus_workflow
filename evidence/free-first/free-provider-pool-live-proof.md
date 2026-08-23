@@ -3,4 +3,5 @@
 Live pool status: NOT_PROMOTED after the post-fix deployment. Providers are
 promoted only after a successful bounded probe and zero-cost proof. No
 unproven Groq route or paid/DeepSeek route is counted in the pool.
-`FREE_POOL_SIZE=0`.
+`FREE_POOL_SIZE=0`; `FREE_POOL_PROVIDERS=NONE_PROMOTED`. No live failover was
+run.

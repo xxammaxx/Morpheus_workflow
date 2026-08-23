@@ -1,6 +1,8 @@
 # Groq live selection/execution proof
 
-Status: catalog/auth PASS; completion NOT_RUN / FAIL-CLOSED until account-specific Free-tier evidence is
-available. Groq rate-limit headers are supporting quota evidence only; they do
-not establish account class. No Groq completion is sent while account class is
-`UNKNOWN`. The deployed refresh found 13 Groq models and promoted zero.
+Status: account class UNKNOWN; completion NOT_RUN / FAIL-CLOSED. No authenticated
+Groq Console tier evidence was available locally. The read-only authenticated
+models request returned HTTP 403 in this run. Rate-limit values, if available,
+would be supporting quota evidence only and would not establish account class.
+No Groq completion is sent while account class is `UNKNOWN`; zero routes are
+promoted.

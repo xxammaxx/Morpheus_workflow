@@ -9,6 +9,9 @@
 - Deployed runtime fingerprint, adapter health, harness auth, and credential
   persistence: PASS.
 - OpenRouter catalog route: PASS; bounded completion: HTTP 429, no retry.
-- Groq catalog: PASS; account class UNKNOWN, zero promoted routes.
+- OpenRouter `/api/v1/key`: HTTP 200; free-tier true; daily/weekly/monthly
+  usage 0; no reset fields exposed.
+- Groq authenticated models read-only check: HTTP 403; account class UNKNOWN,
+  zero promoted routes; no completion.
 - `test_provider_transport.py` and `test_adapter_auth.py`: repository files
   not present in this worktree; no result is claimed for them.
