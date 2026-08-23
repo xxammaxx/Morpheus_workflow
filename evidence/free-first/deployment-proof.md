@@ -32,6 +32,8 @@ provider, HAMH, and contract Python modules. The documented
 - `HARNESS_AUTH=PASS` (read-only unknown-job probe returned 404, not 401/403)
 - `STATUS_BASELINE=PASS` (service active; n8n root and health endpoint HTTP 200)
 - `ROOT_FREE_BYTES_POST_DEPLOY=6927085568`
+- Final infrastructure measurement after n8n backup-ring cleanup:
+  `ROOT_FREE_BYTES=19922583552`, `ROOT_USED_PERCENT=72`.
 - Deployed compileall: PASS.
 - Deployed negative proof: `NO_ELIGIBLE_FREE_PROVIDER`, DeepSeek identifiers
   blocked, and `AUTOMATIC_PAID_AGENT_ESCALATION=false`.
