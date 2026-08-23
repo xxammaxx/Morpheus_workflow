@@ -11,6 +11,8 @@ from .protocol import (
     RouteRequest,
     TASK_CAPABILITIES,
     free_eligibility,
+    probe_eligibility,
+    promotion_eligibility,
     is_deepseek_identifier,
     new_id,
     now_utc,
@@ -62,7 +64,8 @@ class ProviderRouter:
                 for name in self._caps(request)
             ):
                 continue
-            if not free_eligibility(entry, request.privacy_class):
+            is_free = promotion_eligibility(entry) or probe_eligibility(entry)
+            if not is_free:
                 continue
             if entry.get("cost_class") not in FREE_CLASSES:
                 continue
@@ -89,6 +92,9 @@ class ProviderRouter:
             "paid_escalation": False,
             "expected_cost": 0.0,
             "execution_proof": "NOT_PROVEN",
+            "probe_attempted": False,
+            "selection_to_execution_proven": False,
+            "actual_cost_proof": None,
             "selected_at": now_utc(),
         }
 
@@ -125,17 +131,26 @@ class ProviderRouter:
         updated = copy.deepcopy(decision)
         updated["outbound_request_id"] = outbound_request_id
         updated["provider_request_id"] = response.provider_request_id
-        updated["resolved_model"] = response.resolved_model or response.requested_model
+        updated["resolved_model"] = response.resolved_model
         updated["actual_provider"] = response.actual_provider or response.provider
         updated["actual_model"] = (
-            response.actual_model or response.resolved_model or response.requested_model
+            response.actual_model
         )
         updated["usage"] = response.usage
         updated["actual_cost"] = response.actual_cost
         updated["attempt_id"] = attempt_id
-        if response.actual_cost is None:
-            raise ProviderFailure("provider cost was not proven")
-        if response.actual_cost < 0 or response.actual_cost > 0:
+        updated["probe_attempted"] = True
+        entry = next((e for e in self.catalog.entries if
+                      e.get("provider") == updated.get("selected_provider") and
+                      e.get("model") == updated.get("selected_model") and
+                      e.get("endpoint") == updated.get("route_endpoint")), {})
+        if response.actual_cost is not None:
+            updated["actual_cost_proof"] = "EXPLICIT_ZERO" if response.actual_cost == 0 else "EXPLICIT_NONZERO"
+        elif entry.get("cost_class") == "FREE_HARD_STOP" and entry.get("input_price") == 0 and entry.get("output_price") == 0 and entry.get("automatic_paid_fallback") is False:
+            updated["actual_cost_proof"] = "CATALOG_HARD_ZERO"
+        else:
+            updated["actual_cost_proof"] = "UNKNOWN"
+        if response.actual_cost not in (None, 0, 0.0) or updated["actual_cost_proof"] == "UNKNOWN":
             self.catalog.quarantine(
                 updated["selected_provider"],
                 updated["selected_model"],
@@ -143,13 +158,15 @@ class ProviderRouter:
                 "UNEXPECTED_BILLABLE_USAGE",
             )
             raise ProviderFailure("UNEXPECTED_BILLABLE_USAGE")
-        updated["execution_proof"] = (
-            "PASS"
-            if (
-                updated["selected_provider"] == updated["actual_provider"]
-                and updated["selected_model"] == updated["actual_model"]
-            )
-            else "NOT_PROVEN"
-        )
+        provider_ok = updated["selected_provider"] == updated["actual_provider"]
+        dynamic_route = updated["selected_provider"] == "openrouter" and updated["selected_model"] == "openrouter/free"
+        model_ok = bool(updated["actual_model"]) if dynamic_route else updated["selected_model"] == updated["actual_model"]
+        updated["selection_to_execution_proven"] = bool(provider_ok and model_ok and (not dynamic_route or updated["resolved_model"]))
+        updated["execution_proof"] = "PASS" if updated["selection_to_execution_proven"] else "NOT_PROVEN"
         updated["free_eligible"] = updated["execution_proof"] == "PASS"
+        if updated["execution_proof"] == "PASS" and updated["actual_cost_proof"] in {"EXPLICIT_ZERO", "USAGE_ZERO", "CATALOG_HARD_ZERO"}:
+            for catalog_entry in self.catalog.entries:
+                if (catalog_entry.get("provider"), catalog_entry.get("model"), catalog_entry.get("endpoint")) == (updated.get("selected_provider"), updated.get("selected_model"), updated.get("route_endpoint")):
+                    catalog_entry.update({"probe_attempted": True, "promoted_free_eligible": True, "execution_proof": "PASS", "selection_to_execution_proven": True, "actual_cost_proof": updated["actual_cost_proof"], "actual_cost": response.actual_cost})
+                    break
         return updated

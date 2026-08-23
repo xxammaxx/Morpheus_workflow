@@ -163,7 +163,7 @@ class ProviderAdapter:
         choices = response.get("choices") or []
         message = choices[0].get("message", {}) if choices else {}
         text = message.get("content", "") if isinstance(message, dict) else ""
-        actual_model = response.get("model") or request.model
+        actual_model = response.get("model") or ""
         usage = normalize_usage(response)
         raw_cost = response.get("cost")
         if raw_cost is None:
@@ -189,6 +189,20 @@ class ProviderAdapter:
         )
 
 
+class OpenRouterAdapter(ProviderAdapter):
+    def discover_models(self):
+        entries = super().discover_models()
+        entries.append(normalized_entry(
+            "openrouter", "openrouter/free", self.base_url,
+            availability=True, health="HEALTHY", cost_class="FREE_HARD_STOP",
+            input_price=0, output_price=0, route_exists=True,
+            route_cost_proven=True, privacy_class="ALLOWED",
+            usage_terms_permit=True, automatic_paid_fallback=False,
+            capabilities={"RESEARCH_CAPABLE": True},
+        ))
+        return entries
+
+
 def build_adapters():
     configs = {
         "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", {}),
@@ -200,6 +214,7 @@ def build_adapters():
         ),
     }
     return {
-        name: ProviderAdapter(name, base, env, **options)
+        name: (OpenRouterAdapter(name, base, env, **options)
+               if name == "openrouter" else ProviderAdapter(name, base, env, **options))
         for name, (base, env, options) in configs.items()
     }

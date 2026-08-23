@@ -85,7 +85,7 @@ class ProviderResponse:
     actual_model: str = ""
     provider_request_id: str = ""
     usage: dict = field(default_factory=dict)
-    actual_cost: float = 0.0
+    actual_cost: float = None
     response_headers: dict = field(default_factory=dict)
 
 
@@ -177,24 +177,97 @@ def _privacy_ok(entry, requested):
     return True
 
 
-def free_eligibility(entry, privacy_class="ALLOWED"):
+def free_eligibility(entry, privacy_class="ALLOWED", require_execution=True):
     stages = set(entry.get("free_evidence") or [])
     zero_priced = entry.get("input_price") == 0 and entry.get("output_price") == 0
+    required_stages = set(FREE_EVIDENCE_STAGES) if require_execution else {
+        "CATALOG_FREE", "ACCOUNT_FREE_ELIGIBLE"
+    }
+    groq_account_proven = not (
+        entry.get("provider") == "groq"
+        and not (
+            str(entry.get("account_class", "unknown")).lower() == "free"
+            and entry.get("account_class_evidence") == "PASS"
+        )
+    )
     eligible = (
         entry.get("cost_class") in FREE_CLASSES
         and zero_priced
-        and entry.get("account_class") not in ("unknown", "")
+        and (
+            entry.get("account_class") not in ("unknown", "")
+            or (entry.get("provider") == "openrouter" and entry.get("model") == "openrouter/free")
+        )
         and entry.get("usage_terms_permit") is True
         and entry.get("automatic_paid_fallback") is False
         and entry.get("availability") is True
         and entry.get("health") in ("HEALTHY", "DEGRADED")
         and entry.get("quota_state", {}).get("exhausted") is not True
         and _privacy_ok(entry, privacy_class)
-        and set(FREE_EVIDENCE_STAGES).issubset(stages)
+        and groq_account_proven
+        and required_stages.issubset(stages)
         and not entry.get("quarantined", False)
     )
     entry["free_eligible"] = bool(eligible)
     return bool(eligible)
+
+
+def _safe_pre_execution(entry):
+    return (
+        entry.get("credential_valid", True) is True
+        and entry.get("route_exists", True) is True
+        and entry.get("availability") is True
+        and entry.get("health") in ("HEALTHY", "DEGRADED")
+        and entry.get("usage_terms_permit") is True
+        and entry.get("automatic_paid_fallback") is False
+        and entry.get("privacy_class") == "ALLOWED"
+        and entry.get("quota_state", {}).get("exhausted") is not True
+        and not entry.get("quarantined", False)
+    )
+
+
+def _hard_zero_route(entry):
+    return (
+        entry.get("cost_class") == "FREE_HARD_STOP"
+        and entry.get("input_price") == 0
+        and entry.get("output_price") == 0
+        and entry.get("automatic_paid_fallback") is False
+    )
+
+
+def probe_eligibility(entry):
+    """Pre-execution eligibility; execution proof is intentionally absent."""
+    return bool(
+        _safe_pre_execution(entry)
+        and entry.get("cost_class") in FREE_CLASSES
+        and entry.get("input_price") == 0
+        and entry.get("output_price") == 0
+        and (
+            entry.get("provider") == "openrouter"
+            and entry.get("model") == "openrouter/free"
+            or entry.get("account_class") not in ("unknown", "")
+        )
+        and (_hard_zero_route(entry) or entry.get("route_cost_proven") is True)
+        and entry.get("probe_attempted") is not True
+    )
+
+
+def promotion_eligibility(entry, decision=None):
+    decision = decision or entry
+    promoted = (
+        entry.get("promoted_free_eligible") is True
+        if decision is entry
+        else decision.get("execution_proof") == "PASS"
+        and decision.get("selection_to_execution_proven") is True
+    )
+    return bool(
+        _safe_pre_execution(entry)
+        and promoted
+        and decision.get("probe_attempted") is True
+        and decision.get("actual_cost_proof") in {
+            "EXPLICIT_ZERO", "USAGE_ZERO", "CATALOG_HARD_ZERO"
+        }
+        and decision.get("actual_cost") in (None, 0, 0.0)
+    )
 
 
 def safe_id(value):

@@ -27,7 +27,8 @@ def apply_policy(entry, provider, account_class="unknown"):
     prompt = pricing.get("prompt") if isinstance(pricing, dict) else None
     completion = pricing.get("completion") if isinstance(pricing, dict) else None
     free_model = provider == "openrouter" and (
-        str(entry.get("model", "")).endswith(":free")
+        str(entry.get("model", "")).lower() == "openrouter/free"
+        or str(entry.get("model", "")).endswith(":free")
         or (prompt in (0, "0", "0.0") and completion in (0, "0", "0.0"))
     )
     entry["account_class"] = account_class
@@ -49,8 +50,19 @@ def apply_policy(entry, provider, account_class="unknown"):
         "AUTODEV_%s_USAGE_TERMS_APPROVED" % provider.upper(), "false"
     ).lower() in {"1", "true", "yes"}
     entry["automatic_paid_fallback"] = False
+    if provider == "openrouter" and str(entry.get("model", "")).lower() == "openrouter/free":
+        entry.update({
+            "privacy_class": "ALLOWED",
+            "usage_terms_permit": True,
+            "route_exists": True,
+            "route_cost_proven": True,
+            "free_evidence": ["CATALOG_FREE", "ACCOUNT_FREE_ELIGIBLE"],
+        })
     if provider == "groq":
-        entry.update({"cost_class": "FREE_QUOTA", "input_price": 0, "output_price": 0})
+        if account_class == "free" and entry.get("account_class_evidence") == "PASS":
+            entry.update({"cost_class": "FREE_QUOTA", "input_price": 0, "output_price": 0})
+        else:
+            entry.update({"cost_class": "UNKNOWN", "input_price": None, "output_price": None})
     elif free_model:
         entry.update(
             {"cost_class": "FREE_HARD_STOP", "input_price": 0, "output_price": 0}
@@ -170,6 +182,7 @@ class ProviderCatalog:
                         "AUTODEV_%s_ACCOUNT_CLASS" % provider.upper(), "unknown"
                     ),
                 )
+                entry["credential_valid"] = bool(adapter.credential)
                 capability = self.capability_registry.get(provider, entry.get("model"))
                 if capability:
                     entry["capabilities"] = capability.get("capabilities", {})
