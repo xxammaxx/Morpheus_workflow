@@ -49,7 +49,7 @@ class BridgeTests(unittest.TestCase):
     def test_both_present_and_unrelated_ignored_without_output(self):
         path = self.auth_file(self.present())
         output = io.StringIO()
-        with contextlib.redirect_stdout(output):
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
             values = bridge.load_credentials(path)
         self.assertEqual(set(values), {"GROQ_API_KEY", "OPENROUTER_API_KEY"})
         self.assertIn("SOURCE_OPENCODE_GROQ=PRESENT", output.getvalue())
@@ -61,7 +61,7 @@ class BridgeTests(unittest.TestCase):
         run.return_value = mock.Mock(returncode=0, stdout=b"SSH_TARGET=PASS\n", stderr=b"")
         path = self.auth_file(self.present())
         output = io.StringIO()
-        with contextlib.redirect_stdout(output):
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
             rc = bridge.main(["--auth-store", path, "--dry-run"])
         self.assertEqual(rc, 0)
         self.assertEqual(run.call_count, 1)
@@ -80,7 +80,7 @@ class BridgeTests(unittest.TestCase):
         )
         path = self.auth_file(self.present())
         output = io.StringIO()
-        with contextlib.redirect_stdout(output):
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
             rc = bridge.main(["--auth-store", path])
         self.assertEqual(rc, 0)
         args = run.call_args.args[0]
