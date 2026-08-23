@@ -89,6 +89,7 @@ class ProviderAdapter:
                 "provider HTTP %s" % exc.code,
                 status=exc.code,
                 retryable=retryable,
+                headers=parse_rate_limit_headers(exc.headers),
             ) from exc
         except urllib.error.URLError as exc:
             raise ProviderFailure("provider unavailable", retryable=True) from exc

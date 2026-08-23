@@ -111,11 +111,12 @@ class ProviderExecution:
 class ProviderFailure(RuntimeError):
     """Provider failure with explicit failover safety classification."""
 
-    def __init__(self, message, status=None, retryable=False, uncertain=False):
+    def __init__(self, message, status=None, retryable=False, uncertain=False, headers=None):
         super().__init__(message)
         self.status = status
         self.retryable = retryable
         self.uncertain = uncertain
+        self.headers = headers or {}
 
 
 class NoEligibleProvider(RuntimeError):
