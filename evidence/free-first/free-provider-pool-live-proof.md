@@ -1,7 +1,7 @@
 # Free provider pool live proof
 
-Live pool status: NOT_PROMOTED after the post-fix deployment. Providers are
-promoted only after a successful bounded probe and zero-cost proof. No
-unproven Groq route or paid/DeepSeek route is counted in the pool.
-`FREE_POOL_SIZE=0`; `FREE_POOL_PROVIDERS=NONE_PROMOTED`. No live failover was
-run.
+`FREE_POOL_SIZE=0`; `FREE_POOL_PROVIDERS=NONE_PROMOTED`.
+
+OpenRouter was selected but did not execute successfully because the provider
+reported its free-model daily limit. Groq was read-only and has no proven
+free-tier account class. No failover ran because the pool is below two.

@@ -1,36 +1,44 @@
-# Quota diagnostics — 2026-08-24
+# External provider diagnostics — 2026-08-24
 
-All provider values below are sanitized. No key material, key prefix, user ID,
-workspace ID, label, hash, billing detail, or raw provider response is stored.
+All values are sanitized. No key, authorization value, cookie, user/workspace
+identifier, key hash, billing detail, or raw provider response is stored.
 
 ## OpenRouter
 
-- Read-only `GET /api/v1/key`: HTTP 200.
-- `OPENROUTER_KEY_VALID=true`; `OPENROUTER_IS_FREE_TIER=true`.
-- `OPENROUTER_KEY_LIMIT=NOT_EXPOSED`; `OPENROUTER_KEY_LIMIT_REMAINING=NOT_EXPOSED`;
-  `OPENROUTER_KEY_LIMIT_RESET=NOT_EXPOSED`.
-- Daily, weekly, and monthly usage were all `0`.
-- Disabled status was not exposed; expiry was `null`.
-- The stored prior completion evidence contains only HTTP 429, without body or
-  response headers. Therefore `OPENROUTER_429_CLASS=UNKNOWN_429` and
-  `OPENROUTER_RETRY_AFTER=NOT_CAPTURED`.
-- No completion was sent to recreate the 429. `OPENROUTER_REPROBE_ALLOWED=false`
-  for this run; no reset timestamp can be derived.
-
-OpenRouter documents generic free-model limits of 50 requests/day, or 1000
-requests/day after at least 10 credits have been purchased. This is provider
-documentation only and is not used as the concrete 429 classification:
-https://openrouter.ai/docs/faq
+- `GET /api/v1/key`: HTTP 200; key valid, `is_free_tier=true`; daily, weekly,
+  and monthly usage were all `0`.
+- `GET /api/v1/models`: HTTP 200; `openrouter/free` present with prompt and
+  completion pricing `0`.
+- Exactly one authorized model request was sent to `openrouter/free`, with
+  `X-OpenRouter-Metadata: enabled`, a synthetic two-word prompt, and
+  `max_tokens=1`. No retry was sent.
+- Result: HTTP 429; sanitized error code `429`; message class
+  `free-models-per-day`; `X-RateLimit-Limit=50`,
+  `X-RateLimit-Remaining=0`, `X-RateLimit-Reset=1787529600000`
+  (`2026-08-24T00:00:00Z`). `Retry-After` was absent. No generation ID or
+  router metadata was returned.
+- Classification: `OPENROUTER_429_CLASS=OPENROUTER_FREE_TIER_LIMIT`.
+  The response directly identifies the free-model daily limit.
+- `NEXT_OPENROUTER_PROBE_NOT_BEFORE=2026-08-24T00:00:00Z`; no further probe
+  was issued.
+- `OPENROUTER_BYOK_ACTIVE=not_proven`; no safe account-level BYOK signal was
+  available, so no BYOK economics are assumed.
 
 ## Groq
 
-- Read-only authenticated `GET /openai/v1/models`: HTTP 403 in this run.
-- No authenticated Groq Console, Settings, Billing, Plan, or Tier UI evidence
-  was available locally.
-- `GROQ_ACCOUNT_CLASS=UNKNOWN` and
-  `GROQ_ACCOUNT_CLASS_EVIDENCE=BLOCKED_NO_AUTHENTICATED_ACCOUNT_VIEW`.
-- No Groq completion was sent.
-
-Groq documents spend limits as paid-plan-only, and Developer-tier upgrades
-require a payment method. These are supporting rules, not account-class proof:
-https://console.groq.com/docs/spend-limits
+- Direct same-key `GET https://api.groq.com/openai/v1/models`: HTTP 200,
+  including with `Morpheus-AutoDev/1.0`, the deployed application UA.
+- The deployed adapter exposes no provider `/models` handler. Read-only
+  provider-like paths returned 401 from the adapter auth boundary; the
+  checked-in handler has only health, jobs, batches, and artifacts routes.
+- The differential is
+  `GROQ_FAILURE_DOMAIN=DEPLOYED_TRANSPORT_OR_REQUEST_DIFFERENCE`; the earlier
+  deployed 403 is not reproducible as a Groq provider response from the current
+  exposed path.
+- `GROQ_403_IS_CLOUDFLARE_1010=false`: no 1010 marker was present in the
+  available sanitized evidence, and the same credential and deployed UA
+  succeed directly.
+- No authenticated Groq Console/tier session or official tier endpoint was
+  available. `GROQ_ACCOUNT_CLASS=UNKNOWN` and
+  `GROQ_TIER_UI=BLOCKED_NO_AUTHENTICATED_SESSION`.
+- Groq completion attempts: `0`.

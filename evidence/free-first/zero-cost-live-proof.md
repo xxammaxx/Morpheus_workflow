@@ -1,7 +1,7 @@
 # Zero-cost live proof
 
-The runtime distinguishes explicit response cost, usage cost metadata, and
-exact catalog hard-zero evidence. Missing top-level response cost is not
-treated as zero generally. It is accepted only for an exact hard-zero route
-with zero input/output prices and disabled paid fallback; otherwise cost is
-UNKNOWN and the route is blocked.
+No provider completion succeeded in this diagnostic run. Therefore no live
+zero-cost route was promoted. The OpenRouter catalog still proves that
+`openrouter/free` is hard-zero priced, but the single execution was blocked by
+the provider's free-model daily limit. Groq has no account-tier proof and no
+completion was permitted.

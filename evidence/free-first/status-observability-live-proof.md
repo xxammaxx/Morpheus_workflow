@@ -1,8 +1,7 @@
 # Status observability live proof
 
-Required status fields are selected provider/route, actual provider, resolved
-model, provider request id, usage, execution proof, cost proof, and paid
-escalation state. No completion succeeded in this run, so provider/model
-correlation is not live-proven and no execution status record is claimed. No
-secret, raw authorization header, cookie, billing identifier, or private prompt
-is evidence.
+No external completion succeeded, so no live status record with provider,
+resolved model, usage, cost proof, and attempt correlation is claimed.
+`STATUS_API_LIVE=NOT_RUN_NO_SUCCESSFUL_COMPLETION` and
+`PROVIDER_MODEL_CORRELATION=NOT_PROVEN_LIVE`. No observability architecture was
+changed.

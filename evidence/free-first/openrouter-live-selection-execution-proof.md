@@ -1,18 +1,10 @@
 # OpenRouter live selection/execution proof
 
-Catalog refresh: PASS; `openrouter/free` is present with hard-zero pricing.
-The retained single bounded completion probe returned HTTP 429, with no saved
-body or response headers. `OPENROUTER_429_CLASS=UNKNOWN_429`; no retry was
-authorized and no completion was sent in this run. Live selection-to-execution
-remains NOT_PROVEN.
-
-The read-only `/api/v1/key` check returned HTTP 200 and explicitly reported a
-free-tier key with daily, weekly, and monthly usage equal to zero. Limit and
-reset fields were not exposed. This account evidence does not explain the
-previous 429 and does not prove live model success.
-
-The implementation uses the provider-owned `openrouter/free` route, captures
-the provider-supplied resolved model, and accepts missing response cost only
-when the exact route is catalog-proven hard-zero with no paid fallback. A
-successful live result must record selected provider/route, actual provider,
-non-empty resolved model, request id, usage, and cost proof.
+- Fresh catalog: `openrouter/free` present with prompt/completion price `0`.
+- Exactly one instrumented live request was sent to the selected route.
+- Selection: `openrouter/free`; execution: HTTP 429.
+- The provider returned `free-models-per-day`, limit `50`, remaining `0`,
+  and a reset timestamp. No generation ID or router metadata was returned.
+- `OPENROUTER_SELECTION_TO_EXECUTION=FAIL_FREE_TIER_LIMIT`.
+- The route remains unpromoted. `OPENROUTER_COST_PROOF=NOT_APPLICABLE` and
+  `OPENROUTER_ZERO_COST=NOT_PROVEN_LIVE` because no completion succeeded.
