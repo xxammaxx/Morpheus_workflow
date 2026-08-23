@@ -1,3 +1,5 @@
 .secrets/
+provider.env
+*.provider.env
 *.pyc
 __pycache__/
