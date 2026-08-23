@@ -1,7 +1,5 @@
 # Free provider pool live proof
 
-`FREE_POOL_SIZE=0` fully live-proven providers in this continuation.
-
-The credential bridge is green, but Groq lacks route-specific zero-cost
-account evidence and OpenRouter had no successful bounded live completion.
-Therefore no provider was promoted and redundancy was not claimed.
+Live pool status: NOT_PROVEN before the post-fix deployment. Providers are
+promoted only after a successful bounded probe and zero-cost proof. No
+unproven Groq route or paid/DeepSeek route is counted in the pool.

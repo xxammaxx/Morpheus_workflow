@@ -1,12 +1,6 @@
-# Groq live proof
+# Groq live selection/execution proof
 
-- Deployed credential presence: PASS, status-only.
-- Deployed `/models` authentication/catalog request: HTTP 200.
-- Groq model rows discovered: 13.
-- Transport regression: no HTTP 1010 response.
-- Synthetic completion: not called. The deployed catalog classified the
-  account class as `unknown`; route-specific zero-cost/account evidence was
-  not available. The runtime therefore correctly refused promotion.
-- Selection-to-execution: `NOT_PROVEN` by fail-closed policy.
-
-No paid or cost-uncertain Groq completion was sent.
+Status: NOT_RUN / FAIL-CLOSED until account-specific Free-tier evidence is
+available. Groq rate-limit headers are supporting quota evidence only; they do
+not establish account class. No Groq completion is sent while account class is
+`UNKNOWN`.

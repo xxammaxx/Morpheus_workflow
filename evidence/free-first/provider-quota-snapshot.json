@@ -1,0 +1,8 @@
+{
+  "schema": "provider.quota-state.v1",
+  "observed_at": "2026-08-21T00:00:00Z",
+  "credentials_available_in_shell": false,
+  "groq_documented_dimensions": ["RPM", "RPD", "TPM", "TPD", "remaining", "reset", "retry-after"],
+  "cloudflare_documented_free_allocation": "10000 neurons per day; Free plan stops above allocation",
+  "runtime_rule": "429/quota exhausted skips endpoint and does not consume semantic retry budget"
+}

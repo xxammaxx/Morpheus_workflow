@@ -1,0 +1,12 @@
+{
+  "schema": "provider.model-capability.v1",
+  "entries": {
+    "lmstudio/qwen/qwen3.5-9b": {
+      "provider": "lmstudio",
+      "model": "qwen/qwen3.5-9b",
+      "capabilities": {"RESEARCH_CAPABLE": true, "PLAN_CAPABLE": true, "BUILD_CAPABLE": true, "REVIEW_CAPABLE": true, "TOOL_CAPABLE": true, "STRUCTURED_OUTPUT_CAPABLE": true},
+      "source": "existing real builder evidence; current health must pass before routing",
+      "verified_at": "2026-08-16T00:00:00Z"
+    }
+  }
+}

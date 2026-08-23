@@ -1,0 +1,12 @@
+{
+  "$id": "provider.catalog.v1",
+  "type": "object",
+  "required": ["contract", "version", "refreshed_at", "entries"],
+  "properties": {
+    "contract": {"type": "string", "const": "provider.catalog.v1"},
+    "version": {"type": "string", "const": "v1"},
+    "refreshed_at": {"type": "string"},
+    "entries": {"type": "array"},
+    "events": {"type": "array"}
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "$id": "provider.health-state.v1",
+  "type": "object",
+  "required": ["contract", "version", "provider", "state", "observed_at"],
+  "properties": {
+    "contract": {"type": "string", "const": "provider.health-state.v1"},
+    "version": {"type": "string", "const": "v1"},
+    "provider": {"type": "string"},
+    "state": {"type": "string"},
+    "detail": {"type": "string"},
+    "observed_at": {"type": "string"}
+  }
+}

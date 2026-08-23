@@ -1,6 +1,7 @@
 {
   "$id": "provider.execution-proof.v1",
   "type": "object",
+<<<<<<< HEAD
   "additionalProperties": false,
   "required": [
     "contract",
@@ -27,5 +28,21 @@
     "actual_cost": {"type": ["number", "null"]},
     "failover": {"type": "array", "items": {"type": "object"}},
     "x-metadata": {"type": "object"}
+=======
+  "required": ["contract", "version", "routing_event_id", "outbound_request_id", "provider_request_id", "selected_provider", "selected_model", "actual_provider", "actual_model", "status"],
+  "properties": {
+    "contract": {"type": "string", "const": "provider.execution-proof.v1"},
+    "version": {"type": "string", "const": "v1"},
+    "routing_event_id": {"type": "string"},
+    "outbound_request_id": {"type": "string"},
+    "provider_request_id": {"type": "string"},
+    "selected_provider": {"type": "string"},
+    "selected_model": {"type": "string"},
+    "requested_model": {"type": "string"},
+    "resolved_model": {"type": "string"},
+    "actual_provider": {"type": "string"},
+    "actual_model": {"type": "string"},
+    "status": {"type": "string", "enum": ["PASS", "NOT_PROVEN", "UNEXPECTED_BILLABLE_USAGE"]}
+>>>>>>> a0daf45 (feat(provider-routing): fix free probe bootstrap semantics)
   }
 }

@@ -1,0 +1,15 @@
+{
+  "$id": "provider.quota-state.v1",
+  "type": "object",
+  "required": ["contract", "version", "provider", "state", "observed_at"],
+  "properties": {
+    "contract": {"type": "string", "const": "provider.quota-state.v1"},
+    "version": {"type": "string", "const": "v1"},
+    "provider": {"type": "string"},
+    "state": {"type": "string"},
+    "limits": {"type": "object"},
+    "remaining": {"type": "object"},
+    "reset": {"type": "object"},
+    "observed_at": {"type": "string"}
+  }
+}

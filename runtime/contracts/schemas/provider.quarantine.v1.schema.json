@@ -1,0 +1,15 @@
+{
+  "$id": "provider.quarantine.v1",
+  "type": "object",
+  "required": ["contract", "version", "provider", "model", "endpoint", "reason", "quarantined", "observed_at"],
+  "properties": {
+    "contract": {"type": "string", "const": "provider.quarantine.v1"},
+    "version": {"type": "string", "const": "v1"},
+    "provider": {"type": "string"},
+    "model": {"type": "string"},
+    "endpoint": {"type": "string"},
+    "reason": {"type": "string"},
+    "quarantined": {"type": "boolean", "const": true},
+    "observed_at": {"type": "string"}
+  }
+}

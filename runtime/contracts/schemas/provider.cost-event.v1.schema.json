@@ -1,0 +1,16 @@
+{
+  "$id": "provider.cost-event.v1",
+  "type": "object",
+  "required": ["contract", "version", "provider", "model", "cost_class", "expected_cost", "actual_cost", "observed_at"],
+  "properties": {
+    "contract": {"type": "string", "const": "provider.cost-event.v1"},
+    "version": {"type": "string", "const": "v1"},
+    "provider": {"type": "string"},
+    "model": {"type": "string"},
+    "cost_class": {"type": "string"},
+    "expected_cost": {"type": "number"},
+    "actual_cost": {"type": "number"},
+    "usage": {"type": "object"},
+    "observed_at": {"type": "string"}
+  }
+}

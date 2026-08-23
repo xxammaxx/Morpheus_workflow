@@ -1,0 +1,15 @@
+{
+  "$id": "provider.free-status-change.v1",
+  "type": "object",
+  "required": ["contract", "version", "provider", "model", "previous_cost_class", "new_cost_class", "event", "observed_at"],
+  "properties": {
+    "contract": {"type": "string", "const": "provider.free-status-change.v1"},
+    "version": {"type": "string", "const": "v1"},
+    "provider": {"type": "string"},
+    "model": {"type": "string"},
+    "previous_cost_class": {"type": "string"},
+    "new_cost_class": {"type": "string"},
+    "event": {"type": "string", "const": "FREE_STATUS_CHANGED"},
+    "observed_at": {"type": "string"}
+  }
+}

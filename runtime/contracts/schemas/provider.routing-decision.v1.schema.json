@@ -1,0 +1,33 @@
+{
+  "$id": "provider.routing-decision.v1",
+  "type": "object",
+  "required": ["contract", "version", "routing_event_id", "selected_provider", "selected_model", "cost_class", "free_eligible", "task_class", "routing_reason", "fallback_chain", "paid_escalation", "expected_cost"],
+  "properties": {
+    "contract": {"type": "string", "const": "provider.routing-decision.v1"},
+    "version": {"type": "string", "const": "v1"},
+    "routing_event_id": {"type": "string"},
+    "selected_provider": {"type": "string"},
+    "selected_model": {"type": "string"},
+    "requested_provider": {"type": ["string", "null"]},
+    "requested_model": {"type": ["string", "null"]},
+    "resolved_model": {"type": ["string", "null"]},
+    "actual_provider": {"type": ["string", "null"]},
+    "actual_model": {"type": ["string", "null"]},
+    "endpoint": {"type": ["string", "null"]},
+    "cost_class": {"type": "string"},
+    "free_eligible": {"type": "boolean"},
+    "task_class": {"type": "string"},
+    "capability_match": {"type": "array"},
+    "privacy_class": {"type": "string"},
+    "quota_state": {"type": "object"},
+    "provider_health": {"type": "string"},
+    "routing_rank": {"type": "integer"},
+    "routing_reason": {"type": "string"},
+    "fallback_chain": {"type": "array"},
+    "paid_escalation": {"type": "boolean"},
+    "paid_escalation_reason": {"type": ["string", "null"]},
+    "expected_cost": {"type": ["number", "null"]},
+    "actual_cost": {"type": ["number", "null"]},
+    "execution_proof": {"type": "string"}
+  }
+}

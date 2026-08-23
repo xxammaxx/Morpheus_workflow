@@ -1,0 +1,7 @@
+{
+  "schema": "provider.privacy-classification.v1",
+  "default": "PRIVACY_GATED for external providers until an explicit private-code policy is approved",
+  "local": "ALLOWED",
+  "private_code_rule": "only privacy_class=ALLOWED may route private repository data",
+  "external": ["openrouter", "cohere", "mistral", "gemini", "nvidia_build", "cerebras", "huggingface", "sambanova", "together", "fireworks", "scaleway", "deepseek"]
+}

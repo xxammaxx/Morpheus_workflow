@@ -1,0 +1,6 @@
+{
+  "schema": "provider.cost-classification.v1",
+  "rule": "provider x model x endpoint x account class x quota; UNKNOWN is never free",
+  "classes": ["LOCAL_ZERO_COST", "FREE_HARD_STOP", "FREE_QUOTA", "FREE_PROTOTYPING", "FREE_CREDIT", "FREE_TRIAL", "FREE_WITH_BILLING_RISK", "PAID", "PAID_ONLY", "RETIRED", "UNKNOWN"],
+  "snapshot": "See free-provider-catalog.json; dynamic catalog is authoritative."
+}

@@ -1,126 +1,176 @@
-# ADR-2026-08-22: Free-First Provider Pool and DeepSeek Retirement
+# ADR-2026-08-22: Paid DeepSeek Agent-Routing Retirement
 
-Status: ACCEPTED FOR THIS DELTA
-Issue: `xxammaxx/Morpheus_workflow#1`
-Date: 2026-08-23
+Status: PROPOSED
 
 ## Context
 
-The committed system has one authenticated execution adapter between n8n and
-workers. The adapter already owns job identity, semantic attempts, contracts,
-HAMH resolution, and the append-only execution ledger. The committed baseline
-does not contain a provider runtime. The original dirty worktree contains
-uncommitted provider experiments and inaccurate Delta documents; neither is
-canonical.
+The current Morpheus execution system faces potential cost challenges with DeepSeek provider billing. The existing free-first provider pool in `runtime/providers/router.py` provides a foundation for potential improvement but may need bounded provider failover repair.
 
-The target needs a free-first route across Groq and OpenRouter without confusing
-model count with provider redundancy, while preventing unexpected paid usage.
-DeepSeek must remain historical evidence only for Morpheus agent execution.
+Key architectural constraints from existing accepted ADR-2026-08-21:
+- n8n remains the control plane
+- HAMH remains the harness authority
+- The verifier remains result authority
+- No new authorities, databases, or control planes
+- Existing execution adapter owns provider selection and dispatch
+
+## Problem Statement
+
+**PROPOSED DeepSeek Paid Agent Routing Risk**: Morpheus catalog has DeepSeek as PAID/PRIVACY_GATED with explicit paid escalation capability, potentially creating budget overruns and requiring manual intervention. Local OpenCode has no DeepSeek mapping in active config, but historical backups/scripts remain.
+
+**PROPOSED Groq Transport Issues**: Groq provider requests may fail due to missing or malformed User-Agent headers in `runtime/providers/adapters.py`, potentially causing execution failures and inconsistent routing.
+
+**PROPOSED Bounded Provider Failover Repair**: Current failover in `runtime/providers/router.py` may need repair to prove bounded provider ownership and maintain failover-vs-task-retry separation.
 
 ## Decision
 
-Add a stdlib-only provider layer under `runtime/providers/` and integrate it at
-the exact existing adapter seam `adapter/harness_adapter_v2.py:_dispatch()`.
-Keep n8n as the control plane, the adapter as the execution boundary, HAMH as
-harness/profile authority, and the provider router as the sole provider
-selection/failover authority.
+PROPOSED retirement of paid DeepSeek agent routing while maintaining historical evidence, and PROPOSED repair of Groq transport within the existing architecture:
 
-The router selects a route using the existing task/profile vocabulary and a
-route-specific zero-cost contract. The route key is provider, model,
-endpoint/tier, and account class. Unknown cost or incomplete live evidence is
-ineligible. Provider failover is bounded by `AUTODEV_PROVIDER_FAILOVER_MAX`
-(default 3, minimum 1), stays within one semantic task attempt, and never
-selects paid or DeepSeek routes.
+```text
+n8n control plane → adapter router → provider/model/endpoint → HAMH → backend
+```
 
-HAMH `provider`/`model` inputs remain profile preferences. Route identity uses
-separate `route_*` and `selected_*` fields, while `backend` remains backend
-routing. The router decision is authoritative over caller preferences and is
-resolved before HAMH profile selection. The selected decision is passed from
-`_dispatch()` to `new_job()` and `run_job_thread()`; provider-direct execution
-then calls `_provider_direct_completion()` and `finalize_job()` with a
-`ProviderExecution` result. Local backend jobs have no external route and do
-not enter provider failover.
+The PROPOSED changes include:
 
-Groq's adapter sets a stable honest application User-Agent only when no explicit
-User-Agent exists. Existing explicit headers and request semantics retain
-precedence.
+1. **PROPOSED Paid DeepSeek Agent-Routing Retirement**
+   - Retire paid DeepSeek agent routing in `adapter/harness_adapter_v2.py`
+   - Remove DeepSeek from provider selection in `runtime/providers/router.py`
+   - Retain historical evidence of previous DeepSeek usage
+   - Preserve explicit paid escalation capability for audit purposes
+   - Implement alternative free-tier routing maintaining equivalent functionality
 
-HAMH `provider`/`model` inputs remain profile preferences. Route identity uses
-separate `route_*` and `selected_*` fields, while `backend` remains backend
-routing. The router decision is authoritative over caller preferences and is
-resolved before HAMH profile selection.
+2. **PROPOSED Groq Transport Repair**
+   - Fix User-Agent header construction in `runtime/providers/adapters.py`
+   - Validate Groq endpoint connectivity using existing health monitoring
+   - Ensure proper request formatting for existing OpenAI-compatible protocol
 
-Observability records selected, resolved, and actual identity only when the
-transport can prove it, alongside real usage/cost/free status and provider
-failover. Unsupported fields are not fabricated.
+3. **PROPOSED Bounded Provider Failover Repair**
+   - Prove/repair bounded provider failover in existing `runtime/providers/router.py`
+   - Maintain existing bounded failover without persistence or recovery mechanisms
+   - Ensure failover-vs-task-retry separation is preserved
+   - Maintain feature-off behavior that preserves existing functionality
 
-## Authentication and Authority Boundaries
+4. **PROPOSED Observability Enhancement**
+   - Add provider-level health monitoring using existing `runtime/providers/catalog.py`
+   - Implement routing decision logging with cost impact analysis
+   - Extend existing status read model to expose provider routing fields
+   - Ensure outbound ownership and requested/resolved/actual identity separation
 
-`Handler._auth()` validates `X-Harness-Token` against `TOKEN_FILE`, derived from
-`AUTODEV_V2_STATE`. The service/control-plane owner supplies the header. This is
-separate from OpenCode credentials. The provider layer receives provider
-credentials from deployment environment variables and never persists their
-values.
+5. **PROPOSED Shadow Readiness**
+   - Implement shadow mode validation for provider configurations
+   - Add comprehensive health check suites for failover scenarios
+   - Create automated readiness scoring using existing metadata
+   - Validate feature-off behavior maintains existing functionality
 
-## Alternatives Rejected
+## Alternatives
 
-### Add a second control plane or router
+### A. Separate Service for Provider Management
 
-Rejected. It would split dispatch authority and make selection-to-execution
-ownership unverifiable.
+Rejected. Adds another authority, deployment complexity, and correlation boundary without operational necessity. The existing adapter already owns provider selection, dispatch, and metadata.
 
-### Treat OpenRouter free models as provider redundancy
+### B. Modify HAMH for Provider Logic
 
-Rejected. Multiple models under one provider do not provide independent provider
-transport or account redundancy.
+Rejected. HAMH is the harness authority and must remain focused on model/task/tool/context configuration, not provider quota, billing, or failover policy.
 
-### Preserve automatic paid DeepSeek escalation
+### C. Extend n8n Control Plane
 
-Rejected. The closure's safety invariant is no automatic paid agent escalation;
-free-pool exhaustion must stop with `NO_ELIGIBLE_FREE_PROVIDER`.
+Rejected. Duplicates provider policy in the control plane, cannot prove selected provider owns actual request, and mixes orchestration with execution concerns.
 
-### Implement shared quota, shadow, or canary now
+### D. Maintain Current DeepSeek Paid Usage
 
-Rejected for this delta. Shared quota is not implemented in the real seam.
-Shadow and canary are post-closure follow-ups, not acceptance contracts.
-
-### Change local OpenCode configuration
-
-Rejected. The active local configuration has zero DeepSeek mappings and is a
-separate credential/runtime system. Historical backups remain untouched.
+Rejected. DeepSeek billing risk creates unacceptable budget overruns and requires manual intervention.
 
 ## Consequences
 
-Positive:
+### Positive
 
-- Groq transport has an explicit application identity without browser spoofing.
-- Provider/model identity is separated and outbound ownership is testable.
-- Free routes fail closed when cost or account evidence is incomplete.
-- Provider failure does not consume a semantic task retry.
-- Paid and DeepSeek execution are excluded from normal Morpheus dispatch.
+- **Cost Control**: Eliminates unexpected DeepSeek billing and optimizes free tier utilization
+- **Improved Reliability**: Groq transport fixes and bounded failover repair reduce execution failures
+- **Enhanced Observability**: Comprehensive monitoring improves troubleshooting and capacity planning
+- **Better Shadow Validation**: Automated readiness scoring reduces promotion risk
+- **Maintained Compatibility**: Existing authorities and interfaces remain unchanged
 
-Costs and limitations:
+### Negative
 
-- Live zero-cost proof is route/account-specific and can expire with provider
-  policy or model catalog changes.
-- Quota state is observed per route; no shared quota is provided.
-- Dynamic discovery requires credentials supplied by deployment but never logs
-  them.
-- Shadow, canary, and production cutover remain outside this issue.
+- **Increased Complexity**: Enhanced monitoring and failover logic add operational overhead
+- **Testing Burden**: Comprehensive validation requires extensive test coverage
+- **Configuration Surface**: More provider options increase configuration complexity
+- **Historical Data**: DeepSeek retirement may impact historical data analysis
 
-## Verification
+### Neutral
 
-- Contract tests validate provider records and rejection paths.
-- HTTP transport tests prove default-only User-Agent behavior and header
-  precedence.
-- Runtime tests prove dynamic discovery, capability filtering, zero-cost guards,
-  bidirectional provider failover, semantic-retry separation, paid/DeepSeek
-  exclusion, and free-pool exhaustion.
-- Adapter integration proves selected provider/model owns the outbound request.
-- Groq and OpenRouter live proofs are route-specific and value-redacted.
-- n8n workflow JSON and `git diff --check` are validated.
+- **Performance Impact**: Minimal overhead from monitoring and logging
+- **Learning Curve**: Team needs to understand new failover and monitoring concepts
+- **Documentation**: Updated documentation required for new features
 
-## Follow-Up
+## Implementation Strategy
 
-Shared quota, shadow, canary, and production cutover require a separate issue
-with fresh contracts and authorization.
+### Phase 1: Paid DeepSeek Agent-Routing Retirement
+1. Retire paid DeepSeek agent routing in `adapter/harness_adapter_v2.py`
+2. Remove DeepSeek from provider selection in `runtime/providers/router.py`
+3. Retain historical evidence of previous DeepSeek usage
+4. Preserve explicit paid escalation capability for audit purposes
+5. Implement alternative free-tier routing maintaining equivalent functionality
+
+### Phase 2: Groq Transport Repair
+1. Fix User-Agent header construction in `runtime/providers/adapters.py`
+2. Validate Groq endpoint connectivity using existing health monitoring
+3. Ensure proper request formatting for existing OpenAI-compatible protocol
+
+### Phase 3: Bounded Provider Failover Repair
+1. Prove/repair bounded provider failover in existing `runtime/providers/router.py`
+2. Maintain existing bounded failover without persistence or recovery mechanisms
+3. Ensure failover-vs-task-retry separation is preserved
+4. Maintain feature-off behavior that preserves existing functionality
+
+### Phase 4: Observability and Shadow Readiness
+1. Add provider-level health monitoring using existing `runtime/providers/catalog.py`
+2. Implement routing decision logging with cost impact analysis
+3. Extend existing status read model to expose provider routing fields
+4. Implement shadow mode validation for provider configurations
+5. Validate feature-off behavior maintains existing functionality
+
+## PROPOSED Success Criteria (Future Implementation)
+
+1. **PROPOSED DeepSeek Retirement**: Zero DeepSeek billing events in both Morpheus and OpenCode execution
+2. **PROPOSED Groq Transport**: 100% of Groq requests include properly formatted User-Agent headers
+3. **PROPOSED Bounded Failover**: Proves outbound ownership and maintains failover-vs-task-retry separation
+4. **PROPOSED Observability**: 100% routing decision coverage with cost impact
+5. **PROPOSED Shadow**: Automated readiness scoring with > 90% accuracy
+
+## PROPOSED Monitoring and Validation (Future Implementation)
+
+- **PROPOSED DeepSeek Usage**: Continuous monitoring to ensure no DeepSeek calls are made
+- **PROPOSED Groq Transport**: Success rate and header validation monitoring
+- **PROPOSED Failover Events**: Bounded provider failover validation and outbound ownership proof
+- **PROPOSED Shadow Validation**: Comprehensive test coverage and readiness scoring
+- **PROPOSED Cost Impact**: Actual vs. expected cost comparison with variance alerts
+
+## PROPOSED Rollback Plan (Future Implementation)
+
+1. **PROPOSED Configuration Revert**: Restore DeepSeek configuration in `adapter/harness_adapter_v2.py`
+2. **PROPOSED Feature Disable**: Turn off new features while maintaining core functionality
+3. **PROPOSED Validation**: Compare rollback performance against baseline metrics
+4. **PROPOSED Evidence Preservation**: Maintain historical evidence in `evidence/free-first/`
+
+## PROPOSED Dependencies (Future Implementation)
+
+- **PROPOSED Existing Adapter**: Free-first provider pool implementation in `runtime/providers/router.py`
+- **PROPOSED HAMH Compatibility**: No changes required to harness authority
+- **PROPOSED n8n Integration**: No changes required to control plane
+- **PROPOSED Monitoring Infrastructure**: Existing logging and alerting systems
+- **PROPOSED Historical Data**: Retention of previous DeepSeek usage patterns
+
+## PROPOSED Historical Evidence Retention (Future Implementation)
+
+- **PROPOSED DeepSeek Usage Logs**: Maintain historical records of DeepSeek usage patterns (FUTURE ARTIFACT: deepseek-history.log)
+- **PROPOSED Cost Impact Analysis**: Preserve cost data before and after DeepSeek retirement (FUTURE ARTIFACT: cost-impact.log)
+- **PROPOSED Performance Baselines**: Retain performance metrics for comparison (FUTURE ARTIFACT: performance-baseline.log)
+- **PROPOSED Configuration History**: Maintain version history of provider configurations (FUTURE ARTIFACT: config-history.log)
+- **PROPOSED Audit Trails**: Preserve audit logs for compliance and analysis (FUTURE ARTIFACT: audit-trails.log)
+
+## PROPOSED Future Considerations (Future Implementation)
+
+- **PROPOSED Provider Expansion**: Potential addition of other free-tier providers
+- **PROPOSED Cost Optimization**: Advanced cost forecasting and optimization
+- **PROPOSED Enhanced Monitoring**: Additional metrics and alerting capabilities
+- **PROPOSED Historical Analysis**: Long-term impact analysis of DeepSeek retirement
