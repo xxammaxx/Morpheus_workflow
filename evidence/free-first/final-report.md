@@ -3,7 +3,7 @@
 ```text
 FINAL_CLASSIFICATION=AMBER_EXTERNAL_FREE_PROVIDER_EVIDENCE_BLOCKED
 START_HEAD=423308e7c17eaae6d9abf8465d23b48308b6df4a
-END_HEAD=4ae090b573710f7d10697d4746e0423befa4eff2
+END_HEAD=ab14ae6482b22294453b0abd389a17be08a5afa1
 DEPLOYED_COMMIT=0c1c327b5a7f34b2e50dbac3be57795b31113e33
 RUNTIME_DRIFT_SINCE_DEPLOYMENT=false
 REDEPLOYMENT_REQUIRED=false
@@ -79,11 +79,11 @@ GIT_DIFF_CHECK=PASS
 PUBLIC_SECRET_SCAN=PASS
 PUBLIC_EVIDENCE_SAFE=PASS
 FILES_CHANGED=evidence/free-first/*; issue-1-body-metadata
-COMMITS=PENDING
-PUSH=PENDING
+COMMITS=ab14ae6
+PUSH=FAST_FORWARD
 FORCE_PUSH_USED=false
 ISSUE_VISIBILITY_DRIFT_FIXED=PASS
-ISSUE_FINAL_COMMENT=PENDING
+ISSUE_FINAL_COMMENT=POSTED_AFTER_PUSH
 USER_ACTION_REQUIRED=Provide an authenticated read-only Groq Console/Tier view, or rerun after obtaining one; no password requested
 KNOWN_LIMITATIONS=Stored OpenRouter 429 lacks body/headers; Groq models endpoint returned HTTP 403; no completion success
 NEXT_EVIDENCE_DRIVEN_STEP=Obtain sanitized 429 response metadata and authenticated Groq tier evidence, then re-evaluate one bounded probe
