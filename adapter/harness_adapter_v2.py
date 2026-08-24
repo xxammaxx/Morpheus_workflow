@@ -1602,6 +1602,7 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
             research, ensure_ascii=False, sort_keys=True
         )[:12000]
     prompt = (
+        "/no_think\n"
         "You are a READ-ONLY planning worker. Workspace: current directory. "
         "Task: %s\n"
         "%s"
