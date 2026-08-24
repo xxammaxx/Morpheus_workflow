@@ -1425,7 +1425,7 @@ def _git_state(ws):
     # Ignore harness bookkeeping when assessing read-only plan mutations.
     status = pct_stdout(
         "cd '%s' && git status --porcelain 2>/dev/null | "
-        "grep -vE '^(.. )?\\.(opencode|plan-canary-sentinel)(/|$)|^(.. )?(build\\.jsonl|build\\.stderr)$' || true"
+        "grep -vE '^(.. )?\\.(opencode|plan-canary-sentinel|local_llm)(/|$)|^(.. )?(build\\.jsonl|build\\.stderr)$' || true"
         % ws
     )
     branch = pct_stdout(
