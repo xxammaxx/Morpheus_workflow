@@ -133,6 +133,7 @@ class ProviderAdapter:
                     capabilities=(
                         {"RESEARCH_CAPABLE": True}
                         if self.provider in {"ollama", "lmstudio"}
+                        and "embed" not in str(model_id).lower()
                         else {}
                     ),
                     provider_metadata={"raw_model_metadata": model},
