@@ -10,4 +10,8 @@
 - Public secret scan: PASS; only status-only credential-presence references
   and test fixtures were found, no secret values.
 - Repository n8n inventory: 12/12 JSON workflows parse.
+- Deployed Groq one-shot used the existing adapter/runtime and returned HTTP
+  200 with 13 models; no runtime code changed and no redeployment was needed.
+- Current OpenRouter key read-only check returned HTTP 200 and `is_free_tier`;
+  no model request was sent because free-request reset/remaining was absent.
 - No runtime code changed; no deployment or unrelated holdouts were run.
