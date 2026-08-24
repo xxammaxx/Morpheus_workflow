@@ -6,7 +6,8 @@
         "httpMethod": "POST",
         "path": "autodev/start",
         "responseMode": "responseNode",
-        "options": {}
+        "options": {},
+        "authentication": "headerAuth"
       },
       "id": "start-webhook",
       "name": "Start Webhook",

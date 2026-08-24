@@ -153,18 +153,25 @@ def num_if(name, expr, op, value, pos):
 
 
 def webhook_node(name, path, method, auth_cred, pos, response_mode="responseNode"):
+    parameters = {
+        "httpMethod": method,
+        "path": path,
+        "responseMode": response_mode,
+        "options": {},
+    }
+    credentials = None
+    if auth_cred:
+        # n8n 2.x requires the Webhook node's authentication mode itself to
+        # be enabled. A credential reference alone is not enforcement.
+        parameters["authentication"] = "headerAuth"
+        credentials = {"httpHeaderAuth": auth_cred}
     return node(
         name,
         "n8n-nodes-base.webhook",
-        {
-            "httpMethod": method,
-            "path": path,
-            "responseMode": response_mode,
-            "options": {},
-        },
+        parameters,
         pos,
         2,
-        {"httpHeaderAuth": auth_cred},
+        credentials,
     )
 
 
@@ -892,12 +899,22 @@ return [{json: Object.assign({}, s, {research_ok: !!r.contract && r.ok !== false
             """const out = $json;
 const s = Object.assign({}, $('Plan State Prep').first().json.state || {});
 const baseline = s.baseline || {};
+const failure = out.failure_class ? {
+  failure_class: out.failure_class,
+  failure_signature: out.failure_signature || null,
+  error: out.error || null,
+  job_record: out.job_record || {}
+} : null;
 return [{json: Object.assign({}, s, {
   plan: out.plan || null,
   plan_fingerprint: out.plan_fingerprint || '',
   plan_job: out.job_record || {},
+  plan_failure: failure,
   baseline_head: (baseline.repository && baseline.repository.head) || '',
-  gate: out.gate || {status: 'BLOCKED', reason_code: 'PLAN_MISSING'}})}];""",
+  gate: out.gate || (failure
+    ? {status: 'BLOCKED', reason_code: failure.failure_class,
+       failure_signature: failure.failure_signature, error: failure.error}
+    : {status: 'BLOCKED', reason_code: 'PLAN_MISSING'})})}];""",
             P(14, 0),
         )
     )
@@ -928,7 +945,7 @@ return [{json: {artifact: {contract: 'autodev.decision.v1', version: 'v1',
         http_node(
             "Store Plan Blocked",
             "POST",
-            cfg.adapter + "/v1/artifacts/{{ $json.issue.run_id }}/decision",
+            cfg.adapter + "/v1/artifacts/{{ $json.artifact.run_id }}/decision",
             "JSON.stringify($json)",
             P(18, 0),
             cfg.cr_harness,
@@ -1564,11 +1581,12 @@ def build_10(cfg):
 
 # ============================================================ 30 AutoDev Plan
 def build_30(cfg):
+    plan_input = "Object.assign({}, s.issue, {'x-metadata': Object.assign({}, s.issue['x-metadata'] || {}, {research: s.research || null})})"
     wf = build_single_job_workflow(
         "30 AutoDev Plan",
         "plan",
         "autodev.issue.v1",
-        "s.issue",
+        plan_input,
         "s.issue.run_id + ':plan:1'",
         "s.issue.run_id + ':plan:1'",
         "s.fixture",
@@ -1597,6 +1615,9 @@ if (!plan.build_scope || !plan.build_scope.allowed_files || !plan.build_scope.al
 if (!plan.required_tests || !plan.required_tests.length) reasons.push('REQUIRED_TESTS_INVALID');
 if (!plan.context || !plan.context.fingerprint) reasons.push('CONTEXT_FINGERPRINT_MISSING');
 if (plan.safety && (plan.safety.sentinel_absent !== true || plan.safety.repo_unchanged !== true)) reasons.push('FORBIDDEN_MUTATION');
+const planTargets = [].concat((plan.targets && plan.targets.files) || [],
+  (plan.build_scope && plan.build_scope.allowed_files) || []);
+if (planTargets.some((path) => path === '.plan-canary-sentinel' || path === './.plan-canary-sentinel')) reasons.push('FORBIDDEN_TARGET');
 const approved = reasons.length === 0;
 return [{json: {
   ok: true,
@@ -1612,6 +1633,21 @@ return [{json: {
         [{"node": "Plan Gate", "type": "main", "index": 0}]
     ]
     wf.add_node(gate)
+    # A worker failure is a real plan failure, not a missing artifact. Keep
+    # its classification/signature visible to the orchestrator and status UI.
+    failure = code_node(
+        "Plan Failure Gate",
+        """const s = $json;
+return [{json: {ok: false, plan: null, plan_fingerprint: '',
+  job_record: s.job_record || {}, failure_class: s.failure_class || 'INFRA_FAILURE',
+  failure_signature: s.failure_signature || null, error: s.error || null,
+  gate: {status: 'BLOCKED', reason_code: s.failure_class || 'INFRA_FAILURE',
+    failure_signature: s.failure_signature || null, error: s.error || null}}}];""",
+        [6 * 240, 1 * 160],
+    )
+    wf.add_node(failure)
+    wf.add("Failed plan", failure)
+    wf.add("Timeout", failure)
     return wf
 
 

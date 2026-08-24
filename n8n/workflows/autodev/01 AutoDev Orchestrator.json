@@ -444,7 +444,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const out = $json;\nconst s = Object.assign({}, $('Plan State Prep').first().json.state || {});\nconst baseline = s.baseline || {};\nreturn [{json: Object.assign({}, s, {\n  plan: out.plan || null,\n  plan_fingerprint: out.plan_fingerprint || '',\n  plan_job: out.job_record || {},\n  baseline_head: (baseline.repository && baseline.repository.head) || '',\n  gate: out.gate || {status: 'BLOCKED', reason_code: 'PLAN_MISSING'}})}];"
+        "jsCode": "const out = $json;\nconst s = Object.assign({}, $('Plan State Prep').first().json.state || {});\nconst baseline = s.baseline || {};\nconst failure = out.failure_class ? {\n  failure_class: out.failure_class,\n  failure_signature: out.failure_signature || null,\n  error: out.error || null,\n  job_record: out.job_record || {}\n} : null;\nreturn [{json: Object.assign({}, s, {\n  plan: out.plan || null,\n  plan_fingerprint: out.plan_fingerprint || '',\n  plan_job: out.job_record || {},\n  plan_failure: failure,\n  baseline_head: (baseline.repository && baseline.repository.head) || '',\n  gate: out.gate || (failure\n    ? {status: 'BLOCKED', reason_code: failure.failure_class,\n       failure_signature: failure.failure_signature, error: failure.error}\n    : {status: 'BLOCKED', reason_code: 'PLAN_MISSING'})})}];"
       },
       "id": "post-plan",
       "name": "Post-Plan",
@@ -554,7 +554,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=http://192.168.1.136:8081/v1/artifacts/{{ $json.issue.run_id }}/decision",
+        "url": "=http://192.168.1.136:8081/v1/artifacts/{{ $json.artifact.run_id }}/decision",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -750,7 +750,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst rec = s.job_record || s.build_job || {};\nreturn [{json: {state: s, data: [{\n  run_id: s.issue.run_id,\n  job_id: rec.job_id || '',\n  attempt_id: rec.attempt_id || '',\n  status: rec.status || '',\n  input_contract: rec.input_contract || '',\n  input_fingerprint: rec.input_fingerprint || '',\n  output_contract: rec.output_contract || '',\n  output_fingerprint: rec.output_fingerprint || '',\n  provider: rec.provider || '',\n  model: rec.model || '',\n  requested_model: rec.requested_model || rec.model || '',\n  resolved_model: rec.resolved_model || '',\n  actual_provider: rec.actual_provider || '',\n  actual_model: rec.actual_model || '',\n  cost_class: rec.cost_class || '',\n  free_eligible: rec.free_eligible === true,\n  quota_state: rec.quota_state || {},\n  provider_health: rec.provider_health || '',\n  routing_reason: rec.routing_reason || '',\n  fallback_chain: rec.fallback_chain || [],\n  paid_escalation: rec.paid_escalation === true,\n  paid_escalation_reason: rec.paid_escalation_reason || '',\n  actual_cost: rec.actual_cost == null ? null : rec.actual_cost,\n  started_at: rec.started_at || '',\n  ended_at: rec.ended_at || '',\n  failure_signature: rec.failure_signature || '',\n  strategy_delta: rec.strategy_delta || '',\n  result_ref: rec.result_ref || ''\n}], returnType: 'all'}}];"
+        "jsCode": "const s = $json;\nconst rec = s.job_record || s.build_job || {};\nreturn [{json: {state: s, data: [{\n  run_id: s.issue.run_id,\n  job_id: rec.job_id || '',\n  attempt_id: rec.attempt_id || '',\n  status: rec.status || '',\n  input_contract: rec.input_contract || '',\n  input_fingerprint: rec.input_fingerprint || '',\n  output_contract: rec.output_contract || '',\n  output_fingerprint: rec.output_fingerprint || '',\n  provider: rec.provider || '',\n  model: rec.model || '',\n  started_at: rec.started_at || '',\n  ended_at: rec.ended_at || '',\n  failure_signature: rec.failure_signature || '',\n  strategy_delta: rec.strategy_delta || '',\n  result_ref: rec.result_ref || ''\n}], returnType: 'all'}}];"
       },
       "id": "build-attempt-prep-attempt",
       "name": "Build Attempt Prep Attempt",
@@ -1115,7 +1115,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst rec = s.job_record || s.build_job || {};\nreturn [{json: {state: s, data: [{\n  run_id: s.issue.run_id,\n  job_id: rec.job_id || '',\n  attempt_id: rec.attempt_id || '',\n  status: rec.status || '',\n  input_contract: rec.input_contract || '',\n  input_fingerprint: rec.input_fingerprint || '',\n  output_contract: rec.output_contract || '',\n  output_fingerprint: rec.output_fingerprint || '',\n  provider: rec.provider || '',\n  model: rec.model || '',\n  requested_model: rec.requested_model || rec.model || '',\n  resolved_model: rec.resolved_model || '',\n  actual_provider: rec.actual_provider || '',\n  actual_model: rec.actual_model || '',\n  cost_class: rec.cost_class || '',\n  free_eligible: rec.free_eligible === true,\n  quota_state: rec.quota_state || {},\n  provider_health: rec.provider_health || '',\n  routing_reason: rec.routing_reason || '',\n  fallback_chain: rec.fallback_chain || [],\n  paid_escalation: rec.paid_escalation === true,\n  paid_escalation_reason: rec.paid_escalation_reason || '',\n  actual_cost: rec.actual_cost == null ? null : rec.actual_cost,\n  started_at: rec.started_at || '',\n  ended_at: rec.ended_at || '',\n  failure_signature: rec.failure_signature || '',\n  strategy_delta: rec.strategy_delta || '',\n  result_ref: rec.result_ref || ''\n}], returnType: 'all'}}];"
+        "jsCode": "const s = $json;\nconst rec = s.job_record || s.build_job || {};\nreturn [{json: {state: s, data: [{\n  run_id: s.issue.run_id,\n  job_id: rec.job_id || '',\n  attempt_id: rec.attempt_id || '',\n  status: rec.status || '',\n  input_contract: rec.input_contract || '',\n  input_fingerprint: rec.input_fingerprint || '',\n  output_contract: rec.output_contract || '',\n  output_fingerprint: rec.output_fingerprint || '',\n  provider: rec.provider || '',\n  model: rec.model || '',\n  started_at: rec.started_at || '',\n  ended_at: rec.ended_at || '',\n  failure_signature: rec.failure_signature || '',\n  strategy_delta: rec.strategy_delta || '',\n  result_ref: rec.result_ref || ''\n}], returnType: 'all'}}];"
       },
       "id": "fix-attempt-prep-attempt",
       "name": "Fix Attempt Prep Attempt",
@@ -1830,7 +1830,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst rec = s.job_record || s.build_job || {};\nreturn [{json: {state: s, data: [{\n  run_id: s.issue.run_id,\n  job_id: rec.job_id || '',\n  attempt_id: rec.attempt_id || '',\n  status: rec.status || '',\n  input_contract: rec.input_contract || '',\n  input_fingerprint: rec.input_fingerprint || '',\n  output_contract: rec.output_contract || '',\n  output_fingerprint: rec.output_fingerprint || '',\n  provider: rec.provider || '',\n  model: rec.model || '',\n  requested_model: rec.requested_model || rec.model || '',\n  resolved_model: rec.resolved_model || '',\n  actual_provider: rec.actual_provider || '',\n  actual_model: rec.actual_model || '',\n  cost_class: rec.cost_class || '',\n  free_eligible: rec.free_eligible === true,\n  quota_state: rec.quota_state || {},\n  provider_health: rec.provider_health || '',\n  routing_reason: rec.routing_reason || '',\n  fallback_chain: rec.fallback_chain || [],\n  paid_escalation: rec.paid_escalation === true,\n  paid_escalation_reason: rec.paid_escalation_reason || '',\n  actual_cost: rec.actual_cost == null ? null : rec.actual_cost,\n  started_at: rec.started_at || '',\n  ended_at: rec.ended_at || '',\n  failure_signature: rec.failure_signature || '',\n  strategy_delta: rec.strategy_delta || '',\n  result_ref: rec.result_ref || ''\n}], returnType: 'all'}}];"
+        "jsCode": "const s = $json;\nconst rec = s.job_record || s.build_job || {};\nreturn [{json: {state: s, data: [{\n  run_id: s.issue.run_id,\n  job_id: rec.job_id || '',\n  attempt_id: rec.attempt_id || '',\n  status: rec.status || '',\n  input_contract: rec.input_contract || '',\n  input_fingerprint: rec.input_fingerprint || '',\n  output_contract: rec.output_contract || '',\n  output_fingerprint: rec.output_fingerprint || '',\n  provider: rec.provider || '',\n  model: rec.model || '',\n  started_at: rec.started_at || '',\n  ended_at: rec.ended_at || '',\n  failure_signature: rec.failure_signature || '',\n  strategy_delta: rec.strategy_delta || '',\n  result_ref: rec.result_ref || ''\n}], returnType: 'all'}}];"
       },
       "id": "decision-fix-attempt-prep-attemp",
       "name": "Decision Fix Attempt Prep Attempt",

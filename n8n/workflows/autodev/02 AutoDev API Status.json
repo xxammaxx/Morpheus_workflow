@@ -6,7 +6,8 @@
         "httpMethod": "GET",
         "path": "autodev/status",
         "responseMode": "responseNode",
-        "options": {}
+        "options": {},
+        "authentication": "headerAuth"
       },
       "id": "status-webhook",
       "name": "Status Webhook",
@@ -179,7 +180,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const row = $('Prep Attempt Query').first().json.row || {};\nconst attemptRows = ($json.data || []);\nconst attempts = attemptRows.length;\nconst latest = attemptRows.slice().sort((a,b) => String(b.ended_at || b.started_at || '').localeCompare(String(a.ended_at || a.started_at || '')))[0] || {};\nreturn [{json: {\n  run_id: row.run_id, state: row.state, current_job: row.current_job || '',\n  attempt: attempts, decision: row.decision || null, reason_code: row.reason_code || null,\n  result_ref: row.result_ref || null, updated_at: row.updated_at || null,\n  provider: latest.provider || null, requested_model: latest.model || null,\n  resolved_model: latest.resolved_model || null, actual_provider: latest.actual_provider || null,\n  actual_model: latest.actual_model || null, cost_class: latest.cost_class || null,\n  quota: latest.quota_state || null, provider_health: latest.provider_health || null,\n  routing_reason: latest.routing_reason || null, fallback_chain: latest.fallback_chain || [],\n  paid_escalation: latest.paid_escalation || false,\n  paid_escalation_reason: latest.paid_escalation_reason || null,\n  hamh_harness_id: latest.harness_id || null, hamh_fingerprint: latest.harness_fingerprint || null,\n  cost: latest.actual_cost == null ? null : latest.actual_cost\n}}];"
+        "jsCode": "const row = $('Prep Attempt Query').first().json.row || {};\nconst attempts = ($json.data || []).length;\nreturn [{json: {\n  run_id: row.run_id, state: row.state, current_job: row.current_job || '',\n  attempt: attempts, decision: row.decision || null, reason_code: row.reason_code || null,\n  result_ref: row.result_ref || null, updated_at: row.updated_at || null\n}}];"
       },
       "id": "build-status",
       "name": "Build Status",

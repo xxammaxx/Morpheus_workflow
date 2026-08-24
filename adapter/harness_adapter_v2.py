@@ -117,6 +117,10 @@ LOCAL_LLM_SRC = "/var/lib/ghiw/workspaces/provider-smoke-v3/local_llm"
 OPENCODE_BIN = "/opt/dev-fabric/opencode/opencode"
 LMSTUDIO_URL = "http://192.168.1.195:1234"
 LMSTUDIO_MODEL = "huihui-qwen3.5-9b-abliterated"
+OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://192.168.1.50:11434").rstrip("/")
+if OLLAMA_URL.endswith("/v1"):
+    OLLAMA_URL = OLLAMA_URL[:-3].rstrip("/")
+OLLAMA_MODEL = "qwen3:1.7b"
 DEFAULT_TIMEOUT_S = 600
 MAX_WORKERS = 6
 MAX_BODY = 262144
@@ -150,6 +154,7 @@ FIXTURES = {
 }
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 JOB_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,96}$")
+REPOSITORY_REF_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 # HAMH dispatch identity fields (ADR H15): provider/model select the harness
 # profile; backend routing (VALID_BACKENDS) remains UNCHANGED.
@@ -412,11 +417,11 @@ def new_job(
         "provider": provider
         or ("lmstudio" if backend == "opencode-builder-8001" else "embedded"),
         "model": model
-        or (LMSTUDIO_MODEL if backend == "opencode-builder-8001" else "embedded"),
+        or (OLLAMA_MODEL if provider == "ollama" else (LMSTUDIO_MODEL if backend == "opencode-builder-8001" else "embedded")),
         "harness_provider": provider
         or ("lmstudio" if backend == "opencode-builder-8001" else "embedded"),
         "harness_model": model
-        or (LMSTUDIO_MODEL if backend == "opencode-builder-8001" else "embedded"),
+        or (OLLAMA_MODEL if provider == "ollama" else (LMSTUDIO_MODEL if backend == "opencode-builder-8001" else "embedded")),
         "route_provider": (route_decision or {}).get("route_provider"),
         "route_model": (route_decision or {}).get("route_model"),
         "route_endpoint": (route_decision or {}).get("route_endpoint"),
@@ -1168,7 +1173,10 @@ BUILD_PERMS = {
 }
 
 
-def _opencode_script(ws, agent_name, agent_md, prompt, timeout_s):
+def _opencode_script(ws, agent_name, agent_md, prompt, timeout_s, provider=None, model=None):
+    provider = provider or "lmstudio"
+    worker_url = OLLAMA_URL if provider == "ollama" else LMSTUDIO_URL
+    worker_model = model or (OLLAMA_MODEL if provider == "ollama" else LMSTUDIO_MODEL)
     return (
         "set -e; cd '%s'; "
         "mkdir -p .opencode/agents; "
@@ -1187,24 +1195,32 @@ def _opencode_script(ws, agent_name, agent_md, prompt, timeout_s):
         agent_name,
         agent_md,
         LOCAL_LLM_SRC,
-        LMSTUDIO_URL,
-        LMSTUDIO_MODEL,
+        worker_url,
+        worker_model,
         int(timeout_s),
         OPENCODE_BIN,
         agent_name,
-        LMSTUDIO_MODEL,
+        worker_model,
         json.dumps(prompt),
     )
+
+
+def _worker_identity(payload):
+    metadata = payload.get("x-metadata") or {}
+    return metadata.get("execution_provider"), metadata.get("execution_model")
 
 
 def _parse_opencode_jsonl(ws):
     """Return (assistant_text, tool_events) parsed from build.jsonl."""
     path = os.path.join(ws, "build.jsonl")
     text_parts, tool_events = [], []
-    if not os.path.exists(path):
+    # build.jsonl lives inside the isolated builder CT, not on the adapter
+    # host. Read it through the existing pct boundary rather than checking
+    # the host filesystem (which silently made valid plans look missing).
+    raw = pct_stdout("cat '%s' 2>/dev/null || true" % path)
+    if not raw:
         return "", []
-    with open(path) as f:
-        for line in f:
+    for line in raw.splitlines():
             try:
                 ev = json.loads(line)
             except ValueError:
@@ -1219,6 +1235,11 @@ def _parse_opencode_jsonl(ws):
                                 text_parts.append(part.get("text", ""))
                     elif isinstance(content, str):
                         text_parts.append(content)
+            elif ev.get("type") == "text":
+                part = ev.get("part") or {}
+                content = part.get("text")
+                if isinstance(content, str):
+                    text_parts.append(content)
             elif ev.get("type") == "tool":
                 tool = ev.get("tool", {})
                 name = tool.get("name") or tool.get("tool") or "?"
@@ -1286,16 +1307,45 @@ def _write_attempts(tool_events):
 
 def _git_state(ws):
     head = pct_stdout("cd '%s' && git rev-parse HEAD 2>/dev/null || echo NOCOMMIT" % ws)
-    status = pct_stdout("cd '%s' && git status --porcelain 2>/dev/null || true" % ws)
+    # Ignore harness bookkeeping when assessing read-only plan mutations.
+    status = pct_stdout(
+        "cd '%s' && git status --porcelain 2>/dev/null | "
+        "grep -vE '^(.. )?\\.(opencode|plan-canary-sentinel)(/|$)|^(.. )?(build\\.jsonl|build\\.stderr)$' || true"
+        % ws
+    )
     branch = pct_stdout(
         "cd '%s' && git branch --show-current 2>/dev/null || echo main" % ws
     )
     return head.strip(), status, branch.strip()
 
 
-def _ensure_workspace(run_id):
-    """Create (if missing) the git workspace for a run on the builder."""
+def _ensure_workspace(run_id, repository_ref=None):
+    """Create a clean worker workspace, materializing the requested repo.
+
+    External acceptance jobs must inspect the target repository, not the
+    historical empty canary stub. The remote's symbolic HEAD determines the
+    default branch, so repositories using ``master`` remain supported.
+    """
     ws = _ws(run_id)
+    if repository_ref:
+        if not REPOSITORY_REF_RE.fullmatch(repository_ref):
+            raise RuntimeError("invalid repository_ref")
+        repo_url = "https://github.com/%s.git" % repository_ref
+        current = pct_stdout("cd '%s' 2>/dev/null && git remote get-url origin 2>/dev/null || true" % ws)
+        expected_url = "https://github.com/%s.git" % repository_ref
+        if current.rstrip("/") != expected_url.rstrip("/"):
+            tmp = ws + ".checkout"
+            pct_exec("rm -rf '%s' '%s'" % (tmp, ws))
+            clone = (
+                "set -e; branch=$(git ls-remote --symref '%s' HEAD | "
+                "awk '/^ref:/ {sub(\"refs/heads/\", \"\", $2); print $2; exit}'); "
+                "test -n \"$branch\"; git clone --depth 1 --branch \"$branch\" '%s' '%s'"
+            ) % (repo_url, repo_url, tmp)
+            result = pct_exec(clone)
+            if result.returncode != 0:
+                raise RuntimeError("repository checkout failed: %s" % (result.stderr or "")[:300])
+            pct_exec("mv '%s' '%s'" % (tmp, ws))
+        return ws
     pct_exec(
         "mkdir -p '%s' && cd '%s' && "
         "git init -q 2>/dev/null; git config user.email harness@local; "
@@ -1309,7 +1359,7 @@ def _ensure_workspace(run_id):
 
 
 def job_baseline(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id)
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
     head, status, branch = _git_state(ws)
     if len(head) < 7:
         head = "workspace-" + str(run_id)[:48]
@@ -1366,7 +1416,7 @@ def job_baseline(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
 
 
 def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id)
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
     area = job_type.split(".")[1]
     prompt = (
         "You are a read-only research worker. Workspace: current directory. "
@@ -1388,6 +1438,7 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
         ),
         prompt,
         timeout_s,
+        *_worker_identity(payload),
     )
     pct_exec(script, timeout=timeout_s)
     text, events = _parse_opencode_jsonl(ws)
@@ -1424,16 +1475,27 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
 
 
 def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id)
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
     head_before, status_before, _ = _git_state(ws)
+    research = (payload.get("x-metadata") or {}).get("research")
+    research_context = ""
+    if isinstance(research, dict) and research.get("contract") == "autodev.research.v1":
+        # The orchestrator passes the already contract-validated research
+        # result through the existing issue x-metadata extension field.
+        research_context = "\nValidated research context:\n%s\n" % json.dumps(
+            research, ensure_ascii=False, sort_keys=True
+        )[:12000]
     prompt = (
         "You are a READ-ONLY planning worker. Workspace: current directory. "
         "Task: %s\n"
+        "%s"
         "You MUST first attempt to write a file named '.plan-canary-sentinel' at the "
         "workspace root using the write tool. This write will (and must) be DENIED by "
         "the sandbox — that is expected and proves you are read-only.\n"
         "Then create a plan. You may read/glob/grep/list only. Do NOT write any real file "
         "other than the sentinel attempt. No commands, no network.\n"
+        "The sentinel is only a permission test; it is NOT a target, acceptance criterion, "
+        "required test, or allowed build file. Never include '.plan-canary-sentinel' in the JSON.\n"
         "Respond with ONLY a JSON object of this exact shape (no markdown fences):\n"
         "{\n"
         ' "targets": {"files": ["<files to create/modify>"], "symbols": ["<symbols or []>"]},\n'
@@ -1443,13 +1505,14 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         ' "build_scope": {"allowed_files": ["<files the build may touch>"]},\n'
         ' "research_summary": "<max 1000 chars>"\n'
         "}"
-    ) % payload.get("task_description", "")
+    ) % (payload.get("task_description", ""), research_context)
     script = _opencode_script(
         ws,
         "plan-worker",
         _agent_md("plan-worker", PLAN_TOOLS, PLAN_PERMS, "Read-only planning worker"),
         prompt,
         timeout_s,
+        *_worker_identity(payload),
     )
     pct_exec(script, timeout=timeout_s)
     text, events = _parse_opencode_jsonl(ws)
@@ -1510,7 +1573,7 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
 
 
 def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id)
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
     allowed = payload.get("build_scope", {}).get("allowed_files", []) or payload.get(
         "targets", {}
     ).get("files", [])
@@ -1552,6 +1615,7 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         _agent_md("build-worker", BUILD_TOOLS, BUILD_PERMS, "Bounded build worker"),
         prompt,
         timeout_s,
+        *_worker_identity(payload),
     )
     r = pct_exec(script, timeout=timeout_s)
     text, events = _parse_opencode_jsonl(ws)
@@ -1635,7 +1699,7 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
 
 
 def job_verify(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id)
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
     checks = []
     # unit tests
     test_sys = payload.get("test_system") or "pytest"
@@ -1784,7 +1848,7 @@ def _changed_file_contents(ws, paths):
 
 
 def job_review(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id)
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
     area = job_type.split(".")[1]
     changed = payload.get("changed_files") or []
     contents = _changed_file_contents(ws, [c.get("path", "") for c in changed])
@@ -1976,6 +2040,14 @@ def _dispatch(
         return None, err(
             "UNKNOWN_INPUT_CONTRACT", "unknown input_contract %r" % input_contract
         )
+    payload = dict(payload)
+    metadata = dict(payload.get("x-metadata") or {})
+    metadata["execution_provider"] = provider or ("embedded" if backend == "embedded" else "lmstudio")
+    metadata["execution_model"] = model or (
+        "embedded" if backend == "embedded"
+        else (OLLAMA_MODEL if provider == "ollama" else LMSTUDIO_MODEL)
+    )
+    payload["x-metadata"] = metadata
     v = registry.validate(payload, input_contract)
     if not v["ok"]:
         return None, {
