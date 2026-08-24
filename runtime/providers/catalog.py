@@ -185,6 +185,8 @@ class ProviderCatalog:
                 **(previous.get("capabilities") or {}),
                 **(entry.get("capabilities") or {}),
             }
+            if "embed" in str(entry.get("model", "")).lower():
+                entry["capabilities"] = {}
             for key in (
                 "probe_attempted",
                 "promoted_free_eligible",
