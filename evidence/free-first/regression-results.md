@@ -15,3 +15,14 @@
 - Current OpenRouter key read-only check returned HTTP 200 and `is_free_tier`;
   no model request was sent because free-request reset/remaining was absent.
 - No runtime code changed; no deployment or unrelated holdouts were run.
+
+# Quota-isolation continuation — 2026-08-24
+
+- Focused provider/contracts/adapter/auth tests: `7 passed`.
+- `compileall`: PASS.
+- n8n repository workflow inventory: `12 found / 12 valid JSON`.
+- `git diff --check`: PASS.
+- Public evidence scan: PASS after treating credential-name references and
+  status-only evidence as non-secret; no credential values, headers, cookies,
+  or tokens were added.
+- Runtime code was unchanged; redeployment was not required.

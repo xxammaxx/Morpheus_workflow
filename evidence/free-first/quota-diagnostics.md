@@ -50,3 +50,21 @@ identifier, key hash, billing detail, or raw provider response is stored.
   `GROQ_TIER_UI=BLOCKED_NO_AUTHENTICATED_SESSION`.
 - Groq completion attempts: `0`.
 - `GROQ_CLOUDFLARE_1010=false`.
+
+## Quota-isolation continuation — 2026-08-24T05:43:18Z
+
+- `PREVIOUS_WINDOW_EXPIRED=true`: the stored reset was
+  `2026-08-24T00:00:00Z`.
+- Current read-only key check: HTTP 200, valid, `is_free_tier=true`; this
+  endpoint did not expose free-request remaining/reset.
+- Current read-only catalog check: HTTP 200, 422 models; `openrouter/free`
+  present; 22 catalog entries had prompt and completion price `0`.
+- OpenCode consumer state: `CONFIGURED_ONLY` for OpenRouter credentials;
+  both observed sessions selected `opencode/big-pickle`, not OpenRouter.
+- n8n health: HTTP 200. The read-only executions endpoint returned HTTP 401
+  without an API key, and no authorized local/SSH path to CT 101 was
+  available. Therefore `N8N_OPENROUTER_CONCURRENT_EXECUTIONS=UNKNOWN`, not
+  zero.
+- `QUOTA_ISOLATION=NOT_PROVEN`; `QUOTA_ISOLATION_DURATION_SECONDS=0`.
+  The single model request was deliberately not spent. No retry occurred.
+- `OPENROUTER_QUOTA_CONTENTION=NOT_PROVEN`: no component was blamed.
