@@ -40,6 +40,7 @@ import threading
 import time
 import urllib.request
 import urllib.parse
+import copy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 STATE_DIR = os.environ.get("AUTODEV_V2_STATE", "/var/lib/autodev-harness-v2")
@@ -121,6 +122,7 @@ OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://192.168.1.50:11434").rstr
 if OLLAMA_URL.endswith("/v1"):
     OLLAMA_URL = OLLAMA_URL[:-3].rstrip("/")
 OLLAMA_MODEL = "qwen3:1.7b"
+OLLAMA_FORMATTER_TIMEOUT_S = 60
 DEFAULT_TIMEOUT_S = 600
 MAX_WORKERS = 6
 MAX_BODY = 262144
@@ -1305,6 +1307,110 @@ def _write_attempts(tool_events):
     return len(writes), len(denied)
 
 
+def _plan_model_schema():
+    """Derive the model-owned plan shape from the canonical contract.
+
+    Adapter-owned identity, context and safety fields are deliberately not
+    exposed to the model.  The two stricter semantic requirements below are
+    the formatter boundary, not a change to autodev.plan.v1.
+    """
+    canonical = copy.deepcopy(registry.get_schema("autodev.plan.v1"))
+    owned = {"targets", "acceptance_criteria", "required_tests", "risks",
+             "build_scope"}
+    schema = {
+        "type": "object",
+        "required": ["targets", "acceptance_criteria", "required_tests",
+                      "risks", "build_scope", "research_summary"],
+        "properties": {},
+        "additionalProperties": False,
+    }
+    for name in owned:
+        if name in canonical.get("properties", {}):
+            schema["properties"][name] = canonical["properties"][name]
+    # research_summary is adapter-context content, represented as a model
+    # field for serialization but never used to manufacture plan semantics.
+    schema["properties"]["research_summary"] = {
+        "type": "string", "maxLength": 4000
+    }
+    schema["properties"]["targets"]["required"] = ["files", "symbols"]
+    schema["properties"]["targets"]["properties"]["symbols"] = {
+        "type": "array", "items": {"type": "string"}
+    }
+    schema["properties"]["build_scope"]["properties"]["allowed_files"]["minItems"] = 1
+    # Ollama's structured-output compiler accepts the JSON Schema structural
+    # subset used by the contract, but some deployed versions reject string
+    # length annotations while loading the model vocabulary. Canonical
+    # validation below still enforces those limits.
+    def strip_ollama_annotations(value):
+        if isinstance(value, dict):
+            value.pop("maxLength", None)
+            value.pop("minLength", None)
+            for child in value.values():
+                strip_ollama_annotations(child)
+        elif isinstance(value, list):
+            for child in value:
+                strip_ollama_annotations(child)
+    strip_ollama_annotations(schema)
+    return schema
+
+
+def _ollama_format_plan(candidate_text, model):
+    """Perform exactly one local, no-tools serialization pass."""
+    if not isinstance(candidate_text, str) or not candidate_text.strip():
+        return None, "formatter candidate is empty"
+    # The formatter receives only the candidate text, with common credential
+    # forms redacted before it leaves the adapter process.
+    candidate_text = re.sub(
+        r"(?i)(api[_-]?key|token|secret|password)\s*[:=]\s*[^\s,}]+",
+        r"\1=<redacted>", candidate_text,
+    )
+    prompt = (
+        "Transform the supplied planning result into the JSON schema. "
+        "Do not add implementation targets, tests, acceptance criteria, or "
+        "risks that are not supported by the supplied plan. If mandatory "
+        "semantic information is absent, return an object with the affected "
+        "required arrays empty; do not guess. Return JSON only.\n\n"
+        "SUPPLIED PLAN:\n%s"
+    ) % candidate_text[:16000]
+    body = json.dumps({
+        "model": model or OLLAMA_MODEL,
+        "prompt": prompt,
+        "format": _plan_model_schema(),
+        "stream": False,
+        "options": {"temperature": 0},
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        OLLAMA_URL + "/api/generate", data=body,
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=OLLAMA_FORMATTER_TIMEOUT_S) as response:
+            raw = json.loads(response.read().decode("utf-8"))
+        text = raw.get("response", "") if isinstance(raw, dict) else ""
+        obj = _extract_json(text)
+        if not isinstance(obj, dict):
+            return None, "formatter response is not parseable JSON"
+        return obj, None
+    except Exception as exc:  # noqa: BLE001 - fail closed at the contract boundary
+        return None, "formatter request failed: %s" % type(exc).__name__
+
+
+def _plan_scope_errors(plan):
+    errors = []
+    targets = plan.get("targets", {})
+    scope = plan.get("build_scope", {})
+    target_files = targets.get("files", []) if isinstance(targets, dict) else []
+    allowed = scope.get("allowed_files", []) if isinstance(scope, dict) else []
+    if not target_files:
+        errors.append("$.targets.files: must have at least 1 item")
+    if not allowed:
+        errors.append("$.build_scope.allowed_files: must have at least 1 item")
+    outside = [path for path in target_files if path not in allowed]
+    if outside:
+        errors.append("$.build_scope: targets outside allowed_files: %s" % ", ".join(outside[:10]))
+    return errors
+
+
 def _git_state(ws):
     head = pct_stdout("cd '%s' && git rev-parse HEAD 2>/dev/null || echo NOCOMMIT" % ws)
     # Ignore harness bookkeeping when assessing read-only plan mutations.
@@ -1522,15 +1628,14 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         pct_stdout("cd '%s' && ls .plan-canary-sentinel 2>/dev/null || true" % ws)
     )
     writes, denied = _write_attempts(events)
+    formatter_used = False
+    formatter_error = None
+    parse_failed = not isinstance(obj, dict)
     if not isinstance(obj, dict):
-        finalize_job(
-            job_id,
-            "failed",
-            error="plan output not parseable as JSON",
-            failure_class="CONTRACT_FAILURE",
-            failure_signature="PLAN_PARSE_FAILED",
-        )
-        return
+        obj, formatter_error = _ollama_format_plan(text, _worker_identity(payload)[1])
+        formatter_used = True
+    if not isinstance(obj, dict):
+        obj = {}
     plan = {
         "contract": "autodev.plan.v1",
         "version": "v1",
@@ -1559,16 +1664,47 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         },
     }
     v = registry.validate(plan, "autodev.plan.v1")
-    if not v["ok"]:
+    consistency_errors = _plan_scope_errors(plan)
+    if plan["safety"]["sentinel_absent"] is not True:
+        consistency_errors.append("$.safety.sentinel_absent: must be true")
+    if plan["safety"]["repo_unchanged"] is not True:
+        consistency_errors.append("$.safety.repo_unchanged: must be true")
+    if (not v["ok"] or consistency_errors) and not formatter_used:
+        repaired, formatter_error = _ollama_format_plan(text, _worker_identity(payload)[1])
+        formatter_used = True
+        if isinstance(repaired, dict):
+            obj = repaired
+            plan["targets"] = {
+                "files": obj.get("targets", {}).get("files", []),
+                "symbols": obj.get("targets", {}).get("symbols", []),
+            }
+            plan["acceptance_criteria"] = obj.get("acceptance_criteria", [])
+            plan["required_tests"] = obj.get("required_tests", [])
+            plan["risks"] = obj.get("risks", [])
+            plan["build_scope"] = {
+                "allowed_files": obj.get("build_scope", {}).get("allowed_files", [])
+            }
+            plan["context"]["research_summary"] = obj.get("research_summary", "")[:4000]
+            v = registry.validate(plan, "autodev.plan.v1")
+            consistency_errors = _plan_scope_errors(plan)
+    if not v["ok"] or consistency_errors:
+        errors = list(v["errors"]) + consistency_errors
+        if formatter_error:
+            errors.insert(0, formatter_error)
         finalize_job(
             job_id,
             "failed",
-            error="output contract invalid: %s" % v["errors"][:3],
+            error="output contract invalid: %s" % errors[:20],
             failure_class="CONTRACT_FAILURE",
-            failure_signature="CONTRACT_INVALID",
+            failure_signature="PLAN_PARSE_FAILED" if parse_failed else "CONTRACT_INVALID",
         )
         return
-    plan["x-metadata"] = {"backend": backend}
+    plan["x-metadata"] = {
+        "backend": backend,
+        "semantic_attempt_id": (payload.get("attempt_id") or ""),
+        "contract_serialization_pass": formatter_used,
+        "formatter_calls": 1 if formatter_used else 0,
+    }
     finalize_job(job_id, "completed", result=plan)
 
 
