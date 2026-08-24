@@ -109,8 +109,20 @@ def table_rows(name):
                 break
     if not table_id:
         return [], False
-    status, payload = Upstream(N8N_BASE, {"X-N8N-API-KEY": N8N_API_KEY}).get("/data-tables/%s/rows" % table_id, {"limit": 250})
-    return (list_items(payload), status == 200)
+    client = Upstream(N8N_BASE, {"X-N8N-API-KEY": N8N_API_KEY})
+    rows, cursor = [], None
+    for _ in range(20):
+        query = {"limit": 250}
+        if cursor:
+            query["cursor"] = cursor
+        status, payload = client.get("/data-tables/%s/rows" % table_id, query)
+        if status != 200:
+            return rows, False
+        rows.extend(list_items(payload))
+        cursor = payload.get("nextCursor") if isinstance(payload, dict) else None
+        if not cursor:
+            break
+    return rows, True
 
 
 def adapter_runtime():
@@ -130,7 +142,8 @@ def n8n_health():
     status, payload = Upstream(N8N_BASE, {"X-N8N-API-KEY": N8N_API_KEY}).get("/workflows", {"limit": 250})
     health = safe_status(status == 200)
     workflows = list_items(payload) if status == 200 else []
-    health["workflow_count"] = sum(1 for item in workflows if str(item.get("name", "")).startswith("AutoDev"))
+    canonical_prefixes = {"00", "01", "02", "10", "20", "30", "40", "50", "60", "70", "80", "90"}
+    health["workflow_count"] = sum(1 for item in workflows if str(item.get("name", ""))[:2] in canonical_prefixes and str(item.get("name", ""))[2:3] == " ")
     return health
 
 
