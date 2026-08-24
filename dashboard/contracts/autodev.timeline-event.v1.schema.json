@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Timeline Event","type":"object","required":["contract","version","event","run_id"],"properties":{"contract":{"const":"autodev.timeline-event.v1"},"version":{"const":"v1"},"event":{"type":"string"},"run_id":{"type":"string"},"timestamp":{"type":["string","null"]}}}

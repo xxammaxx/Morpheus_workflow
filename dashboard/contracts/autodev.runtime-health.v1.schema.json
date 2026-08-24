@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Runtime Health","type":"object","required":["contract","version","source"],"properties":{"contract":{"const":"autodev.runtime-health.v1"},"version":{"const":"v1"},"source":{"type":"string"},"providers":{"type":"array"}}}

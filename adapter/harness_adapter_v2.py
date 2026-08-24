@@ -12,6 +12,7 @@ Endpoints (token-authenticated, X-Harness-Token):
   GET  /v1/batches/{batch_id}
   POST /v1/artifacts/{run_id}/{name}   (compact JSON artifacts, e.g. split/decision)
   GET  /v1/artifacts/{run_id}/{name}
+  GET  /v1/status/runtime             (sanitized read-only runtime snapshot)
 
 Properties:
   - idempotent dispatch (run_id:job_id:attempt_id), duplicate callbacks safe
@@ -2233,6 +2234,51 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self._auth():
             self._send(401, err("UNAUTHORIZED", "missing or invalid token"))
+            return
+        if self.path == "/v1/status/runtime":
+            with _lock:
+                running_jobs = sum(
+                    1 for record in JOBS.values() if record.get("status") == "running"
+                )
+                running_batches = sum(
+                    1 for record in BATCHES.values() if record.get("status") == "running"
+                )
+            providers = []
+            catalog = getattr(_provider_runtime, "catalog", None)
+            for entry in (getattr(catalog, "entries", None) or []):
+                provider = entry.get("provider")
+                if provider in {"deepseek", "groq"}:
+                    continue
+                providers.append(
+                    {
+                        "provider": provider,
+                        "model": entry.get("model"),
+                        "health": entry.get("health", "UNKNOWN"),
+                        "availability": "AVAILABLE" if entry.get("route_exists") else "UNKNOWN",
+                        "cost_class": entry.get("cost_class", "UNKNOWN"),
+                        "free_eligible": bool(entry.get("free_eligible")),
+                        "promoted": bool(entry.get("promoted_free_eligible")),
+                        "actual_cost_proof": bool(entry.get("actual_cost_proof")),
+                        "last_verified_at": entry.get("last_verified_at"),
+                        "quarantined": bool(entry.get("quarantined")),
+                    }
+                )
+            self._send(
+                200,
+                ok(
+                    {
+                        "adapter_version": VERSION,
+                        "checked_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                        "jobs_running": running_jobs,
+                        "batches_running": running_batches,
+                        "free_first_enabled": bool(getattr(_provider_runtime, "enabled", False)),
+                        "automatic_paid_agent_escalation": False,
+                        "free_pool_size": sum(1 for p in providers if p["free_eligible"]),
+                        "providers": providers,
+                        "provider_lease_state": "READ_ONLY_SNAPSHOT",
+                    }
+                ),
+            )
             return
         if self.path.startswith("/v1/jobs/"):
             jid = self.path[len("/v1/jobs/") :]

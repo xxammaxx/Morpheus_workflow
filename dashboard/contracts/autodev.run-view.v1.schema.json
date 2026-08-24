@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Run View","type":"object","required":["contract","version","run_id","state","attempts","timeline"],"properties":{"contract":{"const":"autodev.run-view.v1"},"version":{"const":"v1"},"run_id":{"type":"string"},"state":{"type":"string"},"attempts":{"type":"array"},"timeline":{"type":"array"}}}
