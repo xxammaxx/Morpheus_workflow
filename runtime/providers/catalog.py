@@ -53,14 +53,18 @@ def apply_policy(entry, provider, account_class="unknown"):
     entry["automatic_paid_fallback"] = False
     endpoint = str(entry.get("endpoint", ""))
     parsed = urllib.parse.urlparse(endpoint)
+    trusted_endpoints = {
+        value.strip().rstrip("/")
+        for value in os.environ.get(
+            "AUTODEV_LOCAL_ZERO_COST_TRUSTED_ENDPOINTS",
+            "http://127.0.0.1:11434/v1,http://127.0.0.1:1234/v1",
+        ).split(",")
+        if value.strip()
+    }
     trusted_local = (
         provider in {"ollama", "lmstudio"}
         and parsed.scheme in {"http", "https"}
-        and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
-        and endpoint.rstrip("/") in {
-            os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1").rstrip("/"),
-            os.environ.get("LMSTUDIO_BASE_URL", "http://127.0.0.1:1234/v1").rstrip("/"),
-        }
+        and endpoint.rstrip("/") in trusted_endpoints
     )
     if trusted_local:
         entry.update({
