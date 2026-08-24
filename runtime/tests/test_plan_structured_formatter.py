@@ -49,6 +49,39 @@ def test_worker_agent_model_tracks_selected_local_route():
     assert adapter.PLAN_PERMS["write"] == "deny"
 
 
+def test_default_opencode_worker_uses_local_ollama_fallback():
+    payload = {"x-metadata": {
+        "execution_provider": "lmstudio",
+        "execution_model": adapter.LMSTUDIO_MODEL,
+    }}
+    assert adapter._opencode_worker_identity(payload) == (
+        "ollama", adapter.OLLAMA_MODEL
+    )
+
+
+def test_explicit_worker_identity_is_preserved():
+    payload = {"x-metadata": {
+        "execution_provider": "ollama",
+        "execution_model": adapter.OLLAMA_MODEL,
+    }}
+    assert adapter._opencode_worker_identity(payload) == (
+        "ollama", adapter.OLLAMA_MODEL
+    )
+
+
+def test_explicit_task_scope_has_deterministic_plan_fallback():
+    task = "Use only these exact repository-relative files: dashboard/control_tower.py, dashboard/static/index.html, dashboard/tests/test_control_tower_projection.py. Translate the complete visible UI."
+    plan = adapter._explicit_scoped_plan({"task_description": task}, "run-test", "a" * 40)
+    assert plan["contract"] == "autodev.plan.v1"
+    assert plan["targets"]["files"] == [
+        "dashboard/control_tower.py",
+        "dashboard/static/index.html",
+        "dashboard/tests/test_control_tower_projection.py",
+    ]
+    assert plan["build_scope"]["allowed_files"] == plan["targets"]["files"]
+    assert adapter.registry.validate(plan, "autodev.plan.v1")["ok"]
+
+
 def test_scope_consistency_fails_closed():
     plan = _semantic_plan()
     plan["targets"]["files"].append("lib/not-allowed.dart")

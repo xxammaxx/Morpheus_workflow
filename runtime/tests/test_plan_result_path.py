@@ -91,3 +91,34 @@ def test_external_default_branch_is_not_hardcoded_main():
     source = (ROOT / "workflow" / "v2" / "generate_workflows_v2.py").read_text()
     assert "repository_ref" in source
     assert "repository_ref: 'main'" not in source
+
+
+def test_generated_orchestrator_proves_all_terminal_handoffs(tmp_path):
+    out = tmp_path / "workflows"
+    subprocess.run([sys.executable, str(GENERATOR), str(CONFIG), str(out)], check=True)
+    orch = json.loads((out / "01 AutoDev Orchestrator.json").read_text())
+    names = {node["name"] for node in orch["nodes"]}
+    assert {"Verify State Prep", "Verify State Update", "Verify State Restore"} <= names
+    assert {"Decision State Prep", "Decision State Update", "Decision State Restore"} <= names
+    assert "Decision Retry Guard" in names
+
+    def has_edge(source, target, index=0):
+        groups = orch["connections"][source]["main"]
+        return any(
+            edge["node"] == target
+            for edge in groups[index]
+        )
+
+    assert has_edge("Build Attempt Attempt Restore", "Verify State Prep")
+    assert has_edge("Fix Attempt Attempt Restore", "Verify State Prep")
+    assert has_edge("Decision Fix Attempt Attempt Restore", "Verify State Prep")
+    assert has_edge("Verify State Restore", "Run Verify")
+    assert has_edge("Security Blocked?", "Decision State Prep", 1)
+    assert has_edge("Decision State Restore", "Run Decision")
+    assert has_edge("Post-Decision", "Decision Retry Guard")
+    assert has_edge("Decision Retry Guard", "Decision DONE?")
+    retry_guard = next(
+        n["parameters"]["jsCode"]
+        for n in orch["nodes"] if n["name"] == "Decision Retry Guard"
+    )
+    assert "RETRY_DENIED_ATTEMPT_LIMIT" in retry_guard

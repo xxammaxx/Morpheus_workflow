@@ -1000,12 +1000,22 @@ return [{json: Object.assign({}, s, {
     wf.add("Build OK?", c, 0)
 
     # VERIFY phase
+    verify_state_c, verify_state_h, verify_state_r = state_update_nodes(
+        wf,
+        cfg,
+        "Verify State",
+        "VERIFYING",
+        "verify",
+        "row.reason_code = 'BUILD_PASSED';",
+        P(22, 0),
+    )
+    wf.add(r, verify_state_c)
     wf.add_node(
         execute_wf_node(
             cfg, "Run Verify", "50 AutoDev Verify", P(23, 0), {"executeOnce": True}
         )
     )
-    wf.add(r, "Run Verify")
+    wf.add(verify_state_r, "Run Verify")
 
     wf.add("Run Verify", "Post-Verify")
     wf.add_node(
@@ -1114,7 +1124,7 @@ return [{json: Object.assign({}, s, {
     c, h, r = attempts_insert_nodes(wf, cfg, "Fix Attempt", P(34, 0))
     wf.add("Fix OK?", c, 0)
     # loop: fix attempt -> verify again
-    wf.add(r, "Run Verify")
+    wf.add(r, verify_state_c)
 
     # SPLIT path (retry policy)
     wf.add_node(
@@ -1214,12 +1224,22 @@ return [{json: Object.assign({}, s, {
     wf.add("Security Blocked?", c, 0)
 
     # DECISION phase
+    decision_state_c, decision_state_h, decision_state_r = state_update_nodes(
+        wf,
+        cfg,
+        "Decision State",
+        "DECIDING",
+        "decision",
+        "row.reason_code = 'REVIEW_PASSED';",
+        P(30, 2),
+    )
+    wf.add("Security Blocked?", decision_state_c, 1)
     wf.add_node(
         execute_wf_node(
             cfg, "Run Decision", "70 AutoDev Decision", P(30, 2), {"executeOnce": True}
         )
     )
-    wf.add("Security Blocked?", "Run Decision", 1)
+    wf.add(decision_state_r, "Run Decision")
     wf.add("Run Decision", "Post-Decision")
     wf.add_node(
         code_node(
@@ -1229,6 +1249,21 @@ const d = out.decision_contract || {};
 const s = Object.assign({}, $('Review State Prep').first().json.state || {});
 return [{json: Object.assign({}, s, {decision: d || null})}];""",
             P(31, 2),
+        )
+    )
+    wf.add_node(
+        code_node(
+            "Decision Retry Guard",
+            """const s = $json;
+const d = Object.assign({}, s.decision || {});
+const attempts = (s.attempt_build || 0) + (s.attempt_fix || 0);
+const maxAttempts = s.max_attempts || 2;
+if (d.decision === 'FIX' && attempts >= maxAttempts) {
+  d.decision = 'BLOCKED';
+  d.reason_code = 'RETRY_DENIED_ATTEMPT_LIMIT';
+}
+return [{json: Object.assign({}, s, {decision: d})}];""",
+            P(31, 3),
         )
     )
     wf.add_node(
@@ -1314,7 +1349,7 @@ return [{json: Object.assign({}, s, {
     wf.add("Fix OK? (Decision)", c3, 1)
     c4, h4, r = attempts_insert_nodes(wf, cfg, "Decision Fix Attempt", P(38, 3))
     wf.add("Fix OK? (Decision)", c4, 0)
-    wf.add(r, "Run Verify")  # re-verify after decision fix
+    wf.add(r, verify_state_c)  # re-verify after decision fix
 
     # SPLIT from decision
     wf.add_node(
@@ -1376,7 +1411,8 @@ return [{json: Object.assign({}, s, {split: sp, split_ok: !!sp && !!sp.contract}
     ensure("Post-Fix", "Fix OK?")
     ensure("Post-Fix (Decision)", "Fix OK? (Decision)")
     ensure("Post-Review", "Security Blocked?")
-    ensure("Post-Decision", "Decision DONE?")
+    ensure("Post-Decision", "Decision Retry Guard")
+    ensure("Decision Retry Guard", "Decision DONE?")
     ensure("Retry Policy", "Retry FIX?")
     ensure("Run Baseline", "Post-Baseline")
     ensure("Run Research", "Post-Research")
