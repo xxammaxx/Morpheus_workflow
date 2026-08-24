@@ -127,8 +127,11 @@ def adapter_health():
 
 
 def n8n_health():
-    status, _ = Upstream(N8N_BASE, {"X-N8N-API-KEY": N8N_API_KEY}).get("/workflows", {"limit": 1})
-    return safe_status(status == 200)
+    status, payload = Upstream(N8N_BASE, {"X-N8N-API-KEY": N8N_API_KEY}).get("/workflows", {"limit": 250})
+    health = safe_status(status == 200)
+    workflows = list_items(payload) if status == 200 else []
+    health["workflow_count"] = sum(1 for item in workflows if str(item.get("name", "")).startswith("AutoDev"))
+    return health
 
 
 def timeline(attempts):
@@ -163,7 +166,7 @@ def projection():
     if runtime.get("automatic_paid_agent_escalation"): alerts.append({"severity": "CRITICAL", "message": "Automatic paid escalation enabled"})
     if not health_n8n["status"] == "HEALTHY": alerts.append({"severity": "HIGH", "message": "n8n UNAVAILABLE"})
     if not health_adapter["status"] == "HEALTHY": alerts.append({"severity": "HIGH", "message": "Adapter UNAVAILABLE"})
-    return {"contract": "autodev.control-tower-overview.v1", "version": "v1", "generated_at": now(), "freshness": {"checked_at": now(), "freshness_seconds": 0}, "system_health": {"n8n": health_n8n, "adapter": health_adapter, "provider_pool": safe_status(runtime_ok and bool(pool))}, "free_pool": {"size": len(pool), "providers": pool}, "run_counts": run_counts, "recent_runs": recent, "alerts": alerts, "release": {"dashboard_version": VERSION, "v1_release": "v1.0.0", "dashboard_release": "v1.1.0-candidate", "free_first_active": bool(runtime.get("free_first_enabled")), "paid_escalation": bool(runtime.get("automatic_paid_agent_escalation")), "deepseek": "INELIGIBLE"}, "sources": {"n8n": "LIVE" if runs_ok and health_n8n["status"] == "HEALTHY" else "UNAVAILABLE", "adapter": "LIVE" if runtime_ok else "UNAVAILABLE"}}
+    return {"contract": "autodev.control-tower-overview.v1", "version": "v1", "generated_at": now(), "freshness": {"checked_at": now(), "freshness_seconds": 0}, "system_health": {"n8n": health_n8n, "adapter": health_adapter, "provider_pool": safe_status(runtime_ok and bool(pool))}, "free_pool": {"size": len(pool), "providers": pool}, "run_counts": run_counts, "recent_runs": recent, "alerts": alerts, "release": {"dashboard_version": VERSION, "v1_release": "v1.0.0", "dashboard_release": "v1.1.0-candidate", "n8n_autodev_workflows": health_n8n.get("workflow_count", 0), "free_first_active": bool(runtime.get("free_first_enabled")), "paid_escalation": bool(runtime.get("automatic_paid_agent_escalation")), "deepseek": "INELIGIBLE"}, "sources": {"n8n": "LIVE" if runs_ok and health_n8n["status"] == "HEALTHY" else "UNAVAILABLE", "adapter": "LIVE" if runtime_ok else "UNAVAILABLE"}}
 
 
 def run_view(run_id):
