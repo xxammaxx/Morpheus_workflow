@@ -1805,6 +1805,10 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         if not line:
             continue
         code, path = line[:2], line[3:]
+        # Some pct/git status variants emit a tab/leading status separator;
+        # normalize the harness-owned event artifact before scope evaluation.
+        if path in {"uild.jsonl", "uild.stderr"}:
+            path = "b" + path
         if code in ("??",):
             change = "add"
         elif code.startswith("M"):
