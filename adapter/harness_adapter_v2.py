@@ -1310,6 +1310,10 @@ def _ensure_workspace(run_id):
 def job_baseline(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     ws = _ensure_workspace(run_id)
     head, status, branch = _git_state(ws)
+    if len(head) < 7:
+        head = "workspace-" + str(run_id)[:48]
+    if not branch:
+        branch = "main"
     files = pct_stdout(
         "cd '%s' && find . -type f -not -path './.git/*' "
         "-not -path './local_llm/*' -not -path './.opencode/*' | "
