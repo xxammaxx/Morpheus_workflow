@@ -185,6 +185,19 @@ class ProviderCatalog:
                 **(previous.get("capabilities") or {}),
                 **(entry.get("capabilities") or {}),
             }
+            for key in (
+                "probe_attempted",
+                "promoted_free_eligible",
+                "execution_proof",
+                "selection_to_execution_proven",
+                "actual_cost_proof",
+                "actual_cost",
+                "actual_provider",
+                "actual_model",
+                "resolved_model",
+            ):
+                if key in previous:
+                    entry[key] = previous[key]
         self.entries = [
             old
             for old in self.entries
