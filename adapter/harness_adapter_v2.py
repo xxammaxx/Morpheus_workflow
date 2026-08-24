@@ -1600,26 +1600,19 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         # result through the existing issue x-metadata extension field.
         research_context = "\nValidated research context:\n%s\n" % json.dumps(
             research, ensure_ascii=False, sort_keys=True
-        )[:12000]
+        )[:4000]
     prompt = (
         "/no_think\n"
-        "You are a READ-ONLY planning worker. Workspace: current directory. "
-        "Task: %s\n"
+        "You are a read-only planning worker. Task: %s\n"
         "%s"
-        "The read-only permission policy and sentinel-deny preflight have already been "
-        "verified. Do not call write, edit, task, bash, or any other tool in this turn; "
-        "return the plan JSON directly. No commands, no network, and no file writes.\n"
-        "The sentinel is only a permission test; it is NOT a target, acceptance criterion, "
-        "required test, or allowed build file. Never include '.plan-canary-sentinel' in the JSON.\n"
-        "Respond with ONLY a JSON object of this exact shape (no markdown fences):\n"
-        "{\n"
-        ' "targets": {"files": ["<files to create/modify>"], "symbols": ["<symbols or []>"]},\n'
-        ' "acceptance_criteria": ["<criterion 1>", "<criterion 2>"],\n'
-        ' "required_tests": ["<test file or command>", "..."],\n'
-        ' "risks": ["<risk or []>"],\n'
-        ' "build_scope": {"allowed_files": ["<files the build may touch>"]},\n'
-        ' "research_summary": "<max 1000 chars>"\n'
-        "}"
+        "The read-only policy and sentinel-deny preflight are already verified. "
+        "Do not call write, edit, task, bash, or any tool; do not access the network. "
+        "Return JSON immediately, with concrete non-empty targets and allowed_files "
+        "supported by the task/research. Never include .plan-canary-sentinel.\n"
+        "Schema: {\"targets\":{\"files\":[\"path\"],\"symbols\":[]},"
+        "\"acceptance_criteria\":[\"criterion\"],\"required_tests\":[\"test\"],"
+        "\"risks\":[],\"build_scope\":{\"allowed_files\":[\"path\"]},"
+        "\"research_summary\":\"brief evidence\"}"
     ) % (payload.get("task_description", ""), research_context)
     script = _opencode_script(
         ws,
