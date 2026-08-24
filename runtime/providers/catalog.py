@@ -225,7 +225,9 @@ class ProviderCatalog:
                         "AUTODEV_%s_ACCOUNT_CLASS" % provider.upper(), "unknown"
                     ),
                 )
-                entry["credential_valid"] = bool(adapter.credential)
+                entry["credential_valid"] = (
+                    True if not adapter.credential_env else bool(adapter.credential)
+                )
                 capability = self.capability_registry.get(provider, entry.get("model"))
                 if capability:
                     entry["capabilities"] = capability.get("capabilities", {})
