@@ -1,5 +1,22 @@
 # Morpheus V1 final security closure — 2026-08-24
 
+## Final closure classification
+
+```text
+USER_ROTATION_ATTESTATION=PASS
+GITHUB_PERSONAL_ACCESS_TOKEN_PERSISTENT_SOURCE=false
+CLEAN_SHELL_GITHUB_PERSONAL_ACCESS_TOKEN=false
+CURRENT_GIT_AUTH_SOURCE=gh keyring/OAuth helper
+GITHUB_TOKEN_ROTATION=PASS
+SECURITY_REVIEW_FINAL=PASS
+SECRET_VALUES_EXPOSED=false
+```
+
+The previously exposed token was rotated according to the user attestation.
+The unused local environment assignment and historical local copies were
+removed without recording token material. Git operations continue through the
+gh keyring/OAuth helper.
+
 ```text
 PUBLIC_SECRET_SCAN=PASS
 N8N_API_SECRET_STORAGE=PASS root-only mode 0600 credential store
@@ -11,17 +28,5 @@ MAINTENANCE_SEAM_DEFAULT=OFF
 SECRET_VALUES_EXPOSED=false
 ```
 
-The current GitHub Git operation path is the `gh` keyring/OAuth helper. A
-`GITHUB_PERSONAL_ACCESS_TOKEN` environment variable name is present locally,
-but its value and identity were not inspected or recorded. The previously
-exposed GitHub token is not server-side revocation-proven in this run.
-
-```text
-GITHUB_TOKEN_ROTATION=HUMAN_ACTION_REQUIRED
-CURRENT_GIT_AUTH_SOURCE=gh keyring/OAuth helper (status-only)
-SECURITY_REVIEW_FINAL=BLOCKED_ONLY_BY_OLD_TOKEN_REVOCATION_PROOF
-```
-
-Required human action: revoke the previously exposed GitHub personal access
-token in GitHub Settings → Developer settings → Personal access tokens. No
-other provider, n8n, architecture, billing, or credential action is required.
+No other provider, n8n, architecture, billing, or credential action is
+required for V1 closure.

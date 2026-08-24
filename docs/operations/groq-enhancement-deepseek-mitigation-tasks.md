@@ -1,5 +1,10 @@
 # Groq Enhancement and DeepSeek Retirement - Proposed Atomic Tasks
 
+> STATUS=HISTORICAL_DELTA_SUPERSEDED_BY_IMPLEMENTED_V1
+>
+> These tasks remain as historical provenance. Implemented V1 behavior and
+> closure evidence are authoritative; Control Tower work is V1.1 scope.
+
 ## D1 PROPOSED Groq Transport Fix
 
 **Task**: PROPOSED Fix User-Agent Header Construction

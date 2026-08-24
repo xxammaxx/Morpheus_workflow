@@ -1,5 +1,14 @@
 # AutoDev Harness – Graph Orchestrator v1 — Abschlussbericht
 
+## Morpheus V1 closure
+
+`GREEN_MORPHEUS_V1_PRODUCTION_OPERATIONAL` — the implemented free-first
+runtime is formally closed at V1. The release boundary is `v1.0.0`; the
+read-only Control Tower is a separate V1.1 scope and is not part of that tag.
+
+Authoritative closure evidence: `evidence/free-first/final-v1-release.md` and
+`evidence/free-first/final-security-closure.md`.
+
 Stand: 2026-08-16
 
 ## Final Classification

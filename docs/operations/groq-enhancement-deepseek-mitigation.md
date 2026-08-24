@@ -1,5 +1,11 @@
 # Groq Enhancement and DeepSeek Retirement - Proposed Runbook
 
+> STATUS=HISTORICAL_DELTA_SUPERSEDED_BY_IMPLEMENTED_V1
+>
+> Retained unchanged as historical provenance. Current runtime truth is in
+> the V1 closure evidence; the read-only Control Tower begins separately in
+> V1.1.
+
 ## Current State
 
 - D1: User-Agent headers are absent today in `runtime/providers/adapters.py`

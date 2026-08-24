@@ -1,5 +1,11 @@
 # ADR-2026-08-22: Paid DeepSeek Agent-Routing Retirement
 
+> STATUS=HISTORICAL_DELTA_SUPERSEDED_BY_IMPLEMENTED_V1
+>
+> This ADR is retained for provenance. The implemented V1 runtime and final
+> closure evidence supersede its proposed state; the Control Tower is a
+> separate V1.1 read-model change.
+
 Status: PROPOSED
 
 ## Context

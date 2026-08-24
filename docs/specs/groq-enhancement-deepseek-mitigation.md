@@ -1,5 +1,11 @@
 # Groq Enhancement and DeepSeek Retirement Specification
 
+> STATUS=HISTORICAL_DELTA_SUPERSEDED_BY_IMPLEMENTED_V1
+>
+> The original proposal is retained for provenance. The implemented V1
+> runtime and its closure evidence are authoritative; the Control Tower is
+> intentionally outside that historical delta and starts in V1.1.
+
 Status: DRAFT / NOT_IMPLEMENTED
 
 ## Problem

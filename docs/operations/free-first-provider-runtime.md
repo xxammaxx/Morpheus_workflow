@@ -70,3 +70,17 @@ eligible. Automatic paid escalation and DeepSeek execution remain disabled.
 The maintenance-only variable `AUTODEV_MAINTENANCE_FAIL_PROVIDER` is unset by
 default and was cleared after the final reverse-failover proof. It must never
 be enabled outside a bounded, authorized maintenance run.
+# V1 closure status — 2026-08-24
+
+```text
+FINAL_CLASSIFICATION=GREEN_MORPHEUS_V1_PRODUCTION_OPERATIONAL
+FREE_POOL_SIZE=2
+FREE_POOL_PROVIDERS=openrouter,ollama
+PRODUCTION_FREE_FIRST_ACTIVE=true
+DEEPSEEK_REQUESTS=0
+PAID_REQUESTS=0
+CONTROL_TOWER=V1.1_SEPARATE_POST_V1_SCOPE
+```
+
+The V1 closure evidence is authoritative for the implemented runtime. The
+historical Delta SpecKit remains preserved for provenance.

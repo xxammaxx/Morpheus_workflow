@@ -1,5 +1,14 @@
 # Morpheus V1 final closure status — 2026-08-24
 
+```text
+FINAL_CLASSIFICATION=GREEN_MORPHEUS_V1_PRODUCTION_OPERATIONAL
+V1_CRITICAL_BLOCKERS_REMAINING=0
+GITHUB_TOKEN_ROTATION=PASS
+SECURITY_REVIEW_FINAL=PASS
+USER_ACTION_REQUIRED=NONE
+CONTROL_TOWER_SCOPE=V1.1_AFTER_V1.0.0_BOUNDARY
+```
+
 ## Acceptance matrix
 
 | Original criterion | V1 amended criterion | Evidence | Status |
@@ -24,6 +33,5 @@ UNEXPECTED_BILLABLE_USAGE=0
 PRODUCTION_CANARY=PASS
 ```
 
-Release tagging and Issue #1 closure remain gated solely by the known
-server-side revocation proof for the previously exposed GitHub token. No
-release tag is claimed by this evidence.
+Release tagging and Issue #1 closure are the next delivery actions in this
+run. This V1 evidence contains no Control Tower implementation.
