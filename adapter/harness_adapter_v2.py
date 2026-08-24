@@ -1135,6 +1135,10 @@ PLAN_TOOLS = {
     "question": False,
     "todowrite": False,
 }
+# OpenCode 1.18 may retry denied external-directory tools even when the
+# prompt asks for JSON-only output. Keep research read-only, but make the
+# bounded serialization turn completely tool-free.
+PLAN_SERIALIZATION_TOOLS = {key: False for key in PLAN_TOOLS}
 PLAN_PERMS = {
     "read": "allow",
     "glob": "allow",
@@ -1618,7 +1622,7 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         ws,
         "plan-worker",
         _agent_md(
-            "plan-worker", PLAN_TOOLS, PLAN_PERMS,
+            "plan-worker", PLAN_SERIALIZATION_TOOLS, PLAN_PERMS,
             "Read-only planning worker", _worker_identity(payload)[1],
         ),
         prompt,
