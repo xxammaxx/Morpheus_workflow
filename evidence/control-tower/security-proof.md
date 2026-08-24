@@ -12,3 +12,10 @@ NO_REQUEST_PATH_SHELL_EXECUTION=PASS
 
 The adapter runtime route is authenticated with the existing
 `X-Harness-Token` validator and performs no refresh or provider call.
+
+```text
+NO_VIEWER_TOKEN=401
+WRONG_VIEWER_TOKEN=401
+POST_RUNS=405
+PUBLIC_SECRET_SCAN=PASS
+```

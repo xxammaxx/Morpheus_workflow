@@ -8,5 +8,11 @@ CONTROL_TOWER_SERVICE=morpheus-control-tower.service
 ```
 
 The service uses a dedicated non-login user and systemd hardening with
-LoadCredential injection. Final active-state and health output is recorded at
-deployment completion.
+LoadCredential injection.
+
+```text
+CONTROL_TOWER_SERVICE_STATE=active
+HEALTHZ=PASS
+PORT_8090=OCCUPIED_BY_EXISTING_HAMH_RESOLVER
+HARDENING=NoNewPrivileges,PrivateTmp,ProtectSystem=strict,ProtectHome,ProtectKernelTunables,ProtectKernelModules,ProtectControlGroups,LockPersonality,RestrictSUIDSGID
+```
