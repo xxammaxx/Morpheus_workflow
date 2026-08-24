@@ -2001,7 +2001,7 @@ def _dispatch(
         _provider_runtime is not None
         and _provider_runtime.enabled
         and backend != "embedded"
-        and effective_task_class not in ("build", "fix", "plan")
+        and effective_task_class not in ("baseline", "build", "fix", "plan")
     ):
         preference_provider = (
             provider
