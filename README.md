@@ -290,3 +290,17 @@ Fehler, kein LLM-Urteil.
 - n8n/workflows/autodev/*.json (12 Exporte)
 - evidence/** (phase-a-v2, phase-d-v2, tests/v2, backup/v2-backup-20260817)
 - docs/architecture/autodev-harness-v2.md, docs/operations/autodev-harness-v2.md
+
+## Morpheus V1 Free-First Closure (2026-08-24)
+
+The verified production free pool is **OpenRouter + Ollama**. OpenRouter is
+the external `openrouter/free` hard-zero route; Ollama is the independent
+trusted local zero-cost path. Live provider failover is proven in both
+directions within one semantic attempt, and free-pool exhaustion fails closed
+as `NO_ELIGIBLE_FREE_PROVIDER`. DeepSeek and automatic paid escalation remain
+disabled. Groq transport is retained as an optional future provider; its
+account tier is UNKNOWN and it is not free-eligible.
+
+The final production canary used Ollama only. Release tagging and Issue #1
+closure remain pending the server-side revocation proof for the previously
+exposed GitHub token. See `evidence/free-first/final-v1-release.md`.

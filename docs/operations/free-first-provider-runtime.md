@@ -58,3 +58,15 @@ root-only `provider.env` state file.
   back to DeepSeek or a paid provider.
 - DeepSeek remains paid escalation only unless explicitly selected by policy.
 - Disable the feature switch to restore the previous adapter path.
+
+## V1 production state
+
+The verified production free pool is OpenRouter plus Ollama. OpenRouter uses
+the external `openrouter/free` hard-stop route; Ollama uses the explicitly
+trusted private local endpoint. Groq transport is retained as an optional
+future provider, but its account tier remains UNKNOWN and it is not free
+eligible. Automatic paid escalation and DeepSeek execution remain disabled.
+
+The maintenance-only variable `AUTODEV_MAINTENANCE_FAIL_PROVIDER` is unset by
+default and was cleared after the final reverse-failover proof. It must never
+be enabled outside a bounded, authorized maintenance run.
