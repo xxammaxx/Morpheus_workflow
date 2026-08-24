@@ -15,6 +15,7 @@ from .protocol import (
     normalized_entry,
     parse_rate_limit_headers,
 )
+from .lease import ProbeLeaseError, ProviderProbeLease
 
 APPLICATION_VERSION = "1.0"
 APPLICATION_USER_AGENT = "Morpheus-AutoDev/%s" % APPLICATION_VERSION
@@ -57,7 +58,15 @@ class ProviderAdapter:
     def credential(self):
         return os.environ.get(self.credential_env, "").strip()
 
-    def _request(self, method, path, payload=None, timeout=20, headers=None):
+    def _request(self, method, path, payload=None, timeout=20, headers=None, probe_lease_id=None):
+        lease = ProviderProbeLease()
+        try:
+            if probe_lease_id:
+                lease.authorize(self.provider, probe_lease_id)
+            else:
+                lease.check_ordinary(self.provider)
+        except ProbeLeaseError as exc:
+            raise ProviderFailure(str(exc), retryable=False) from exc
         url = (
             path if path.startswith("http") else self.base_url + "/" + path.lstrip("/")
         )
@@ -121,6 +130,11 @@ class ProviderAdapter:
                         "context_length", model.get("context_window", 0)
                     ),
                     supports_tools=bool(model.get("supports_tools", False)),
+                    capabilities=(
+                        {"RESEARCH_CAPABLE": True}
+                        if self.provider in {"ollama", "lmstudio"}
+                        else {}
+                    ),
                     provider_metadata={"raw_model_metadata": model},
                     rate_limits=parse_rate_limit_headers(headers),
                 )
@@ -146,7 +160,7 @@ class ProviderAdapter:
                 }
             return {"state": "UNAVAILABLE", "detail": str(exc)[:120]}
 
-    def invoke(self, request, timeout=60):
+    def invoke(self, request, timeout=60, probe_lease_id=None):
         payload = {
             "model": request.model,
             "messages": request.messages,
@@ -160,6 +174,7 @@ class ProviderAdapter:
             headers={"Idempotency-Key": request.outbound_request_id}
             if request.outbound_request_id
             else None,
+            probe_lease_id=probe_lease_id,
         )
         choices = response.get("choices") or []
         message = choices[0].get("message", {}) if choices else {}
@@ -210,6 +225,11 @@ def build_adapters():
         "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY", {}),
         "lmstudio": (
             os.environ.get("LMSTUDIO_BASE_URL", "http://127.0.0.1:1234/v1"),
+            "",
+            {},
+        ),
+        "ollama": (
+            os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1"),
             "",
             {},
         ),

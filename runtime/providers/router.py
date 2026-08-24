@@ -146,7 +146,7 @@ class ProviderRouter:
                       e.get("endpoint") == updated.get("route_endpoint")), {})
         if response.actual_cost is not None:
             updated["actual_cost_proof"] = "EXPLICIT_ZERO" if response.actual_cost == 0 else "EXPLICIT_NONZERO"
-        elif entry.get("cost_class") == "FREE_HARD_STOP" and entry.get("input_price") == 0 and entry.get("output_price") == 0 and entry.get("automatic_paid_fallback") is False:
+        elif entry.get("cost_class") in {"FREE_HARD_STOP", "LOCAL_ZERO_COST"} and entry.get("input_price") == 0 and entry.get("output_price") == 0 and entry.get("automatic_paid_fallback") is False:
             updated["actual_cost_proof"] = "CATALOG_HARD_ZERO"
         else:
             updated["actual_cost_proof"] = "UNKNOWN"
@@ -167,6 +167,10 @@ class ProviderRouter:
         if updated["execution_proof"] == "PASS" and updated["actual_cost_proof"] in {"EXPLICIT_ZERO", "USAGE_ZERO", "CATALOG_HARD_ZERO"}:
             for catalog_entry in self.catalog.entries:
                 if (catalog_entry.get("provider"), catalog_entry.get("model"), catalog_entry.get("endpoint")) == (updated.get("selected_provider"), updated.get("selected_model"), updated.get("route_endpoint")):
-                    catalog_entry.update({"probe_attempted": True, "promoted_free_eligible": True, "execution_proof": "PASS", "selection_to_execution_proven": True, "actual_cost_proof": updated["actual_cost_proof"], "actual_cost": response.actual_cost})
+                    stages = set(catalog_entry.get("free_evidence") or [])
+                    stages.update({"DIRECT_LIVE_PROVEN", "ADAPTER_LIVE_PROVEN", "SELECTION_TO_EXECUTION_PROVEN"})
+                    catalog_entry.update({"probe_attempted": True, "promoted_free_eligible": True, "execution_proof": "PASS", "selection_to_execution_proven": True, "actual_cost_proof": updated["actual_cost_proof"], "actual_cost": response.actual_cost, "free_evidence": sorted(stages)})
+                    free_eligibility(catalog_entry)
+                    self.catalog.save()
                     break
         return updated

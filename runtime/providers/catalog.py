@@ -5,6 +5,7 @@ import copy
 import json
 import os
 import tempfile
+import urllib.parse
 
 from .adapters import build_adapters
 from .capabilities import CapabilityRegistry
@@ -50,6 +51,31 @@ def apply_policy(entry, provider, account_class="unknown"):
         "AUTODEV_%s_USAGE_TERMS_APPROVED" % provider.upper(), "false"
     ).lower() in {"1", "true", "yes"}
     entry["automatic_paid_fallback"] = False
+    endpoint = str(entry.get("endpoint", ""))
+    parsed = urllib.parse.urlparse(endpoint)
+    trusted_local = (
+        provider in {"ollama", "lmstudio"}
+        and parsed.scheme in {"http", "https"}
+        and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+        and endpoint.rstrip("/") in {
+            os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1").rstrip("/"),
+            os.environ.get("LMSTUDIO_BASE_URL", "http://127.0.0.1:1234/v1").rstrip("/"),
+        }
+    )
+    if trusted_local:
+        entry.update({
+            "account_class": "local",
+            "account_class_evidence": "PASS",
+            "cost_class": "LOCAL_ZERO_COST",
+            "input_price": 0,
+            "output_price": 0,
+            "privacy_class": "ALLOWED",
+            "usage_terms_permit": True,
+            "route_exists": True,
+            "route_cost_proven": True,
+            "automatic_paid_fallback": False,
+            "free_evidence": ["CATALOG_FREE", "ACCOUNT_FREE_ELIGIBLE"],
+        })
     if provider == "openrouter" and str(entry.get("model", "")).lower() == "openrouter/free":
         entry.update({
             "privacy_class": "ALLOWED",

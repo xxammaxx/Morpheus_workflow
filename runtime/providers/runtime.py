@@ -13,6 +13,7 @@ from .protocol import (
     new_id,
 )
 from .router import ProviderRouter
+from .lease import ProviderProbeLease
 
 
 class ProviderRuntime:
@@ -49,7 +50,11 @@ class ProviderRuntime:
             routing_event_id=decision.get("routing_event_id", ""),
             outbound_request_id=outbound_id,
         )
-        response = adapter.invoke(request, timeout=timeout)
+        response = adapter.invoke(
+            request,
+            timeout=timeout,
+            probe_lease_id=decision.get("probe_lease_id"),
+        )
         updated = self.router.record_execution(
             decision, response, outbound_id, attempt_id
         )
@@ -69,6 +74,29 @@ class ProviderRuntime:
         return ProviderExecution(
             updated, response, updated.get("fallback_chain", []), attempt_id, proof
         )
+
+    def acquire_probe_lease(self, provider, owner="morpheus-maintenance"):
+        return ProviderProbeLease().acquire(provider, owner)
+
+    def probe_once(self, provider, model, messages, task_class="research", timeout=60, owner="morpheus-maintenance"):
+        lease = self.acquire_probe_lease(provider, owner)
+        decision = self.router._decision(
+            {
+                "provider": provider,
+                "model": model,
+                "endpoint": self.catalog.adapters[provider].base_url,
+                "cost_class": "LOCAL_ZERO_COST" if provider in {"ollama", "lmstudio"} else "FREE_HARD_STOP",
+                "account_class": "local" if provider in {"ollama", "lmstudio"} else "verified-free-account",
+            },
+            RouteRequest(provider=provider, model=model, task_class=task_class),
+            0,
+        )
+        decision["probe_lease_id"] = lease["lease_id"]
+        try:
+            result = self.direct_invoke(decision, messages, task_class, timeout, "probe-" + lease["lease_id"][:12])
+        finally:
+            ProviderProbeLease().release(lease["lease_id"])
+        return result
 
     def invoke_with_failover(self, request, messages, task_class, timeout, attempt_id):
         decisions = self.router.candidates(request)
