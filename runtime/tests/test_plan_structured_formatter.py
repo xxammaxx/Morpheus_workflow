@@ -38,6 +38,15 @@ def test_formatter_schema_tracks_canonical_model_fields():
     assert schema["properties"]["targets"]["required"] == ["files", "symbols"]
 
 
+def test_worker_agent_model_tracks_selected_local_route():
+    agent = adapter._agent_md(
+        "plan-worker", adapter.PLAN_TOOLS, adapter.PLAN_PERMS,
+        "test worker", "qwen3:1.7b",
+    )
+    assert "model: lmstudio/qwen3:1.7b" in agent
+    assert adapter.LMSTUDIO_MODEL not in agent
+
+
 def test_scope_consistency_fails_closed():
     plan = _semantic_plan()
     plan["targets"]["files"].append("lib/not-allowed.dart")

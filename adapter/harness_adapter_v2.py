@@ -1097,7 +1097,7 @@ def _ws(run_id):
     return os.path.join(BUILDER_WS_ROOT, "autodev-v2-%s" % run_id)
 
 
-def _agent_md(name, tools, permissions, blurb):
+def _agent_md(name, tools, permissions, blurb, model=None):
     return (
         "---\n"
         "description: %s\n"
@@ -1109,7 +1109,7 @@ def _agent_md(name, tools, permissions, blurb):
         "You are a bounded harness worker (%s). Follow the task text exactly.\n"
         % (
             blurb,
-            LMSTUDIO_MODEL,
+            model or LMSTUDIO_MODEL,
             "".join(
                 "  %s: %s\n" % (k, "true" if v else "false") for k, v in tools.items()
             ),
@@ -1548,6 +1548,7 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
             RESEARCH_TOOLS,
             RESEARCH_PERMS,
             "Read-only research worker",
+            _worker_identity(payload)[1],
         ),
         prompt,
         timeout_s,
@@ -1622,7 +1623,10 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     script = _opencode_script(
         ws,
         "plan-worker",
-        _agent_md("plan-worker", PLAN_TOOLS, PLAN_PERMS, "Read-only planning worker"),
+        _agent_md(
+            "plan-worker", PLAN_TOOLS, PLAN_PERMS,
+            "Read-only planning worker", _worker_identity(payload)[1],
+        ),
         prompt,
         timeout_s,
         *_worker_identity(payload),
@@ -1755,7 +1759,10 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     script = _opencode_script(
         ws,
         "build-worker",
-        _agent_md("build-worker", BUILD_TOOLS, BUILD_PERMS, "Bounded build worker"),
+        _agent_md(
+            "build-worker", BUILD_TOOLS, BUILD_PERMS,
+            "Bounded build worker", _worker_identity(payload)[1],
+        ),
         prompt,
         timeout_s,
         *_worker_identity(payload),
