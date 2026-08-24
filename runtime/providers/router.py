@@ -169,6 +169,8 @@ class ProviderRouter:
                 if (catalog_entry.get("provider"), catalog_entry.get("model"), catalog_entry.get("endpoint")) == (updated.get("selected_provider"), updated.get("selected_model"), updated.get("route_endpoint")):
                     stages = set(catalog_entry.get("free_evidence") or [])
                     stages.update({"DIRECT_LIVE_PROVEN", "ADAPTER_LIVE_PROVEN", "SELECTION_TO_EXECUTION_PROVEN"})
+                    if catalog_entry.get("provider") == "openrouter" and catalog_entry.get("model") == "openrouter/free":
+                        stages.update({"CATALOG_FREE", "ACCOUNT_FREE_ELIGIBLE"})
                     catalog_entry.update({"probe_attempted": True, "promoted_free_eligible": True, "execution_proof": "PASS", "selection_to_execution_proven": True, "actual_cost_proof": updated["actual_cost_proof"], "actual_cost": response.actual_cost, "free_evidence": sorted(stages)})
                     free_eligibility(catalog_entry)
                     self.catalog.save()

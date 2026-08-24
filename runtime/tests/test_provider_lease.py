@@ -23,12 +23,15 @@ def main():
         path = os.path.join(state, "lease.json")
         now = [1000.0]
         lease = ProviderProbeLease(path=path, ttl=120, clock=lambda: now[0])
+        lease.check_ordinary("openrouter")
+        check("T1_NORMAL_TRAFFIC_ALLOWED_WITHOUT_LEASE", True)
         lease_a = lease.acquire("openrouter", "test-owner")
         try:
             lease.check_ordinary("openrouter")
         except ProbeLeaseError as exc:
             check("T2_LEASE_BLOCKS_ORDINARY_TRAFFIC", str(exc) == "PROVIDER_PROBE_LEASE_ACTIVE")
-        lease.authorize("openrouter", lease_a["lease_id"])
+        authorized = lease.authorize("openrouter", lease_a["lease_id"])
+        check("T3_CORRECT_LEASE_PERMITS_ONE_PROBE", authorized["remaining_probe_requests"] == 0)
         try:
             lease.authorize("openrouter", lease_a["lease_id"])
         except ProbeLeaseError as exc:
