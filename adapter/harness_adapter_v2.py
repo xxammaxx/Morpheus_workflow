@@ -1840,14 +1840,12 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         "changed_files": files[:50],
         "summary": summary,
         "test_results": {"passed": 0, "failed": 0},
-        "failure": None
-        if not out_of_scope
-        else {
+        **({} if not out_of_scope else {"failure": {
             "failure_signature": "OUT_OF_SCOPE_"
             + _sha(",".join(sorted(out_of_scope)))[:16],
             "message": "files outside build_scope modified: %s"
             % ", ".join(out_of_scope[:10]),
-        },
+        }}),
     }
     if out_of_scope:
         finalize_job(
