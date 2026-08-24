@@ -127,7 +127,7 @@ def adapter_health():
 
 
 def n8n_health():
-    status, _ = Upstream(N8N_BASE).get("/workflows", {"limit": 1})
+    status, _ = Upstream(N8N_BASE, {"X-N8N-API-KEY": N8N_API_KEY}).get("/workflows", {"limit": 1})
     return safe_status(status == 200)
 
 
