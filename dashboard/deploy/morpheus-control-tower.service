@@ -25,7 +25,7 @@ LoadCredential=n8n_api_key:/var/lib/n8n-spec-kit/secrets/ghiw-n8n-api-key
 LoadCredential=harness_token:/var/lib/autodev-harness-v2/token
 LoadCredential=viewer_token:/var/lib/morpheus-control-tower/viewer-token
 Environment=CONTROL_TOWER_BIND=192.168.1.136
-Environment=CONTROL_TOWER_PORT=8090
+Environment=CONTROL_TOWER_PORT=8092
 Environment=MORPHEUS_N8N_BASE=http://192.168.1.52:5678/api/v1
 Environment=MORPHEUS_ADAPTER_BASE=http://192.168.1.136:8081
 Environment=MORPHEUS_RUNS_TABLE=P3Eyck556Y76TC4p

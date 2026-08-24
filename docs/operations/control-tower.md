@@ -1,13 +1,13 @@
 # Morpheus Control Tower operations
 
-URL: `http://192.168.1.136:8090/`
+URL: `http://192.168.1.136:8092/` (8090 is occupied by the existing hamh-resolver)
 
 Service: `morpheus-control-tower.service`, dedicated user `morpheus-ct`.
 
 ```sh
 systemctl status morpheus-control-tower
 systemctl restart morpheus-control-tower
-curl http://192.168.1.136:8090/healthz
+curl http://192.168.1.136:8092/healthz
 journalctl -u morpheus-control-tower -n 100 --no-pager
 ```
 
