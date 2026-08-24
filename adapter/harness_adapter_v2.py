@@ -1823,7 +1823,9 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     out_of_scope = [
         f["path"]
         for f in files
-        if f["path"] not in allowed and not f["path"].startswith((".gitkeep",))
+        if f["path"] not in allowed
+        and f["path"] not in {"build.jsonl", "build.stderr"}
+        and not f["path"].startswith((".gitkeep", ".opencode/", "local_llm/"))
     ]
     summary = (obj or {}).get("summary", "")[:2000] if isinstance(obj, dict) else ""
     status = (
