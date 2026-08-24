@@ -1126,7 +1126,9 @@ PLAN_TOOLS = {
     "list": True,
     "bash": False,
     "edit": False,
-    "write": False,
+    # Expose the tool so OpenCode can emit the required denied sentinel
+    # attempt; PLAN_PERMS keeps execution fail-closed.
+    "write": True,
     "webfetch": False,
     "task": False,
     "skill": False,

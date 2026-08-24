@@ -45,6 +45,8 @@ def test_worker_agent_model_tracks_selected_local_route():
     )
     assert "model: lmstudio/qwen3:1.7b" in agent
     assert adapter.LMSTUDIO_MODEL not in agent
+    assert adapter.PLAN_TOOLS["write"] is True
+    assert adapter.PLAN_PERMS["write"] == "deny"
 
 
 def test_scope_consistency_fails_closed():
