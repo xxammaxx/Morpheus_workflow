@@ -802,6 +802,58 @@
     },
     {
       "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'VERIFYING';\nrow.current_job = 'verify';\nrow.reason_code = 'BUILD_PASSED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "verify-state-prep",
+      "name": "Verify State Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5280,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "verify-state-update",
+      "name": "Verify State Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        5281,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Verify State Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "verify-state-restore",
+      "name": "Verify State Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5282,
+        0
+      ]
+    },
+    {
+      "parameters": {
         "source": "database",
         "workflowId": {
           "__rl": true,
@@ -1478,6 +1530,58 @@
     },
     {
       "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'DECIDING';\nrow.current_job = 'decision';\nrow.reason_code = 'REVIEW_PASSED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "decision-state-prep",
+      "name": "Decision State Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7200,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "decision-state-update",
+      "name": "Decision State Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        7201,
+        320
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Decision State Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "decision-state-restore",
+      "name": "Decision State Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7202,
+        320
+      ]
+    },
+    {
+      "parameters": {
         "source": "database",
         "workflowId": {
           "__rl": true,
@@ -1510,6 +1614,19 @@
       "position": [
         7440,
         320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst d = Object.assign({}, s.decision || {});\nconst attempts = (s.attempt_build || 0) + (s.attempt_fix || 0);\nconst maxAttempts = s.max_attempts || 2;\nif (d.decision === 'FIX' && attempts >= maxAttempts) {\n  d.decision = 'BLOCKED';\n  d.reason_code = 'RETRY_DENIED_ATTEMPT_LIMIT';\n}\nreturn [{json: Object.assign({}, s, {decision: d})}];"
+      },
+      "id": "decision-retry-guard",
+      "name": "Decision Retry Guard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7440,
+        480
       ]
     },
     {
@@ -2380,7 +2497,40 @@
         ]
       ]
     },
+    "Verify State Prep": {
+      "main": [
+        [
+          {
+            "node": "Verify State Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify State Update": {
+      "main": [
+        [
+          {
+            "node": "Verify State Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Build Attempt Attempt Restore": {
+      "main": [
+        [
+          {
+            "node": "Verify State Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify State Restore": {
       "main": [
         [
           {
@@ -2526,7 +2676,7 @@
       "main": [
         [
           {
-            "node": "Run Verify",
+            "node": "Verify State Prep",
             "type": "main",
             "index": 0
           }
@@ -2681,6 +2831,39 @@
             "index": 0
           }
         ],
+        [
+          {
+            "node": "Decision State Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision State Prep": {
+      "main": [
+        [
+          {
+            "node": "Decision State Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision State Update": {
+      "main": [
+        [
+          {
+            "node": "Decision State Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision State Restore": {
+      "main": [
         [
           {
             "node": "Run Decision",
@@ -2847,7 +3030,7 @@
       "main": [
         [
           {
-            "node": "Run Verify",
+            "node": "Verify State Prep",
             "type": "main",
             "index": 0
           }
@@ -3027,6 +3210,17 @@
       ]
     },
     "Post-Decision": {
+      "main": [
+        [
+          {
+            "node": "Decision Retry Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Retry Guard": {
       "main": [
         [
           {

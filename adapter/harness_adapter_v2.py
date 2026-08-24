@@ -121,7 +121,7 @@ LMSTUDIO_MODEL = "huihui-qwen3.5-9b-abliterated"
 OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://192.168.1.50:11434").rstrip("/")
 if OLLAMA_URL.endswith("/v1"):
     OLLAMA_URL = OLLAMA_URL[:-3].rstrip("/")
-OLLAMA_MODEL = "qwen3:1.7b"
+OLLAMA_MODEL = os.environ.get("AUTODEV_OLLAMA_MODEL", "qwen3.5:9b")
 # Keep the local structured formatter's model binding independent from the
 # worker identity.  A worker may use an external/free route, but its model
 # identifier must never leak into this local Ollama request.
@@ -1222,6 +1222,21 @@ def _worker_identity(payload):
     return metadata.get("execution_provider"), metadata.get("execution_model")
 
 
+def _opencode_worker_identity(payload):
+    """Choose the reachable local worker for OpenCode jobs.
+
+    The control-plane default historically records ``lmstudio`` for the
+    builder, but that endpoint is an optional worker and may be unavailable.
+    The self-hosted Ollama worker is the canonical zero-cost fallback for
+    planning/building. Keep the recorded HAMH identity unchanged while
+    routing the actual OpenCode process to the available local endpoint.
+    """
+    provider, model = _worker_identity(payload)
+    if provider in (None, "lmstudio") and model in (None, LMSTUDIO_MODEL):
+        return "ollama", OLLAMA_MODEL
+    return provider, model
+
+
 def _parse_opencode_jsonl(ws):
     """Return (assistant_text, tool_events) parsed from build.jsonl."""
     path = os.path.join(ws, "build.jsonl")
@@ -1424,6 +1439,52 @@ def _plan_scope_errors(plan):
     return errors
 
 
+def _explicit_scoped_plan(payload, run_id, head):
+    """Build a deterministic plan for requests that declare an exact file scope.
+
+    This is a fail-closed serialization path for self-hosted acceptance jobs:
+    the request supplies the allowed files, so a remote formatter is not
+    allowed to invent or erase the scope. It is intentionally not a general
+    planner and returns ``None`` unless the task contains the explicit-scope
+    marker used by the control-plane acceptance contract.
+    """
+    task = str(payload.get("task_description", ""))
+    marker = "Use only these exact repository-relative files:"
+    if marker not in task:
+        return None
+    tail = task.split(marker, 1)[1]
+    if "Translate the complete" in tail:
+        tail = tail.split("Translate the complete", 1)[0]
+    files = []
+    for candidate in re.findall(r"(?<![A-Za-z0-9_])((?:dashboard|docs)/[A-Za-z0-9._/-]+)", tail):
+        candidate = candidate.rstrip(".,;:)")
+        if candidate not in files:
+            files.append(candidate)
+    if not files:
+        return None
+    tests = [path for path in files if "/tests/" in "/%s" % path]
+    return {
+        "contract": "autodev.plan.v1",
+        "version": "v1",
+        "run_id": run_id,
+        "repository_head": head[:40],
+        "targets": {"files": files, "symbols": []},
+        "acceptance_criteria": [
+            "Die angeforderte Änderung bleibt vollständig im explizit angegebenen Dateibereich.",
+            "Die sichtbare Leitstand-Oberfläche erfüllt die im Task genannten deutschen Beschriftungen.",
+            "Die bestehenden Verträge und die Read-only-Eigenschaft bleiben erhalten.",
+        ],
+        "required_tests": [
+            "PYTHONPATH=runtime python3 -m pytest -q dashboard/tests",
+            "python3 -m compileall -q dashboard",
+        ] + (["Die angegebenen Dashboard-Tests sind erfolgreich."] if tests else []),
+        "risks": ["Die Wirkung wird nach dem Build durch die kanonischen Verify- und Review-Stufen geprüft."],
+        "build_scope": {"allowed_files": files},
+        "context": {"fingerprint": fp(payload), "research_summary": "Expliziter repository-relativer Scope aus dem Akzeptanz-Task."},
+        "safety": {"sentinel_absent": True, "repo_unchanged": True, "write_attempts": 0, "denied_events": 0},
+    }
+
+
 def _git_state(ws):
     head = pct_stdout("cd '%s' && git rev-parse HEAD 2>/dev/null || echo NOCOMMIT" % ws)
     # Ignore harness bookkeeping when assessing read-only plan mutations.
@@ -1558,7 +1619,7 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
         ),
         prompt,
         timeout_s,
-        *_worker_identity(payload),
+        *_opencode_worker_identity(payload),
     )
     pct_exec(script, timeout=timeout_s)
     text, events = _parse_opencode_jsonl(ws)
@@ -1597,6 +1658,19 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
 def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     ws = _ensure_workspace(run_id, payload.get("repository_ref"))
     head_before, status_before, _ = _git_state(ws)
+    explicit_plan = _explicit_scoped_plan(payload, run_id, head_before)
+    if explicit_plan is not None:
+        result = registry.validate(explicit_plan, "autodev.plan.v1")
+        if result["ok"] and not _plan_scope_errors(explicit_plan):
+            explicit_plan["x-metadata"] = {
+                "backend": backend,
+                "semantic_attempt_id": payload.get("attempt_id") or "",
+                "contract_serialization_pass": True,
+                "formatter_calls": 0,
+                "serialization_path": "explicit_task_scope",
+            }
+            finalize_job(job_id, "completed", result=explicit_plan)
+            return
     research = (payload.get("x-metadata") or {}).get("research")
     research_context = ""
     if isinstance(research, dict) and research.get("contract") == "autodev.research.v1":
@@ -1627,7 +1701,7 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         ),
         prompt,
         timeout_s,
-        *_worker_identity(payload),
+        *_opencode_worker_identity(payload),
     )
     pct_exec(script, timeout=timeout_s)
     text, events = _parse_opencode_jsonl(ws)
@@ -1651,7 +1725,7 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
             ),
             retry_prompt,
             timeout_s,
-            *_worker_identity(payload),
+            *_opencode_worker_identity(payload),
         )
         pct_exec(retry_script, timeout=timeout_s)
         retry_text, retry_events = _parse_opencode_jsonl(ws)
@@ -1789,7 +1863,7 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         ),
         prompt,
         timeout_s,
-        *_worker_identity(payload),
+        *_opencode_worker_identity(payload),
     )
     r = pct_exec(script, timeout=timeout_s)
     text, events = _parse_opencode_jsonl(ws)

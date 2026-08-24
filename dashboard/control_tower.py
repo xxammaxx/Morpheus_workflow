@@ -15,7 +15,11 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "1.1.0-rc1"
+VERSION = "1.1.2"
+ACTIVE_RUN_STATES = frozenset({"ACCEPTED", "BASELINING", "RESEARCHING", "PLANNING", "BUILDING", "VERIFYING", "REVIEWING", "DECIDING", "RUNNING", "ACTIVE"})
+TERMINAL_FAILURE_STATES = frozenset({"FAILED", "BLOCKED"})
+STALE_RUN_SECONDS = int(os.environ.get("CONTROL_TOWER_STALE_RUN_SECONDS", "1800"))
+FREE_POOL_MINIMUM = 2
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 STARTED = time.monotonic()
@@ -54,6 +58,77 @@ def now():
 
 def safe_status(ok, checked=None):
     return {"status": "HEALTHY" if ok else "UNAVAILABLE", "checked_at": checked or now(), "freshness_seconds": 0}
+
+
+def parse_timestamp(value):
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.replace(tzinfo=dt.timezone.utc) if parsed.tzinfo is None else parsed.astimezone(dt.timezone.utc)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def classify_run_state(run):
+    return str((run or {}).get("state", "UNKNOWN")).upper()
+
+
+def is_active_run(run):
+    return classify_run_state(run) in ACTIVE_RUN_STATES
+
+
+def is_within_24h(timestamp, reference=None):
+    parsed = parse_timestamp(timestamp)
+    if parsed is None:
+        return False
+    reference = reference or dt.datetime.now(dt.timezone.utc)
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=dt.timezone.utc)
+    reference = reference.astimezone(dt.timezone.utc)
+    return parsed >= reference - dt.timedelta(hours=24) and parsed <= reference
+
+
+def terminal_timestamp(run):
+    return (run or {}).get("ended_at") or (run or {}).get("updated_at")
+
+
+def is_stale_run(run, threshold_seconds=STALE_RUN_SECONDS, reference=None):
+    if not is_active_run(run):
+        return False
+    updated = parse_timestamp((run or {}).get("updated_at"))
+    if updated is None:
+        return False
+    reference = reference or dt.datetime.now(dt.timezone.utc)
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=dt.timezone.utc)
+    return (reference.astimezone(dt.timezone.utc) - updated).total_seconds() > threshold_seconds
+
+
+def build_run_counts(runs, reference=None):
+    counts = {"running": 0, "waiting": 0, "done_24h": 0, "failed_24h": 0}
+    for run in runs:
+        state = classify_run_state(run)
+        if state in ACTIVE_RUN_STATES:
+            counts["running"] += 1
+        elif state in ("WAITING", "QUEUED"):
+            counts["waiting"] += 1
+        elif state in ("DONE", "COMPLETED") and is_within_24h(terminal_timestamp(run), reference):
+            counts["done_24h"] += 1
+        elif state in TERMINAL_FAILURE_STATES and is_within_24h(terminal_timestamp(run), reference):
+            counts["failed_24h"] += 1
+    return counts
+
+
+def sort_recent_runs(runs, limit=50):
+    def key(run):
+        parsed = parse_timestamp(run.get("updated_at"))
+        return (parsed is not None, parsed or dt.datetime.min.replace(tzinfo=dt.timezone.utc))
+    return sorted(runs, key=key, reverse=True)[:limit]
+
+
+def provider_pool_status(size):
+    return "HEALTHY" if size >= FREE_POOL_MINIMUM else "DEGRADED" if size == 1 else "UNAVAILABLE"
 
 
 class Upstream:
@@ -165,21 +240,17 @@ def projection():
     health_n8n = n8n_health()
     health_adapter = adapter_health()
     clean_runs = [sanitize_run(x) for x in runs]
-    recent = clean_runs[-50:]
+    recent = sort_recent_runs(clean_runs)
     pool = [p for p in runtime.get("providers", []) if p.get("free_eligible")]
-    run_counts = {"running": 0, "waiting": 0, "done_24h": 0, "failed_24h": 0}
-    for run in clean_runs:
-        state = str(run.get("state", "")).upper()
-        if state in ("RUNNING", "ACTIVE"): run_counts["running"] += 1
-        elif state in ("WAITING", "QUEUED"): run_counts["waiting"] += 1
-        elif state in ("DONE", "COMPLETED"): run_counts["done_24h"] += 1
-        elif state in ("FAILED", "BLOCKED"): run_counts["failed_24h"] += 1
+    run_counts = build_run_counts(clean_runs)
     alerts = []
-    if len(pool) < 2: alerts.append({"severity": "HIGH", "message": "Free provider pool below two eligible providers"})
-    if runtime.get("automatic_paid_agent_escalation"): alerts.append({"severity": "CRITICAL", "message": "Automatic paid escalation enabled"})
-    if not health_n8n["status"] == "HEALTHY": alerts.append({"severity": "HIGH", "message": "n8n UNAVAILABLE"})
-    if not health_adapter["status"] == "HEALTHY": alerts.append({"severity": "HIGH", "message": "Adapter UNAVAILABLE"})
-    return {"contract": "autodev.control-tower-overview.v1", "version": "v1", "generated_at": now(), "freshness": {"checked_at": now(), "freshness_seconds": 0}, "system_health": {"n8n": health_n8n, "adapter": health_adapter, "provider_pool": safe_status(runtime_ok and bool(pool))}, "free_pool": {"size": len(pool), "providers": pool}, "run_counts": run_counts, "recent_runs": recent, "alerts": alerts, "release": {"dashboard_version": VERSION, "v1_release": "v1.0.0", "dashboard_release": "v1.1.0-candidate", "n8n_autodev_workflows": health_n8n.get("workflow_count", 0), "free_first_active": bool(runtime.get("free_first_enabled")), "paid_escalation": bool(runtime.get("automatic_paid_agent_escalation")), "deepseek": "INELIGIBLE"}, "sources": {"n8n": "LIVE" if runs_ok and health_n8n["status"] == "HEALTHY" else "UNAVAILABLE", "adapter": "LIVE" if runtime_ok else "UNAVAILABLE"}}
+    if len(pool) < FREE_POOL_MINIMUM: alerts.append({"severity": "HIGH", "code": "FREE_POOL_BELOW_MIN", "message": "Free provider pool below two eligible providers"})
+    if runtime.get("automatic_paid_agent_escalation"): alerts.append({"severity": "CRITICAL", "code": "PAID_ESCALATION_ENABLED", "message": "Automatic paid escalation enabled"})
+    if health_n8n["status"] != "HEALTHY": alerts.append({"severity": "HIGH", "code": "N8N_UNAVAILABLE", "message": "n8n UNAVAILABLE"})
+    if health_adapter["status"] != "HEALTHY": alerts.append({"severity": "HIGH", "code": "ADAPTER_UNAVAILABLE", "message": "Adapter UNAVAILABLE"})
+    for run in clean_runs:
+        if is_stale_run(run): alerts.append({"severity": "WARNING", "code": "STALE_ACTIVE_RUN", "message": "Active run has not been updated for a long time", "run_id": run.get("run_id")})
+    return {"contract": "autodev.control-tower-overview.v1", "version": "v1", "generated_at": now(), "freshness": {"checked_at": now(), "freshness_seconds": 0}, "system_health": {"n8n": health_n8n, "adapter": health_adapter, "provider_pool": safe_status(runtime_ok and provider_pool_status(len(pool)) == "HEALTHY") | {"status": provider_pool_status(len(pool))}}, "free_pool": {"size": len(pool), "providers": pool}, "run_counts": run_counts, "recent_runs": recent, "alerts": alerts, "release": {"dashboard_version": VERSION, "core_v1_release": "v1.0.0", "morpheus_release": "v1.1.2", "dashboard_release": "v1.1.2", "v1_release": "v1.0.0", "n8n_autodev_workflows": health_n8n.get("workflow_count", 0), "free_first_active": bool(runtime.get("free_first_enabled")), "paid_escalation": bool(runtime.get("automatic_paid_agent_escalation")), "deepseek": "INELIGIBLE"}, "sources": {"n8n": "LIVE" if runs_ok and health_n8n["status"] == "HEALTHY" else "UNAVAILABLE", "adapter": "LIVE" if runtime_ok else "UNAVAILABLE"}}
 
 
 def run_view(run_id):
