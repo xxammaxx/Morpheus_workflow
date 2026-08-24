@@ -16,7 +16,7 @@ Stand: 2026-08-16
 `GREEN_N8N_AUTODEV_HARNESS_E2E_OPERATIONAL`
 
 Begründung: Alle DoD-Gates (§64) mit frischer, korrelierter Evidenz bestanden,
-einschließlich realem Vertical Slice über Builder 8001 + OpenCode 1.17.9 +
+einschließlich realem Vertical Slice über Builder 8001 + OpenCode 1.18.22 +
 LM Studio (qwen/qwen3.5-9b) mit durchgehender run_id-Korrelation.
 
 ## Umgebung (verifiziert, Phase A)
@@ -78,7 +78,7 @@ N8N-OPS-03 (Regression-Check: alle PROTECTED_OK=true).
 
 - **embedded** (Deterministischer Canary auf Proxmox-Host) — für kontrollierte Tests
 - **opencode-builder-8001** (REUSE): bestehender GHIW-Builder CT 8001
-  (ghiw-bld-e3r6-canary-001-8001), OpenCode v1.17.9, Provider-Overlay
+  (ghiw-bld-e3r6-canary-001-8001), OpenCode v1.18.22, Provider-Overlay
   (`local_llm`-Modul aus provider-smoke-v3) → LM Studio
   http://192.168.1.195:1234, Modell qwen/qwen3.5-9b, Agent
   `harness-worker` (minimal, edit-only, kein bash/Netz)
@@ -185,7 +185,7 @@ Stand: 2026-08-18
 
 Begründung: Die komplette deterministische Control Plane ist gebaut und
 verifiziert (Contracts, Adapter, 12 Workflows, State-Machine-Matrix 9/9).
-Die reale LLM-Ausführungskette (Adapter → Builder-CT 8001 → OpenCode 1.17.9 →
+Die reale LLM-Ausführungskette (Adapter → Builder-CT 8001 → OpenCode 1.18.22 →
 LM Studio) ist auf Job-Ebene bewiesen (echter Research-Job, 3 306 Tokens).
 Der vollständige reale Vertical Slice (Happy/Fix) konnte nicht abgeschlossen
 werden, weil die Execution Runtime (pve-Host) seit ~23:20 MESZ nicht mehr
@@ -202,7 +202,7 @@ deployen (siehe unten).
 | n8n | 2.26.8, CT 101 (192.168.1.52), SQLite, Main-Mode, Node v22.23.0 |
 | Data Tables | Public-API verfügbar (kein Lizenz-Gate) — State Store der Control Plane |
 | Adapter v2 | 192.168.1.136:8081, systemd `autodev-harness-v2`, Ledger + Recovery |
-| Builder | CT 8001, OpenCode 1.17.9, LM Studio 192.168.1.195:1234 (`--bind 0.0.0.0`) |
+| Builder | CT 8001, OpenCode 1.18.22, LM Studio 192.168.1.195:1234 (`--bind 0.0.0.0`); Formatter Ollama 192.168.1.50:11434/qwen3:1.7b |
 | Modell | huihui-qwen3.5-9b-abliterated, Context 32 768 |
 | pve | 192.168.1.136 — sshd blockiert seit 23:20 (Ausfall) |
 

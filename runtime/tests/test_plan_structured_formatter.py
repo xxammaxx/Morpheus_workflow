@@ -98,7 +98,11 @@ def test_local_formatter_request_is_schema_constrained(monkeypatch):
         return Response()
 
     monkeypatch.setattr(adapter.urllib.request, "urlopen", fake_urlopen)
-    adapter._ollama_format_plan("candidate", "qwen3:1.7b")
+    # A worker identity must not be able to override the local formatter
+    # route/model (the second argument is retained only for old callers).
+    adapter._ollama_format_plan("candidate", "openrouter/free-external")
+    assert seen["body"]["model"] == adapter.OLLAMA_FORMATTER_MODEL
+    assert seen["body"]["model"] != "openrouter/free-external"
     assert seen["body"]["stream"] is False
     assert seen["body"]["options"]["temperature"] == 0
     assert seen["body"]["format"]["additionalProperties"] is False

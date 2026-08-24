@@ -9,10 +9,18 @@ Kurzreferenz für Betrieb und Test des AutoDev-Harness-v2-Control-Plane.
 | n8n Control Plane | http://192.168.1.52:5678 | 12 Workflows `00`–`90` (alle aktiv) |
 | Harness Adapter v2 | http://192.168.1.136:8081 | systemd `autodev-harness-v2` auf pve |
 | Adapter State | `/var/lib/autodev-harness-v2/` | Token (0600), Ledger `logs/runs.jsonl`, Workspaces |
-| Builder CT 8001 | ghiw-bld-e3r6-canary-001-8001 | OpenCode 1.17.9, LM-Studio-Client |
+| Builder CT 8001 | ghiw-bld-e3r6-canary-001-8001 | OpenCode 1.18.22, local Ollama formatter (LM-Studio remains an available worker route) |
 | LM Studio | http://192.168.1.195:1234 | Modell: `huihui-qwen3.5-9b-abliterated` (Context 32768) |
 | Run-State | n8n Data Tables `autodev_runs`, `autodev_attempts` | Public-API-Tabellen |
 | Credentials | n8n: `autodev-n8n-api`, `autodev-harness-token`, `autodev-api-auth` | httpHeaderAuth, Werte nur im Credential Store |
+
+### OpenCode-Fleet (Produktionsstand 2026-08-24)
+
+| Container | Rolle | Binary-Pfad | Installations-/Upgrade-Methode | Rollback |
+|---|---|---|---|---|
+| CT 8001 (`ghiw-bld-e3r6-canary-001-8001`) | aktiver Builder / OpenCode-Worker | `/opt/dev-fabric/opencode/opencode` (PATH-Symlink `/usr/local/bin/opencode` → `/opt/opencode/1.18.22/opencode`) | offizielles Release-Asset `v1.18.22`, funktional via lokalem Ollama-OpenAI-kompatiblem Endpoint geprüft | containerinterner Backup-Satz `/root/morpheus-opencode-backup-20260824/`; Binary und Symlink atomar auf den vorherigen Stand zurücksetzen |
+
+Nur aktive Produktionsinstanzen werden aktualisiert. Gestoppte Golden Templates und historische Canary-CTs bleiben unverändert. Vor jedem Upgrade sind laufende OpenCode-Prozesse, Binär-Hashes, Symlink-Ziel sowie Konfigurations-/Plugin-Metadaten zu sichern; Auth-Inhalte werden weder ausgegeben noch versioniert. Nach dem Upgrade müssen beide Pfade `1.18.22` melden, `opencode --help`, Konfigurationsauflösung, Plugin-/Agent-Laden, lokale Ollama-Ausführung und die JSONL-Eventtypen (`step_start`, `text`, `step_finish`) erfolgreich sein.
 
 ## API
 

@@ -122,6 +122,10 @@ OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://192.168.1.50:11434").rstr
 if OLLAMA_URL.endswith("/v1"):
     OLLAMA_URL = OLLAMA_URL[:-3].rstrip("/")
 OLLAMA_MODEL = "qwen3:1.7b"
+# Keep the local structured formatter's model binding independent from the
+# worker identity.  A worker may use an external/free route, but its model
+# identifier must never leak into this local Ollama request.
+OLLAMA_FORMATTER_MODEL = os.environ.get("OLLAMA_FORMATTER_MODEL", OLLAMA_MODEL)
 OLLAMA_FORMATTER_TIMEOUT_S = 60
 DEFAULT_TIMEOUT_S = 600
 MAX_WORKERS = 6
@@ -1354,7 +1358,7 @@ def _plan_model_schema():
     return schema
 
 
-def _ollama_format_plan(candidate_text, model):
+def _ollama_format_plan(candidate_text, model=None):
     """Perform exactly one local, no-tools serialization pass."""
     if not isinstance(candidate_text, str) or not candidate_text.strip():
         return None, "formatter candidate is empty"
@@ -1373,7 +1377,10 @@ def _ollama_format_plan(candidate_text, model):
         "SUPPLIED PLAN:\n%s"
     ) % candidate_text[:16000]
     body = json.dumps({
-        "model": model or OLLAMA_MODEL,
+        # ``model`` remains an ignored compatibility argument for direct
+        # callers from older tests; formatter routing is always explicit and
+        # local, never inherited from the worker model.
+        "model": OLLAMA_FORMATTER_MODEL,
         "prompt": prompt,
         "format": _plan_model_schema(),
         "stream": False,
@@ -1632,7 +1639,7 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     formatter_error = None
     parse_failed = not isinstance(obj, dict)
     if not isinstance(obj, dict):
-        obj, formatter_error = _ollama_format_plan(text, _worker_identity(payload)[1])
+        obj, formatter_error = _ollama_format_plan(text)
         formatter_used = True
     if not isinstance(obj, dict):
         obj = {}
@@ -1670,7 +1677,7 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     if plan["safety"]["repo_unchanged"] is not True:
         consistency_errors.append("$.safety.repo_unchanged: must be true")
     if (not v["ok"] or consistency_errors) and not formatter_used:
-        repaired, formatter_error = _ollama_format_plan(text, _worker_identity(payload)[1])
+        repaired, formatter_error = _ollama_format_plan(text)
         formatter_used = True
         if isinstance(repaired, dict):
             obj = repaired
