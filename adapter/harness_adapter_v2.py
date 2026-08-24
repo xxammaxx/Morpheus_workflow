@@ -2003,7 +2003,11 @@ def _dispatch(
         and backend != "embedded"
         and effective_task_class not in ("build", "fix", "plan")
     ):
-        preference_provider = provider if provider in {"groq", "openrouter"} else ""
+        preference_provider = (
+            provider
+            if provider in {"groq", "openrouter", "ollama", "lmstudio"}
+            else ""
+        )
         preference_model = model if preference_provider else ""
         try:
             route_decision = _provider_runtime.select(
