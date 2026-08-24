@@ -2,14 +2,20 @@
 
 ## Feature Switch
 
-`AUTODEV_FREE_FIRST_ENABLED` defaults to `false`. Enable only in a shadow or
-canary environment after catalog, privacy, and cost policy review.
+`AUTODEV_FREE_FIRST_ENABLED` is the existing runtime switch. Production
+activation remains subject to the catalog, privacy, and cost gates below.
 
 Useful settings:
 
 - `AUTODEV_PROVIDER_CATALOG`: catalog snapshot path.
 - `AUTODEV_PROVIDER_CAPABILITIES`: staged capability registry path.
 - `AUTODEV_PROVIDER_FAILOVER_MAX`: bounded provider failover ceiling, default 3.
+- `AUTODEV_PROVIDER_PROBE_LEASE`: root-only atomic maintenance-lease state;
+  leases are provider-specific, expire within 120 seconds, and permit one
+  diagnostic request.
+- `AUTODEV_LOCAL_ZERO_COST_TRUSTED_ENDPOINTS`: explicit comma-separated local
+  endpoint allowlist. An unknown or public endpoint is never classified as
+  `LOCAL_ZERO_COST`.
 
 ## Maintenance
 
@@ -21,6 +27,11 @@ PYTHONPATH=runtime python3 -m providers.refresh
 
 The command writes only metadata. It never prints credential values, runs
 capability probes, creates accounts, accepts terms, or makes payment changes.
+
+The n8n operations API uses the existing root-only key at
+`/var/lib/n8n-spec-kit/secrets/ghiw-n8n-api-key` (mode `0600`); the value is
+never stored in the repository or evidence. Provider credentials remain in the
+root-only `provider.env` state file.
 
 ## Status and Evidence
 
@@ -41,5 +52,9 @@ capability probes, creates accounts, accepts terms, or makes payment changes.
 - `UNKNOWN` never enters the free pool.
 - Positive cost on a free route quarantines the exact path.
 - Provider failover is not semantic task retry.
+- During an active probe lease, ordinary traffic to that provider fails closed;
+  after success, failure, or TTL expiry the lease is released or expires.
+- Free-pool exhaustion returns `NO_ELIGIBLE_FREE_PROVIDER`; it never falls
+  back to DeepSeek or a paid provider.
 - DeepSeek remains paid escalation only unless explicitly selected by policy.
 - Disable the feature switch to restore the previous adapter path.
