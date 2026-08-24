@@ -1,5 +1,5 @@
 # Visuelle QA
 
-The Playwright harness covers 1440×900, 1280×720, 390×844 and 360×800,
-including login, Übersicht, Läufe, Run-Detail and Anbieter. Live deployment
-results are appended after the reviewed source is deployed.
+Live Playwright result: `PASS`; 1440×900, 1280×720, 390×844 and 360×800;
+login, Übersicht, Läufe, Run-Detail and Anbieter; zero console errors and
+zero HTTP 500 responses.
