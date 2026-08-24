@@ -1,5 +1,4 @@
 # Post-Merge-Regression
 
-Pre-merge result: 29 tests passed, JavaScript syntax check passed, compileall
-passed and `git diff --check` passed. Fresh-checkout regression is recorded
-after merge.
+Fresh merged-main checkout result: 29 tests passed, JavaScript syntax check,
+compileall and `git diff --check` passed. Generator export equivalence passed.
