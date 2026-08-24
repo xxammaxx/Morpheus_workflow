@@ -249,6 +249,29 @@ def main():
     assert registry.validate(sample)["ok"]
     print("PASS PROVIDER_EXECUTION_PROOF_CONTRACT")
 
+    os.environ.pop("AUTODEV_MAINTENANCE_FAIL_PROVIDER", None)
+    print("PASS MAINTENANCE_FAILURE_DEFAULT_OFF")
+    os.environ["AUTODEV_MAINTENANCE_FAIL_PROVIDER"] = "ollama"
+    try:
+        injected = ProviderAdapter("ollama", "http://127.0.0.1:9", "MISSING")
+        try:
+            injected._request("GET", "/models")
+        except ProviderFailure as exc:
+            assert exc.retryable and not exc.uncertain
+            print("PASS MAINTENANCE_FAILURE_RETRYABLE")
+        else:
+            raise AssertionError("maintenance failure was not injected")
+        other = ProviderAdapter("openrouter", "http://127.0.0.1:9", "MISSING")
+        try:
+            other._request("GET", "/models", timeout=0.01)
+        except ProviderFailure as exc:
+            assert "maintenance-injected" not in str(exc)
+            print("PASS MAINTENANCE_FAILURE_PROVIDER_SCOPED")
+        else:
+            raise AssertionError("unexpected provider request success")
+    finally:
+        os.environ.pop("AUTODEV_MAINTENANCE_FAIL_PROVIDER", None)
+
 
 if __name__ == "__main__":
     main()

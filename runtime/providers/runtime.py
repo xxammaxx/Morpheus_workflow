@@ -104,6 +104,17 @@ class ProviderRuntime:
             raise NoEligibleProvider("NO_ELIGIBLE_FREE_PROVIDER")
         failures = []
         for decision in decisions:
+            # Permit the one authorized provider probe lease to travel with
+            # its candidate after an earlier provider fails in the same
+            # semantic attempt. This is maintenance-only and provider-scoped.
+            if decision.get("selected_provider") == os.environ.get(
+                "AUTODEV_MAINTENANCE_PROBE_PROVIDER", ""
+            ).strip():
+                lease_id = os.environ.get(
+                    "AUTODEV_MAINTENANCE_PROBE_LEASE_ID", ""
+                ).strip()
+                if lease_id:
+                    decision["probe_lease_id"] = lease_id
             try:
                 execution = self.direct_invoke(
                     decision, messages, task_class, timeout, attempt_id

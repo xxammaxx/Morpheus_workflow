@@ -59,6 +59,16 @@ class ProviderAdapter:
         return os.environ.get(self.credential_env, "").strip()
 
     def _request(self, method, path, payload=None, timeout=20, headers=None, probe_lease_id=None):
+        # Opt-in maintenance seam for live failover proof. It is provider
+        # scoped, retryable, and inert unless an operator sets it for a
+        # bounded maintenance window; production defaults are unchanged.
+        if (
+            os.environ.get("AUTODEV_MAINTENANCE_FAIL_PROVIDER", "").strip().lower()
+            == self.provider.lower()
+        ):
+            raise ProviderFailure(
+                "maintenance-injected provider failure", retryable=True
+            )
         lease = ProviderProbeLease()
         try:
             if probe_lease_id:
