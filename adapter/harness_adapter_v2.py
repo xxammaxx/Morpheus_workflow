@@ -1631,6 +1631,32 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     )
     pct_exec(script, timeout=timeout_s)
     text, events = _parse_opencode_jsonl(ws)
+    # OpenCode 1.18 + qwen3:1.7b can occasionally stop after a tool/reasoning
+    # turn without an assistant text event. Retry the worker once with a
+    # compact JSON-only prompt; this does not add a formatter call.
+    if not text.strip():
+        retry_prompt = (
+            "/no_think Return ONLY a JSON object now for this task: %s\n"
+            "Use concrete relative targets and matching build_scope.allowed_files; "
+            "do not call tools, write files, or use the network. Schema keys: "
+            "targets(files,symbols), acceptance_criteria, required_tests, risks, "
+            "build_scope(allowed_files), research_summary."
+        ) % payload.get("task_description", "")
+        retry_script = _opencode_script(
+            ws,
+            "plan-worker",
+            _agent_md(
+                "plan-worker", PLAN_SERIALIZATION_TOOLS, PLAN_PERMS,
+                "Read-only planning worker", _worker_identity(payload)[1],
+            ),
+            retry_prompt,
+            timeout_s,
+            *_worker_identity(payload),
+        )
+        pct_exec(retry_script, timeout=timeout_s)
+        retry_text, retry_events = _parse_opencode_jsonl(ws)
+        text = retry_text
+        events.extend(retry_events)
     obj = _extract_json(text)
     head_after, status_after, _ = _git_state(ws)
     sentinel_present = bool(
