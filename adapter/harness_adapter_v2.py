@@ -34,6 +34,7 @@ import hmac
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import threading
@@ -53,9 +54,11 @@ BIND_PORT = 8081
 VERSION = "2.0.0"
 
 CONTRACTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "contracts")
-if os.path.isdir(CONTRACTS_DIR):
-    sys.path.insert(0, os.path.dirname(CONTRACTS_DIR))
-from contracts import registry  # noqa: E402
+_ADAPTER_DIR = os.path.dirname(os.path.abspath(__file__))
+for _contracts_parent in (os.path.dirname(CONTRACTS_DIR), os.path.join(_ADAPTER_DIR, "..", "runtime")):
+    if os.path.isdir(os.path.join(_contracts_parent, "contracts")):
+        sys.path.insert(0, _contracts_parent)
+from contracts import provenance, registry  # noqa: E402
 from contracts.registry import fingerprint as fp  # noqa: E402
 
 # HAMH layer (ADR-2026-08-20). Optional at deploy time: if the hamh package
@@ -63,7 +66,6 @@ from contracts.registry import fingerprint as fp  # noqa: E402
 # resolution degrades to the explicit baseline fallback and behavior stays
 # exactly at the v2 baseline. Deployed layout: <adapter_dir>/hamh;
 # repo layout: <adapter_dir>/../runtime/hamh.
-_ADAPTER_DIR = os.path.dirname(os.path.abspath(__file__))
 for _hamh_dir in (
     os.path.join(_ADAPTER_DIR, "hamh"),
     os.path.join(_ADAPTER_DIR, "..", "runtime"),
@@ -1616,17 +1618,107 @@ def _explicit_scoped_plan(payload, run_id, head):
 
 
 def _git_state(ws):
-    head = pct_stdout("cd '%s' && git rev-parse HEAD 2>/dev/null || echo NOCOMMIT" % ws)
-    # Ignore harness bookkeeping when assessing read-only plan mutations.
-    status = pct_stdout(
-        "cd '%s' && git status --porcelain 2>/dev/null | "
-        "grep -vE '^(.. )?\\.(opencode|plan-canary-sentinel)(/|$)|^(.. )?local_llm(/|$)|^(.. )?(build\\.jsonl|build\\.stderr)$' || true"
-        % ws
+    snapshot = _git_snapshot(ws)
+    return snapshot["head"], snapshot["status"], snapshot["branch"]
+
+
+def _git_snapshot(ws):
+    """Capture a sanitized, machine-safe workspace snapshot."""
+
+    qws = shlex.quote(ws)
+    head = pct_stdout("cd %s && git rev-parse HEAD 2>/dev/null || echo NOCOMMIT" % qws)
+    raw_result = pct_exec(
+        "cd %s && git status --porcelain=v1 -z --untracked-files=all 2>/dev/null"
+        % qws
+    )
+    raw = raw_result.stdout or ""
+    entries = provenance.filtered_entries(raw)
+    status = "\n".join(
+        "%s %s" % (entry["change"], entry["path"])
+        for entry in sorted(entries, key=lambda item: (item["path"], item["change"]))
     )
     branch = pct_stdout(
-        "cd '%s' && git branch --show-current 2>/dev/null || echo main" % ws
+        "cd %s && git branch --show-current 2>/dev/null || echo main" % qws
     )
-    return head.strip(), status, branch.strip()
+    return {
+        "head": head.strip(),
+        "status": status,
+        "branch": branch.strip(),
+        "entries": entries,
+        "raw_status": raw,
+    }
+
+
+def _remote_content_metadata(ws, path, change):
+    """Return ``(size, sha256)`` without interpolating a filename into shell."""
+
+    qws = shlex.quote(ws)
+    qpath = shlex.quote(path)
+    if change == "delete":
+        source = shlex.quote("HEAD:%s" % path)
+        size_result = pct_exec(
+            "cd %s && git cat-file -s %s 2>/dev/null || echo 0" % (qws, source)
+        )
+        hash_result = pct_exec(
+            "set -o pipefail; cd %s && git cat-file -p %s 2>/dev/null | sha256sum"
+            % (qws, source)
+        )
+    else:
+        size_result = pct_exec(
+            "cd %s && wc -c < %s 2>/dev/null || echo 0" % (qws, qpath)
+        )
+        hash_result = pct_exec(
+            "cd %s && sha256sum -- %s 2>/dev/null" % (qws, qpath)
+        )
+    try:
+        size = int((size_result.stdout or "0").strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        size = 0
+    digest = (hash_result.stdout or "").strip().split()
+    return size, digest[0] if digest and len(digest[0]) == 64 else None
+
+
+def _build_manifest(ws, entries):
+    return provenance.make_manifest(
+        entries, lambda path, change: _remote_content_metadata(ws, path, change)
+    )
+
+
+def _changes_expected(payload, allowed):
+    """Resolve the additive semantic flag without using model prose."""
+
+    explicit = payload.get("changes_expected")
+    if isinstance(explicit, bool):
+        return explicit
+    metadata = payload.get("x-metadata") or {}
+    explicit = metadata.get("changes_expected")
+    if isinstance(explicit, bool):
+        return explicit
+    if payload.get("no_change_required") is True:
+        return False
+    # A concrete non-empty plan scope is a change-required task by default.
+    return bool(allowed)
+
+
+DASHBOARD_RUNTIME_DENY_TERMS = (
+    "systemkarte",
+    "datenfluss",
+    "control tower",
+    "mermaid",
+)
+
+
+def _runtime_dashboard_scope_denied(payload, allowed):
+    """Keep Morpheus product development outside the runtime Builder boundary."""
+
+    paths = [str(path).replace("\\", "/").lower() for path in (allowed or [])]
+    if any(path == "dashboard" or path.startswith("dashboard/") for path in paths):
+        return True
+    task_text = " ".join(
+        str(payload.get(key, ""))
+        for key in ("task_description", "acceptance_hint")
+    ).lower()
+    return any(term in task_text for term in DASHBOARD_RUNTIME_DENY_TERMS)
 
 
 def _ensure_workspace(run_id, repository_ref=None):
@@ -1808,6 +1900,9 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     head_before, status_before, _ = _git_state(ws)
     explicit_plan = _explicit_scoped_plan(payload, run_id, head_before)
     if explicit_plan is not None:
+        explicit_plan["changes_expected"] = _changes_expected(
+            payload, explicit_plan["build_scope"]["allowed_files"]
+        )
         result = registry.validate(explicit_plan, "autodev.plan.v1")
         if result["ok"] and not _plan_scope_errors(explicit_plan):
             explicit_plan["x-metadata"] = {
@@ -1908,6 +2003,9 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         "build_scope": {
             "allowed_files": obj.get("build_scope", {}).get("allowed_files", [])
         },
+        "changes_expected": _changes_expected(
+            payload, obj.get("build_scope", {}).get("allowed_files", [])
+        ),
         "context": {
             "fingerprint": fp(payload),
             "research_summary": obj.get("research_summary", "")[:4000],
@@ -1974,6 +2072,73 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     allowed = payload.get("build_scope", {}).get("allowed_files", []) or payload.get(
         "targets", {}
     ).get("files", [])
+    if _runtime_dashboard_scope_denied(payload, allowed):
+        result = {
+            "contract": "autodev.build-result.v1",
+            "version": "v1",
+            "run_id": run_id,
+            "attempt_id": payload.get("attempt_id"),
+            "status": "failed",
+            "changed_files": [],
+            "summary": "Runtime Builder refused a Morpheus Control Tower scope.",
+            "test_results": {"passed": 0, "failed": 0},
+            "failure": {
+                "failure_signature": "RUNTIME_DASHBOARD_SCOPE_DENIED",
+                "message": "dashboard/** and Control Tower implementation belong to the Morpheus development agent.",
+            },
+            "x-metadata": {
+                "backend": backend,
+                "morpheus_builder_dashboard_access": False,
+                "qwen_dashboard_modifications": 0,
+            },
+        }
+        finalize_job(
+            job_id,
+            "failed",
+            result=result,
+            error=result["failure"]["message"],
+            failure_class="SECURITY_BLOCK",
+            failure_signature="RUNTIME_DASHBOARD_SCOPE_DENIED",
+        )
+        return
+    changes_expected = _changes_expected(payload, allowed)
+    before = _git_snapshot(ws)
+    if before["entries"]:
+        provenance_meta = {
+            "workspace_head_before": before["head"],
+            "workspace_status_before": before["status"],
+            "workspace_clean_before": False,
+            "changes_expected": changes_expected,
+            "changed_file_count": 0,
+            "manifest": [],
+            "delta_fingerprint": provenance.manifest_fingerprint([]),
+        }
+        result = {
+            "contract": "autodev.build-result.v1",
+            "version": "v1",
+            "run_id": run_id,
+            "attempt_id": payload.get("attempt_id"),
+            "status": "failed",
+            "changed_files": [],
+            "summary": "Build refused because the canonical workspace was dirty before execution.",
+            "test_results": {"passed": 0, "failed": 0},
+            "failure": {
+                "failure_signature": "WORKSPACE_DIRTY_BEFORE_BUILD",
+                "message": "non-harness workspace changes existed before Builder execution: %s"
+                % ", ".join(entry["path"] for entry in before["entries"][:10]),
+            },
+            "x-metadata": {"backend": backend, "build_provenance": provenance_meta},
+        }
+        finalize_job(
+            job_id,
+            "failed",
+            result=result,
+            error=result["failure"]["message"],
+            failure_class="CONTEXT_FAILURE",
+            failure_signature="WORKSPACE_DIRTY_BEFORE_BUILD",
+        )
+        return
+    build_started_at = _now()
     failure_context = payload.get("failure_context") or {}
     strategy = payload.get("strategy_delta")
     prompt = (
@@ -2020,52 +2185,38 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     r = pct_exec(script, timeout=timeout_s)
     if r.returncode != 0:
         raise ProviderFailure("opencode execution failure", retryable=True)
+    build_ended_at = _now()
     text, events = _parse_opencode_jsonl(ws)
     cloud_proof = _opencode_proof(ws, route_provider, route_model)
     obj = _extract_json(text)
-    changed = pct_stdout(
-        "cd '%s' && git status --porcelain 2>/dev/null | "
-        "grep -v '^?? .opencode/' | grep -v '^?? local_llm/' | "
-        "grep -v '^?? build.jsonl' | grep -v '^?? build.stderr' | head -30" % ws
-    )
-    files = []
-    for line in changed.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        code, path = line[:2], line[3:]
-        # Some pct/git status variants emit a tab/leading status separator;
-        # normalize the harness-owned event artifact before scope evaluation.
-        if path in {"uild.jsonl", "uild.stderr"}:
-            path = "b" + path
-        if code in ("??",):
-            change = "add"
-        elif code.startswith("M"):
-            change = "modify"
-        elif code.startswith("D"):
-            change = "delete"
-        else:
-            change = "add"
-        size = 0
-        sz = pct_stdout("cd '%s' && wc -c < '%s' 2>/dev/null || echo 0" % (ws, path))
-        try:
-            size = int(sz)
-        except ValueError:
-            size = 0
-        files.append({"path": path, "change": change, "size": size})
-    out_of_scope = [
-        f["path"]
-        for f in files
-        if f["path"] not in allowed
-        and f["path"] not in {"build.jsonl", "build.stderr"}
-        and not f["path"].startswith((".gitkeep", ".opencode/", "local_llm/"))
-    ]
+    after = _git_snapshot(ws)
+    files = _build_manifest(ws, after["entries"])
     summary = (obj or {}).get("summary", "")[:2000] if isinstance(obj, dict) else ""
-    status = (
-        "failed"
-        if (r.returncode != 0 and r.returncode != -9 and not files and not summary)
-        else "success"
+    delta_fingerprint = provenance.manifest_fingerprint(files)
+    provenance_meta = {
+        "workspace_head_before": before["head"],
+        "workspace_status_before": before["status"],
+        "workspace_clean_before": not before["entries"],
+        "changes_expected": changes_expected,
+        "build_started_at": build_started_at,
+        "build_ended_at": build_ended_at,
+        "workspace_head_after": after["head"],
+        "build_changed_files": files,
+        "manifest": files,
+        "delta_fingerprint": delta_fingerprint,
+        "changed_file_count": len(files),
+        "build_delta_detected_after_worker": True,
+        "no_other_writer_active": True,
+    }
+    delta_gate = provenance.classify_build_delta(
+        files,
+        allowed,
+        changes_expected=changes_expected,
+        workspace_clean_before=not before["entries"],
+        worker_returncode=r.returncode,
+        worker_summary=summary,
     )
+    status = delta_gate["status"]
     result = {
         "contract": "autodev.build-result.v1",
         "version": "v1",
@@ -2075,20 +2226,20 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         "changed_files": files[:50],
         "summary": summary,
         "test_results": {"passed": 0, "failed": 0},
-        **({} if not out_of_scope else {"failure": {
-            "failure_signature": "OUT_OF_SCOPE_"
-            + _sha(",".join(sorted(out_of_scope)))[:16],
-            "message": "files outside build_scope modified: %s"
-            % ", ".join(out_of_scope[:10]),
-        }}),
+        "x-metadata": {"backend": backend, "build_provenance": provenance_meta},
     }
-    if out_of_scope:
+    if status == "failed":
+        result["failure"] = {
+            "failure_signature": delta_gate["failure_signature"],
+            "message": delta_gate["message"],
+        }
         finalize_job(
             job_id,
             "failed",
             error=result["failure"]["message"],
             failure_class="CONTRACT_FAILURE",
             failure_signature=result["failure"]["failure_signature"],
+            result=result,
         )
         return
     v = registry.validate(result, "autodev.build-result.v1")
@@ -2120,6 +2271,12 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
 
 def job_verify(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    changes_expected = _changes_expected(
+        payload,
+        payload.get("build_scope", {}).get("allowed_files", [])
+        or payload.get("targets", {}).get("files", []),
+    )
+    verify_before = _git_snapshot(ws)
     checks = []
     # unit tests
     test_sys = payload.get("test_system") or "pytest"
@@ -2164,15 +2321,11 @@ def job_verify(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     )
     # scope invariant
     scope = payload.get("build_scope", {}).get("allowed_files", [])
-    changed = pct_stdout(
-        "cd '%s' && git status --porcelain 2>/dev/null | "
-        "grep -v '.opencode/' | grep -v 'local_llm/' | "
-        "grep -v 'build.jsonl' | grep -v 'build.stderr' | "
-        "awk '{print $2}'" % ws
-    )
+    verify_after = _git_snapshot(ws)
+    changed = [entry["path"] for entry in verify_after["entries"]]
     out_scope = [
         f
-        for f in changed.splitlines()
+        for f in changed
         if f
         and f not in scope
         and not f.startswith((".gitkeep", "src/.gitkeep", "tests/.gitkeep"))
@@ -2185,6 +2338,20 @@ def job_verify(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
             "detail": "out of scope: %s" % ", ".join(out_scope[:10]),
         }
     )
+    if not changes_expected:
+        checks.append(
+            {
+                "name": "no-change-invariant",
+                "type": "invariant",
+                "passed": provenance.no_change_completion_allowed(
+                    changes_expected=changes_expected,
+                    independent_verify_passed=True,
+                    head_unchanged=verify_before["head"] == verify_after["head"],
+                    workspace_clean=not verify_before["entries"] and not verify_after["entries"],
+                ),
+                "detail": "no-change-required requires unchanged HEAD and a clean workspace",
+            }
+        )
     all_passed = all(c["passed"] for c in checks)
     failure_class = None
     failure_signature = None
@@ -2275,9 +2442,15 @@ QUALITY_PATTERNS = [
 def _changed_file_contents(ws, paths):
     out = {}
     for p in paths[:20]:
-        content = pct_stdout("cd '%s' && cat '%s' 2>/dev/null || true" % (ws, p))
-        if content:
-            out[p] = content
+        command = "cd %s && cat -- %s 2>/dev/null" % (
+            shlex.quote(ws),
+            shlex.quote(p),
+        )
+        result = pct_exec(command)
+        if result.returncode == 0:
+            # Do not use pct_stdout here: its whitespace normalization would
+            # erase the trailing newline that COR-002 is meant to verify.
+            out[p] = result.stdout or ""
     return out
 
 

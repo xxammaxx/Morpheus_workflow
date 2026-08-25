@@ -1714,6 +1714,7 @@ const input = {
   acceptance_criteria: plan.acceptance_criteria || [],
   required_tests: plan.required_tests || [],
   build_scope: plan.build_scope || {allowed_files: []},
+  changes_expected: plan.changes_expected !== false,
   task_description: issue.task_description || '',
   strategy_delta: null,
   failure_context: null
@@ -1872,6 +1873,7 @@ const input = {
   acceptance_criteria: plan.acceptance_criteria || [],
   required_tests: plan.required_tests || [],
   build_scope: plan.build_scope || {allowed_files: []},
+  changes_expected: plan.changes_expected !== false,
   task_description: issue.task_description || '',
   strategy_delta: null, failure_context: null
 };
@@ -2028,6 +2030,7 @@ const input = {
   acceptance_criteria: plan.acceptance_criteria || [],
   required_tests: plan.required_tests || [],
   build_scope: plan.build_scope || {allowed_files: []},
+  changes_expected: plan.changes_expected !== false,
   task_description: issue.task_description || '',
   strategy_delta: 'include failing test output; run targeted fix',
   failure_context: {
