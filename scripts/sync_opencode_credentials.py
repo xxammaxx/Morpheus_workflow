@@ -146,6 +146,11 @@ home = payload.get("target_home") or info.pw_dir
 path = payload.get("target_auth_file") or os.path.join(home, ".local", "share", "opencode", "auth.json")
 directory = os.path.dirname(path)
 os.makedirs(directory, mode=0o700, exist_ok=True)
+# The helper runs as root through pct. Newly-created OpenCode directories
+# must nevertheless belong to the target user, otherwise a valid 0600 auth
+# file is unusable by the OpenCode process.
+os.chown(directory, info.pw_uid, info.pw_gid)
+os.chmod(directory, 0o700)
 try:
     with open(path, encoding="utf-8") as stream:
         target = json.load(stream)
