@@ -2262,9 +2262,15 @@ QUALITY_PATTERNS = [
 def _changed_file_contents(ws, paths):
     out = {}
     for p in paths[:20]:
-        content = pct_stdout("cd '%s' && cat '%s' 2>/dev/null || true" % (ws, p))
-        if content:
-            out[p] = content
+        command = "cd %s && cat -- %s 2>/dev/null" % (
+            shlex.quote(ws),
+            shlex.quote(p),
+        )
+        result = pct_exec(command)
+        if result.returncode == 0:
+            # Do not use pct_stdout here: its whitespace normalization would
+            # erase the trailing newline that COR-002 is meant to verify.
+            out[p] = result.stdout or ""
     return out
 
 
