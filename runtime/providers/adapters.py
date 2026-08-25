@@ -4,8 +4,10 @@
 import json
 import math
 import os
+import shlex
 import urllib.error
 import urllib.request
+import subprocess
 
 from .protocol import (
     ProviderFailure,
@@ -223,6 +225,67 @@ class OpenRouterAdapter(ProviderAdapter):
         return super().discover_models()
 
 
+class OpenCodeAdapter(ProviderAdapter):
+    """Execute the authoritative OpenCode installation in CT8001."""
+
+    def __init__(self):
+        super().__init__("opencode", "ct8001://opencode", "")
+
+    def invoke(self, request, timeout=60, probe_lease_id=None):
+        model = "%s/%s" % (request.provider, request.model)
+        prompt = "\n".join(
+            str(message.get("content", ""))
+            for message in request.messages
+            if isinstance(message, dict)
+        )[:12000]
+        command = " ".join(
+            [
+                "/opt/dev-fabric/opencode/opencode",
+                "run", "--format", "json",
+                "--model", shlex.quote(model),
+                "--dir", "/home/builder",
+                shlex.quote(prompt),
+            ]
+        )
+        try:
+            result = subprocess.run(
+                ["pct", "exec", "8001", "--", "su", "-", "builder", "-c", command],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ProviderFailure("opencode transport unavailable", retryable=True) from exc
+        if result.returncode != 0:
+            raise ProviderFailure("opencode execution failed", retryable=True)
+        text_parts = []
+        actual_cost = None
+        for line in result.stdout.splitlines():
+            try:
+                event = json.loads(line)
+            except (TypeError, ValueError):
+                continue
+            if event.get("type") == "text":
+                value = (event.get("part") or {}).get("text")
+                if isinstance(value, str):
+                    text_parts.append(value)
+            if event.get("type") == "step_finish":
+                cost = (event.get("part") or {}).get("cost")
+                if isinstance(cost, (int, float)):
+                    actual_cost = cost
+        return ProviderResponse(
+            text="\n".join(text_parts),
+            provider=request.provider,
+            requested_model=request.model,
+            resolved_model=request.model,
+            actual_provider=request.provider,
+            actual_model=request.model,
+            usage={},
+            actual_cost=actual_cost,
+        )
+
+
 def build_adapters():
     configs = {
         "openai": (
@@ -243,8 +306,10 @@ def build_adapters():
             {},
         ),
     }
-    return {
+    adapters = {
         name: (OpenRouterAdapter(name, base, env, **options)
                if name == "openrouter" else ProviderAdapter(name, base, env, **options))
         for name, (base, env, options) in configs.items()
     }
+    adapters["opencode"] = OpenCodeAdapter()
+    return adapters
