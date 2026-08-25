@@ -2904,7 +2904,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.path = urllib.parse.unquote(self.path)
-        if self.path == "/healthz":
+        parsed = urllib.parse.urlsplit(self.path)
+        path = parsed.path
+        query = urllib.parse.parse_qs(parsed.query)
+        if path == "/healthz":
             with _lock:
                 running = sum(1 for r in JOBS.values() if r.get("status") == "running")
                 total = len(JOBS)
@@ -2923,7 +2926,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._auth():
             self._send(401, err("UNAUTHORIZED", "missing or invalid token"))
             return
-        if self.path == "/v1/status/runtime":
+        if path == "/v1/status/runtime":
             with _lock:
                 running_jobs = sum(
                     1 for record in JOBS.values() if record.get("status") == "running"
@@ -2968,21 +2971,25 @@ class Handler(BaseHTTPRequestHandler):
                 ),
             )
             return
-        if self.path.startswith("/v1/jobs/"):
-            jid = self.path[len("/v1/jobs/") :]
+        if path.startswith("/v1/jobs/"):
+            jid = path[len("/v1/jobs/") :]
             rec = JOBS.get(jid)
             if rec is None:
                 self._send(404, err("NOT_FOUND", "job not found"))
                 return
             self._send(200, ok(_job_view(rec)))
             return
-        if self.path.startswith("/v1/batches/"):
-            bid = self.path[len("/v1/batches/") :]
+        if path.startswith("/v1/batches/"):
+            bid = path[len("/v1/batches/") :]
             brec = BATCHES.get(bid)
             if brec is None:
                 self._send(404, err("NOT_FOUND", "batch not found"))
                 return
             jobs = [_job_view(JOBS[j]) for j in brec.get("job_ids", []) if j in JOBS]
+            try:
+                polls = max(0, int((query.get("polls") or [0])[0]))
+            except (TypeError, ValueError):
+                polls = 0
             self._send(
                 200,
                 ok(
@@ -2995,12 +3002,13 @@ class Handler(BaseHTTPRequestHandler):
                         "ended_at": brec.get("ended_at"),
                         "job_count": len(jobs),
                         "jobs": jobs,
+                        "polls": polls,
                     }
                 ),
             )
             return
-        if self.path.startswith("/v1/artifacts/"):
-            parts = self.path.split("/")  # /v1/artifacts/<run_id>/<name>
+        if path.startswith("/v1/artifacts/"):
+            parts = path.split("/")  # /v1/artifacts/<run_id>/<name>
             if len(parts) < 5:
                 self._send(
                     400, err("BAD_REQUEST", "expected /v1/artifacts/<run_id>/<name>")
