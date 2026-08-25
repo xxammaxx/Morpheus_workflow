@@ -327,6 +327,16 @@ class ProviderCatalog:
                     "route_cost_proven": pricing.get("prompt") in (0, "0", "0.0") and pricing.get("completion") in (0, "0", "0.0"),
                 }
                 apply_policy(entry, provider, "opencode-api-key")
+                if (
+                    entry.get("authenticated") is True
+                    and entry.get("route_cost_proven") is True
+                    and entry.get("cost_class") == "FREE_HARD_STOP"
+                ):
+                    entry["free_evidence"] = sorted(
+                        set(entry.get("free_evidence") or [])
+                        | {"ACCOUNT_FREE_ELIGIBLE"}
+                    )
+                    free_eligibility(entry, require_execution=False)
                 normalize_live_capabilities(entry)
                 self.add_entry(entry)
             self.authenticated_providers = authenticated
