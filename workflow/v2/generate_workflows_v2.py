@@ -2192,7 +2192,8 @@ const jobs = ['code', 'docs', 'tests'].map((area) => ({
   provider: s.provider || null,
   model: s.model || null,
   model_revision: s.model_revision || null,
-  task_class: 'research'
+  task_class: 'research',
+  timeout_s: 60
 }));
 return [{json: {
   run_id: runId, batch_id: runId + ':research-batch',
@@ -2241,7 +2242,7 @@ return [{json: d}];""",
 return [{json: Object.assign({}, s, {polls: (s.polls || 0) + 1})}];""",
             P(7, 0),
         )
-        lim = num_if("Limit?", "$json.polls", "gte", 40, P(8, 0))
+        lim = num_if("Limit?", "$json.polls", "gte", 240, P(8, 0))
         timeout = code_node(
             "Timeout",
             """const s = $json;

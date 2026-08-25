@@ -1845,7 +1845,13 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
         timeout_s,
         *_opencode_worker_identity(payload),
     )
-    execution = pct_exec(script, timeout=timeout_s)
+    try:
+        execution = pct_exec(script, timeout=timeout_s)
+    except subprocess.TimeoutExpired as exc:
+        raise ProviderFailure(
+            "opencode research model attempt timed out",
+            retryable=True,
+        ) from exc
     if execution.returncode != 0:
         raise ProviderFailure("opencode execution failure", retryable=True)
     text, events = _parse_opencode_jsonl(ws)
