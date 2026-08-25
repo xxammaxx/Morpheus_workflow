@@ -59,6 +59,14 @@ def test_default_opencode_worker_uses_local_ollama_fallback():
     )
 
 
+def test_lmstudio_endpoint_is_deployment_configured(monkeypatch):
+    monkeypatch.setenv("LMSTUDIO_BASE_URL", "http://model-host:1234/v1/")
+    assert adapter._lmstudio_url_from_env() == "http://model-host:1234"
+    assert 'LMSTUDIO_URL = "http://192.168.1.195:1234"' not in Path(
+        adapter.__file__
+    ).read_text()
+
+
 def test_explicit_worker_identity_is_preserved():
     payload = {"x-metadata": {
         "execution_provider": "ollama",
