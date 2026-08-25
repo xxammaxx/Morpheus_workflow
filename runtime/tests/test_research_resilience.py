@@ -91,9 +91,14 @@ def test_research_recovery_is_bounded_and_preserves_poll_budget(tmp_path):
     assert "?polls={{ $json.polls || 0 }}" in poll["parameters"]["url"]
     assert any(
         node["name"] == "Limit?"
-        and node["parameters"]["conditions"]["conditions"][0]["rightValue"] == 40
+        and node["parameters"]["conditions"]["conditions"][0]["rightValue"] == 240
         for node in workflow["nodes"]
     )
+
+    prep = next(
+        node for node in workflow["nodes"] if node["name"] == "Prep Research Batch"
+    )
+    assert "timeout_s: 60" in prep["parameters"]["jsCode"]
 
     recovery = next(
         node for node in workflow["nodes"] if node["name"] == "Prepare Research Recovery"
