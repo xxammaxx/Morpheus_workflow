@@ -294,7 +294,11 @@ class ProviderCatalog:
             free_eligibility(entry)
         report = {"refresh": "FAILED", "catalog_entries": 0}
         try:
-            live = refresh_catalog(opencode_bin or os.environ.get("OPENCODE_BIN", "opencode"), cwd=cwd)
+            live = refresh_catalog(
+                opencode_bin
+                or os.environ.get("AUTODEV_OPENCODE_CATALOG_BIN", "opencode"),
+                cwd=cwd,
+            )
             report = {"refresh": "PASS", "catalog_entries": len(live["entries"])}
             self.catalog_version = now_utc()
             for raw in live["entries"]:
