@@ -11,6 +11,7 @@ from providers.opencode import (  # noqa: E402
     auth_identities,
     parse_catalog_output,
 )
+from providers.capabilities import normalize_live_capabilities  # noqa: E402
 
 
 def test_auth_kinds_are_distinguished_without_exposing_values():
@@ -44,3 +45,21 @@ def test_catalog_parser_accepts_machine_readable_json_lines():
 
 def test_human_catalog_rows_do_not_prove_free_status():
     assert parse_catalog_output("zen/model-a  free\n") == []
+
+
+def test_live_opencode_capabilities_are_conservative_and_machine_readable():
+    entry = {
+        "provider_metadata": {
+            "raw_model_metadata": {
+                "capabilities": {
+                    "toolcall": True,
+                    "input": {"image": True},
+                },
+                "limit": {"context": 200000},
+            }
+        }
+    }
+    normalize_live_capabilities(entry)
+    assert entry["capabilities"]["TOOL_CAPABLE"] is True
+    assert entry["capabilities"]["VISION_CAPABLE"] is True
+    assert entry["capabilities"]["LONG_CONTEXT_CAPABLE"] is True
