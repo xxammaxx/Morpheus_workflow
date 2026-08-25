@@ -35,6 +35,10 @@ def apply_policy(entry, provider, account_class="unknown"):
     entry["zero_cost_verified"] = bool(
         entry.get("zero_cost_verified") is True or explicit_zero or route_zero
     )
+    if explicit_zero or route_zero:
+        entry["free_evidence"] = sorted(
+            set(entry.get("free_evidence") or []) | {"CATALOG_FREE"}
+        )
     entry["account_class"] = account_class
     privacy_approved = os.environ.get(
         "AUTODEV_%s_PRIVACY_APPROVED" % provider.upper(), "false"
@@ -278,7 +282,9 @@ class ProviderCatalog:
         remains fail-closed because stale entries still need current free and
         capability evidence.
         """
-        auth_path = discover_auth_file(auth_file)
+        auth_path = discover_auth_file(
+            auth_file or os.environ.get("AUTODEV_OPENCODE_AUTH_FILE")
+        )
         authenticated = set()
         if auth_path:
             authenticated = authenticated_api_key_providers(load_auth_file(auth_path))
