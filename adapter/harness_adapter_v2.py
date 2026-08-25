@@ -118,8 +118,25 @@ BUILDER_CTID = "8001"
 BUILDER_WS_ROOT = "/var/lib/ghiw/workspaces"
 LOCAL_LLM_SRC = "/var/lib/ghiw/workspaces/provider-smoke-v3/local_llm"
 OPENCODE_BIN = "/opt/dev-fabric/opencode/opencode"
-LMSTUDIO_URL = "http://192.168.1.195:1234"
-LMSTUDIO_MODEL = "huihui-qwen3.5-9b-abliterated"
+
+
+def _lmstudio_url_from_env():
+    """Return the configured OpenAI-compatible LM Studio base URL.
+
+    LAN addresses are deployment configuration, not application topology.
+    Accept both the server root and an OpenAI-compatible ``/v1`` URL because
+    the adapter appends the API path itself.
+    """
+    value = os.environ.get("LMSTUDIO_BASE_URL", "").strip().rstrip("/")
+    if value.endswith("/v1"):
+        value = value[:-3].rstrip("/")
+    return value
+
+
+LMSTUDIO_URL = _lmstudio_url_from_env()
+LMSTUDIO_MODEL = os.environ.get(
+    "AUTODEV_LMSTUDIO_MODEL", "qwen2.5-coder-7b-instruct"
+).strip()
 OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://192.168.1.50:11434").rstrip("/")
 if OLLAMA_URL.endswith("/v1"):
     OLLAMA_URL = OLLAMA_URL[:-3].rstrip("/")

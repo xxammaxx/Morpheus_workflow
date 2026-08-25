@@ -10,7 +10,7 @@ Kurzreferenz für Betrieb und Test des AutoDev-Harness-v2-Control-Plane.
 | Harness Adapter v2 | http://192.168.1.136:8081 | systemd `autodev-harness-v2` auf pve |
 | Adapter State | `/var/lib/autodev-harness-v2/` | Token (0600), Ledger `logs/runs.jsonl`, Workspaces |
 | Builder CT 8001 | ghiw-bld-e3r6-canary-001-8001 | OpenCode 1.18.22, local Ollama formatter (LM-Studio remains an available worker route) |
-| LM Studio | http://192.168.1.195:1234 | Modell: `huihui-qwen3.5-9b-abliterated` (Context 32768) |
+| LM Studio | deployment-configured via `LMSTUDIO_BASE_URL` | Modell via `AUTODEV_LMSTUDIO_MODEL` (Context 32768) |
 | Run-State | n8n Data Tables `autodev_runs`, `autodev_attempts` | Public-API-Tabellen |
 | Credentials | n8n: `autodev-n8n-api`, `autodev-harness-token`, `autodev-api-auth` | httpHeaderAuth, Werte nur im Credential Store |
 
@@ -60,8 +60,9 @@ review.correctness|security|quality. Backends: embedded, opencode-builder-8001.
   In-flight-Jobs werden als `interrupted`/`INFRA_FAILURE` markiert (Recovery).
 - **Builder CT**: `pct reboot 8001` (bei hängendem pct exec; Canary-CT).
 - **LM Studio**: `~/.lmstudio/bin/lms server start --bind 0.0.0.0`,
-  `lms load "huihui-qwen3.5-9b-abliterated" --context-length 32768`.
-  (Modellwechsel: Adapter-Konstante `LMSTUDIO_MODEL` anpassen.)
+  `lms load "<configured-model>" --context-length 32768`.
+  Set `LMSTUDIO_BASE_URL` and `AUTODEV_LMSTUDIO_MODEL` in the root-only
+  `provider.env`; do not put a moving LAN address in source code.
 - **Workflows aktualisieren** (nach Generator-Änderungen):
   `python3 workflow/v2/create_workflows_v2.py <repo> <exportdir>` auf pve.
 - **Secrets**: `/var/lib/autodev-harness-v2/token`,
