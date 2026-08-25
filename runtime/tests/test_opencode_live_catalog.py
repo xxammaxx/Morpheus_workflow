@@ -53,9 +53,14 @@ def test_live_opencode_capabilities_are_conservative_and_machine_readable():
             "raw_model_metadata": {
                 "capabilities": {
                     "toolcall": True,
-                    "input": {"image": True},
+                    "input": {"image": True, "text": True},
+                    "output": {"text": True},
+                    "reasoning": True,
                 },
                 "limit": {"context": 200000},
+                "id": "example-coder",
+                "family": "example-coder",
+                "name": "Example Coder",
             }
         }
     }
@@ -63,3 +68,5 @@ def test_live_opencode_capabilities_are_conservative_and_machine_readable():
     assert entry["capabilities"]["TOOL_CAPABLE"] is True
     assert entry["capabilities"]["VISION_CAPABLE"] is True
     assert entry["capabilities"]["LONG_CONTEXT_CAPABLE"] is True
+    assert entry["capabilities"]["RESEARCH_CAPABLE"] is True
+    assert entry["capabilities"]["BUILD_CAPABLE"] is True

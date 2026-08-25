@@ -325,8 +325,6 @@ class ProviderCatalog:
                 apply_policy(entry, provider, "opencode-api-key")
                 normalize_live_capabilities(entry)
                 self.add_entry(entry)
-            if authenticated:
-                self.refresh(providers=sorted(authenticated), authenticated_providers=authenticated)
             self.authenticated_providers = authenticated
             self.events.append({"event": "OPENCODE_LIVE_REFRESH", **report, "at": now_utc()})
             self.save()

@@ -70,6 +70,10 @@ def normalize_live_capabilities(entry):
         live_capabilities = {}
     live_input = live_capabilities.get("input", {}) if isinstance(live_capabilities, dict) else {}
     live_limit = raw.get("limit") if isinstance(raw, dict) else {}
+    live_output = live_capabilities.get("output", {}) if isinstance(live_capabilities, dict) else {}
+    model_identity = " ".join(
+        str(raw.get(name, "")) for name in ("id", "name", "family")
+    ).lower()
     caps = dict(entry.get("capabilities") or {})
     caps["VISION_CAPABLE"] = bool(
         caps.get("VISION_CAPABLE") is True
@@ -82,6 +86,25 @@ def normalize_live_capabilities(entry):
         or entry.get("supports_tools") is True
         or any(str(value).lower() in {"tools", "tool_choice", "function_calling"} for value in parameters)
         or live_capabilities.get("toolcall") is True
+    )
+    text_capable = live_input.get("text") is True and live_output.get("text") is True
+    reasoning_capable = live_capabilities.get("reasoning") is True
+    caps["RESEARCH_CAPABLE"] = bool(
+        caps.get("RESEARCH_CAPABLE") is True or (text_capable and reasoning_capable)
+    )
+    caps["PLAN_CAPABLE"] = bool(
+        caps.get("PLAN_CAPABLE") is True or (text_capable and reasoning_capable)
+    )
+    caps["REVIEW_CAPABLE"] = bool(
+        caps.get("REVIEW_CAPABLE") is True or (text_capable and reasoning_capable)
+    )
+    caps["BUILD_CAPABLE"] = bool(
+        caps.get("BUILD_CAPABLE") is True
+        or (
+            text_capable
+            and caps.get("TOOL_CAPABLE") is True
+            and any(token in model_identity for token in ("code", "coder", "coding", "developer"))
+        )
     )
     caps["STRUCTURED_OUTPUT_CAPABLE"] = bool(
         caps.get("STRUCTURED_OUTPUT_CAPABLE") is True

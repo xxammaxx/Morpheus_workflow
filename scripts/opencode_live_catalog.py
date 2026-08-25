@@ -47,6 +47,9 @@ def main(argv=None):
             },
             "capabilities": value.get("capabilities") or {},
             "context_length": limit.get("context", 0),
+            "name": value.get("name", ""),
+            "family": value.get("family", ""),
+            "supported_parameters": value.get("supported_parameters") or [],
         }, sort_keys=True))
         found += 1
     if result.stderr:
