@@ -21,7 +21,8 @@
         "properties": {
           "path": { "type": "string", "maxLength": 256 },
           "change": { "enum": ["add", "modify", "delete"] },
-          "size": { "type": "integer", "minimum": 0 }
+          "size": { "type": "integer", "minimum": 0 },
+          "content_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
         },
         "additionalProperties": false
       }
