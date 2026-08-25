@@ -8,7 +8,8 @@ import tempfile
 import urllib.parse
 
 from .adapters import build_adapters
-from .capabilities import CapabilityRegistry
+from .capabilities import CapabilityRegistry, normalize_live_capabilities
+from .opencode import authenticated_api_key_providers, discover_auth_file, load_auth_file, refresh_catalog
 from .protocol import (
     FREE_EVIDENCE_STAGES,
     credential_inventory,
@@ -17,20 +18,22 @@ from .protocol import (
 )
 
 DEFAULT_CREDENTIAL_ENV = {
+    "openai": "OPENAI_API_KEY",
     "groq": "GROQ_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
 }
-
 
 def apply_policy(entry, provider, account_class="unknown"):
     raw = (entry.get("provider_metadata") or {}).get("raw_model_metadata") or {}
     pricing = raw.get("pricing") if isinstance(raw, dict) else {}
     prompt = pricing.get("prompt") if isinstance(pricing, dict) else None
     completion = pricing.get("completion") if isinstance(pricing, dict) else None
-    free_model = provider == "openrouter" and (
-        str(entry.get("model", "")).lower() == "openrouter/free"
-        or str(entry.get("model", "")).endswith(":free")
-        or (prompt in (0, "0", "0.0") and completion in (0, "0", "0.0"))
+    explicit_zero = prompt in (0, "0", "0.0") and completion in (0, "0", "0.0")
+    route_zero = entry.get("route_cost_proven") is True and entry.get("cost_class") in {
+        "FREE_HARD_STOP", "LOCAL_ZERO_COST", "FREE_QUOTA"
+    }
+    entry["zero_cost_verified"] = bool(
+        entry.get("zero_cost_verified") is True or explicit_zero or route_zero
     )
     entry["account_class"] = account_class
     privacy_approved = os.environ.get(
@@ -93,12 +96,13 @@ def apply_policy(entry, provider, account_class="unknown"):
             entry.update({"cost_class": "FREE_QUOTA", "input_price": 0, "output_price": 0})
         else:
             entry.update({"cost_class": "UNKNOWN", "input_price": None, "output_price": None})
-    elif free_model:
+    elif explicit_zero and entry["zero_cost_verified"]:
         entry.update(
             {"cost_class": "FREE_HARD_STOP", "input_price": 0, "output_price": 0}
         )
     elif provider == "deepseek":
         entry.update({"cost_class": "PAID", "privacy_class": "BLOCKED"})
+    entry["authenticated"] = bool(entry.get("authenticated", True))
     free_eligibility(entry)
     return entry
 
@@ -119,6 +123,9 @@ class ProviderCatalog:
         self.entries = []
         self.events = []
         self.loaded_at = None
+        self.catalog_version = None
+        self.authenticated_providers = set()
+        self.auth_inventory_known = False
         self._load()
 
     def _load(self):
@@ -133,6 +140,9 @@ class ProviderCatalog:
             self.entries = data.get("entries", [])
             self.events = data.get("events", [])
             self.loaded_at = data.get("refreshed_at")
+            self.catalog_version = data.get("catalog_version")
+            self.authenticated_providers = set(data.get("authenticated_providers") or [])
+            self.auth_inventory_known = data.get("auth_inventory_known", False)
             for entry in self.entries:
                 free_eligibility(entry)
         except (OSError, ValueError, TypeError):
@@ -151,6 +161,9 @@ class ProviderCatalog:
                         "contract": "provider.catalog.v1",
                         "version": "v1",
                         "refreshed_at": now_utc(),
+                        "catalog_version": self.catalog_version,
+                        "authenticated_providers": sorted(self.authenticated_providers),
+                        "auth_inventory_known": self.auth_inventory_known,
                         "entries": self.entries,
                         "events": self.events[-200:],
                     },
@@ -207,10 +220,14 @@ class ProviderCatalog:
         ]
         self.entries.append(copy.deepcopy(entry))
 
-    def refresh(self, providers=None):
+    def refresh(self, providers=None, authenticated_providers=None):
+        if authenticated_providers is not None:
+            self.authenticated_providers = set(authenticated_providers)
         changed = []
         for provider in list(providers or self.adapters):
             if provider == "deepseek":
+                continue
+            if self.auth_inventory_known and provider not in self.authenticated_providers:
                 continue
             adapter = self.adapters.get(provider)
             if adapter is None or (adapter.credential_env and not adapter.credential):
@@ -230,9 +247,11 @@ class ProviderCatalog:
                 entry["credential_valid"] = (
                     True if not adapter.credential_env else bool(adapter.credential)
                 )
+                entry["authenticated"] = not self.auth_inventory_known or provider in self.authenticated_providers
                 capability = self.capability_registry.get(provider, entry.get("model"))
                 if capability:
                     entry["capabilities"] = capability.get("capabilities", {})
+                normalize_live_capabilities(entry)
                 self.add_entry(entry)
             if discovered:
                 changed.append(
@@ -250,6 +269,65 @@ class ProviderCatalog:
             "events": changed,
             "entry_count": len(self.entries),
         }
+
+    def refresh_live(self, auth_file=None, opencode_bin=None, cwd=None):
+        """Refresh OpenCode's live catalog before provider enrichment.
+
+        The CLI refresh is mandatory in the live path, but an unavailable
+        local binary does not erase the last catalog snapshot.  Selection
+        remains fail-closed because stale entries still need current free and
+        capability evidence.
+        """
+        auth_path = discover_auth_file(auth_file)
+        authenticated = set()
+        if auth_path:
+            authenticated = authenticated_api_key_providers(load_auth_file(auth_path))
+        self.auth_inventory_known = True
+        for entry in self.entries:
+            entry["authenticated"] = bool(auth_path and entry.get("provider") in authenticated)
+            free_eligibility(entry)
+        report = {"refresh": "FAILED", "catalog_entries": 0}
+        try:
+            live = refresh_catalog(opencode_bin or os.environ.get("OPENCODE_BIN", "opencode"), cwd=cwd)
+            report = {"refresh": "PASS", "catalog_entries": len(live["entries"])}
+            self.catalog_version = now_utc()
+            for raw in live["entries"]:
+                provider = raw.get("provider")
+                if provider not in self.adapters or provider == "deepseek":
+                    continue
+                if self.auth_inventory_known and provider not in authenticated:
+                    continue
+                model = raw.get("model")
+                endpoint = self.adapters[provider].base_url
+                pricing = raw.get("pricing") or {}
+                entry = {
+                    "provider": provider,
+                    "model": model,
+                    "endpoint": endpoint,
+                    "availability": True,
+                    "health": "HEALTHY",
+                    "account_class": "opencode-api-key",
+                    "authenticated": provider in authenticated,
+                    "provider_metadata": {"raw_model_metadata": raw},
+                    "input_price": pricing.get("prompt"),
+                    "output_price": pricing.get("completion"),
+                    "capabilities": raw.get("capabilities") or {},
+                    "context_length": raw.get("context_length", raw.get("context_window", 0)),
+                    "route_exists": True,
+                    "route_cost_proven": pricing.get("prompt") in (0, "0", "0.0") and pricing.get("completion") in (0, "0", "0.0"),
+                }
+                apply_policy(entry, provider, "opencode-api-key")
+                normalize_live_capabilities(entry)
+                self.add_entry(entry)
+            if authenticated:
+                self.refresh(providers=sorted(authenticated), authenticated_providers=authenticated)
+            self.authenticated_providers = authenticated
+            self.events.append({"event": "OPENCODE_LIVE_REFRESH", **report, "at": now_utc()})
+            self.save()
+        except (OSError, ValueError, RuntimeError, TypeError):
+            self.events.append({"event": "OPENCODE_LIVE_REFRESH_FAILED", "at": now_utc()})
+            self.save()
+        return report
 
     def health_refresh(self):
         for provider, adapter in self.adapters.items():

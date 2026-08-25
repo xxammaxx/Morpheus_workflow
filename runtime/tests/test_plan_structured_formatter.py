@@ -1,14 +1,15 @@
-"""Regression tests for the bounded local plan serialization seam."""
+"""Regression tests for dynamic OpenCode worker identity."""
 
-import copy
 import os
 import sys
 import tempfile
 from pathlib import Path
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "adapter"))
+sys.path.insert(0, str(ROOT / "runtime"))
 os.environ.setdefault("AUTODEV_V2_STATE", tempfile.mkdtemp(prefix="morpheus-plan-test-"))
 import harness_adapter_v2 as adapter  # noqa: E402
 
@@ -24,49 +25,41 @@ def _semantic_plan():
     }
 
 
-def test_formatter_schema_tracks_canonical_model_fields():
-    schema = adapter._plan_model_schema()
-    canonical = adapter.registry.get_schema("autodev.plan.v1")
-    assert set(schema["required"]) == {
-        "targets", "acceptance_criteria", "required_tests", "risks",
-        "build_scope", "research_summary",
-    }
-    assert {"targets", "acceptance_criteria", "required_tests", "risks",
-            "build_scope"}.issubset(canonical["properties"])
-    assert set(schema["properties"]) == set(schema["required"])
-    assert schema["additionalProperties"] is False
-    assert schema["properties"]["targets"]["required"] == ["files", "symbols"]
-
-
-def test_worker_agent_model_tracks_selected_local_route():
+def test_worker_agent_model_tracks_dynamic_route():
     agent = adapter._agent_md(
         "plan-worker", adapter.PLAN_TOOLS, adapter.PLAN_PERMS,
-        "test worker", "qwen3:1.7b",
+        "test worker", "zen/live-model",
     )
-    assert "model: lmstudio/qwen3:1.7b" in agent
-    assert adapter.LMSTUDIO_MODEL not in agent
+    assert "model: zen/live-model" in agent
+    assert "lmstudio/" not in agent
+    assert "ollama/" not in agent
     assert adapter.PLAN_TOOLS["write"] is True
     assert adapter.PLAN_PERMS["write"] == "deny"
 
 
-def test_default_opencode_worker_uses_local_ollama_fallback():
-    payload = {"x-metadata": {
-        "execution_provider": "lmstudio",
-        "execution_model": adapter.LMSTUDIO_MODEL,
-    }}
-    assert adapter._opencode_worker_identity(payload) == (
-        "ollama", adapter.OLLAMA_MODEL
-    )
+def test_unresolved_opencode_worker_fails_closed():
+    with pytest.raises(RuntimeError, match="NO_ELIGIBLE_FREE_MODEL"):
+        adapter._opencode_worker_identity({})
 
 
-def test_explicit_worker_identity_is_preserved():
+def test_explicit_dynamic_worker_identity_is_preserved():
     payload = {"x-metadata": {
         "execution_provider": "ollama",
-        "execution_model": adapter.OLLAMA_MODEL,
+        "execution_model": "qwen3.5:9b",
     }}
-    assert adapter._opencode_worker_identity(payload) == (
-        "ollama", adapter.OLLAMA_MODEL
+    assert adapter._opencode_worker_identity(payload) == ("ollama", "qwen3.5:9b")
+
+
+def test_opencode_script_uses_selected_dynamic_route():
+    script = adapter._opencode_script(
+        "/tmp/autodev-v2-dynamic-test", "plan-worker", "model: zen/live-model",
+        "Return JSON only", 30, "zen", "live-model",
     )
+    assert "zen/live-model" in script
+    assert "OPENCODE_CONFIG_CONTENT" in script
+    assert "local_llm" not in script
+    assert "LMSTUDIO" not in script
+    assert "OLLAMA" not in script
 
 
 def test_explicit_task_scope_has_deterministic_plan_fallback():
@@ -98,56 +91,17 @@ def test_scope_consistency_fails_closed():
     )["ok"] is False
 
 
-def test_formatter_does_not_invent_missing_semantics():
-    missing = copy.deepcopy(_semantic_plan())
+def test_plan_validation_does_not_invent_missing_semantics():
+    missing = dict(_semantic_plan())
     missing.pop("targets")
     assert adapter._plan_scope_errors(missing)
     assert adapter._plan_scope_errors({"targets": {"files": []},
                                        "build_scope": {"allowed_files": []}})
 
 
-def test_formatter_is_one_pass_and_preserves_attempt_identity(monkeypatch):
-    calls = []
-
-    def fake(candidate, model):
-        calls.append((candidate, model))
-        return _semantic_plan(), None
-
-    monkeypatch.setattr(adapter, "_ollama_format_plan", fake)
-    # The production job calls the seam once for malformed serialization. This
-    # direct contract test keeps the one-pass invariant explicit without a CT.
-    result, error = adapter._ollama_format_plan("malformed", "qwen3:1.7b")
-    assert error is None and result["targets"]["files"]
-    assert len(calls) == 1
-    assert "attempt_id" not in result
-
-
-def test_local_formatter_request_is_schema_constrained(monkeypatch):
-    seen = {}
-
-    class Response:
-        def read(self):
-            return b'{"response":"{\\"value\\":\\"unused\\"}"}'
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-
-    def fake_urlopen(request, timeout):
-        import json
-        seen["body"] = json.loads(request.data.decode())
-        seen["timeout"] = timeout
-        return Response()
-
-    monkeypatch.setattr(adapter.urllib.request, "urlopen", fake_urlopen)
-    # A worker identity must not be able to override the local formatter
-    # route/model (the second argument is retained only for old callers).
-    adapter._ollama_format_plan("candidate", "openrouter/free-external")
-    assert seen["body"]["model"] == adapter.OLLAMA_FORMATTER_MODEL
-    assert seen["body"]["model"] != "openrouter/free-external"
-    assert seen["body"]["stream"] is False
-    assert seen["body"]["options"]["temperature"] == 0
-    assert seen["body"]["format"]["additionalProperties"] is False
-    assert seen["timeout"] == adapter.OLLAMA_FORMATTER_TIMEOUT_S
+def test_dashboard_scope_is_denied_for_runtime_builder():
+    error = adapter._dashboard_scope_error({
+        "build_scope": {"allowed_files": ["dashboard/control_tower.py"]},
+        "targets": {"files": ["dashboard/control_tower.py"]},
+    })
+    assert error and "dashboard" in error

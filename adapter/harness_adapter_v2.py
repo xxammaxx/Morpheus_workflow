@@ -40,7 +40,6 @@ import threading
 import time
 import urllib.request
 import urllib.parse
-import copy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 STATE_DIR = os.environ.get("AUTODEV_V2_STATE", "/var/lib/autodev-harness-v2")
@@ -87,12 +86,14 @@ try:
         RouteRequest,
         is_deepseek_identifier,
     )  # noqa: E402
+    from providers.capabilities import classify_task  # noqa: E402
 except ImportError:  # pragma: no cover - legacy deployment without providers
     ProviderRuntime = None
     NoEligibleProvider = RuntimeError
     ProviderFailure = RuntimeError
     RouteRequest = None
     is_deepseek_identifier = lambda provider, model: False
+    classify_task = lambda payload, task_class=None: {"task_class": task_class or "research"}
 
 # HAMH harness registry: loaded from <STATE_DIR>/hamh/registry.json when
 # present. Without a registry file the resolver keeps the explicit baseline
@@ -115,18 +116,10 @@ _provider_runtime = ProviderRuntime() if ProviderRuntime is not None else None
 BUILDER_CTID = "8001"
 BUILDER_WS_ROOT = "/var/lib/ghiw/workspaces"
 LOCAL_LLM_SRC = "/var/lib/ghiw/workspaces/provider-smoke-v3/local_llm"
-OPENCODE_BIN = "/opt/dev-fabric/opencode/opencode"
-LMSTUDIO_URL = "http://192.168.1.195:1234"
-LMSTUDIO_MODEL = "huihui-qwen3.5-9b-abliterated"
-OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://192.168.1.50:11434").rstrip("/")
-if OLLAMA_URL.endswith("/v1"):
-    OLLAMA_URL = OLLAMA_URL[:-3].rstrip("/")
-OLLAMA_MODEL = os.environ.get("AUTODEV_OLLAMA_MODEL", "qwen3.5:9b")
-# Keep the local structured formatter's model binding independent from the
-# worker identity.  A worker may use an external/free route, but its model
-# identifier must never leak into this local Ollama request.
-OLLAMA_FORMATTER_MODEL = os.environ.get("OLLAMA_FORMATTER_MODEL", OLLAMA_MODEL)
-OLLAMA_FORMATTER_TIMEOUT_S = 60
+OPENCODE_BIN = os.environ.get("OPENCODE_BIN", "opencode")
+MORPHEUS_MODEL_ALIAS = "morpheus-dynamic-free"
+AUTOMATIC_PAID_AGENT_ESCALATION = False
+FORBIDDEN_RUNTIME_ROOTS = ("dashboard",)
 DEFAULT_TIMEOUT_S = 600
 MAX_WORKERS = 6
 MAX_BODY = 262144
@@ -168,6 +161,22 @@ HAMH_ID_RE = re.compile(r"^[A-Za-z0-9._/-]{0,64}$")
 HAMH_TASK_CLASSES = {"research", "plan", "build", "review", "verify", "baseline"}
 
 
+def _is_forbidden_runtime_path(path):
+    normalized = str(path or "").replace("\\", "/").lstrip("./")
+    return any(normalized == root or normalized.startswith(root + "/")
+               for root in FORBIDDEN_RUNTIME_ROOTS)
+
+
+def _dashboard_scope_error(payload):
+    scope = payload.get("build_scope") or {}
+    targets = payload.get("targets") or {}
+    paths = list(scope.get("allowed_files") or []) + list(targets.get("files") or [])
+    forbidden = sorted({path for path in paths if _is_forbidden_runtime_path(path)})
+    if forbidden:
+        return "runtime Builder cannot modify dashboard paths: %s" % ", ".join(forbidden[:10])
+    return None
+
+
 def _task_class_of(job_type):
     """Deterministic job_type -> HAMH task_class mapping."""
     if job_type == "baseline":
@@ -197,9 +206,14 @@ _sem = threading.BoundedSemaphore(MAX_WORKERS)
 # opencode dispatch. Fixed as part of the HAMH seam, ADR H15.)
 _opencode_sem = threading.BoundedSemaphore(1)
 _callback_lock = threading.Lock()
+_pool_snapshots = set()
 
 for _d in (STATE_DIR, os.path.join(STATE_DIR, "logs"), ARTIFACT_DIR, WS_ROOT):
     os.makedirs(_d, exist_ok=True)
+if _provider_runtime is not None:
+    # Routing events share the canonical append-only run ledger; no second
+    # routing database is introduced.
+    _provider_runtime.router.state.ledger_path = LEDGER_FILE
 
 
 def _now():
@@ -212,6 +226,47 @@ def _ts_ms():
 
 def _sha(s):
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+def _routing_task_id(payload, fallback):
+    explicit = payload.get("task_id") or payload.get("issue_id")
+    if explicit:
+        return str(explicit)
+    description = str(payload.get("task_description") or "")
+    return "task-" + (_sha(description)[:24] if description else str(fallback))
+
+
+def _store_model_pool_snapshot(run_id):
+    if not run_id or run_id in _pool_snapshots or _provider_runtime is None:
+        return
+    catalog = getattr(_provider_runtime, "catalog", None)
+    entries = getattr(catalog, "entries", None) or []
+    snapshot = {
+        "contract": "provider.run-model-pool-snapshot.v1",
+        "version": "v1",
+        "run_id": run_id,
+        "catalog_version": getattr(catalog, "catalog_version", None),
+        "refreshed_at": getattr(catalog, "loaded_at", None),
+        "models": [
+            {
+                "provider": item.get("provider"),
+                "model": item.get("model"),
+                "authenticated": item.get("authenticated") is True,
+                "zero_cost_verified": item.get("zero_cost_verified") is True,
+                "free_eligible": item.get("free_eligible") is True,
+                "capabilities": item.get("capabilities") or {},
+            }
+            for item in entries
+            if not is_deepseek_identifier(item.get("provider"), item.get("model"))
+        ],
+    }
+    path = os.path.join(ARTIFACT_DIR, run_id, "model_pool_snapshot.json")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as stream:
+        json.dump(snapshot, stream, indent=2, sort_keys=True)
+        stream.flush()
+        os.fsync(stream.fileno())
+    _pool_snapshots.add(run_id)
 
 
 def _log_line(record):
@@ -418,16 +473,11 @@ def new_job(
         "attempt_id": attempt_id,
         "status": "queued",
         "backend": backend,
-        # backend-aware identity defaults keep the record consistent with
-        # the harness resolution (embedded -> embedded; opencode -> lmstudio)
-        "provider": provider
-        or ("lmstudio" if backend == "opencode-builder-8001" else "embedded"),
-        "model": model
-        or (OLLAMA_MODEL if provider == "ollama" else (LMSTUDIO_MODEL if backend == "opencode-builder-8001" else "embedded")),
-        "harness_provider": provider
-        or ("lmstudio" if backend == "opencode-builder-8001" else "embedded"),
-        "harness_model": model
-        or (OLLAMA_MODEL if provider == "ollama" else (LMSTUDIO_MODEL if backend == "opencode-builder-8001" else "embedded")),
+        "provider": provider or ("embedded" if backend == "embedded" else None),
+        "model": model or ("embedded" if backend == "embedded" else None),
+        "model_alias": MORPHEUS_MODEL_ALIAS if backend == "opencode-builder-8001" else "embedded",
+        "harness_provider": provider or ("embedded" if backend == "embedded" else None),
+        "harness_model": model or ("embedded" if backend == "embedded" else None),
         "route_provider": (route_decision or {}).get("route_provider"),
         "route_model": (route_decision or {}).get("route_model"),
         "route_endpoint": (route_decision or {}).get("route_endpoint"),
@@ -435,6 +485,9 @@ def new_job(
         "selected_provider": (route_decision or {}).get("selected_provider"),
         "selected_model": (route_decision or {}).get("selected_model"),
         "routing_event_id": (route_decision or {}).get("routing_event_id"),
+        "selection_reason": (route_decision or {}).get("selection_reason"),
+        "required_capabilities": (route_decision or {}).get("required_capabilities", []),
+        "task_capability_profile": (route_decision or {}).get("task_capability_profile", {}),
         "route_decision": route_decision,
         "provider_execution": None,
         "model_revision": model_revision,
@@ -535,6 +588,7 @@ def finalize_job(
                 "backend",
                 "provider",
                 "model",
+                "model_alias",
                 "harness_provider",
                 "harness_model",
                 "route_provider",
@@ -544,6 +598,9 @@ def finalize_job(
                 "selected_provider",
                 "selected_model",
                 "routing_event_id",
+                "selection_reason",
+                "required_capabilities",
+                "task_capability_profile",
                 "actual_provider",
                 "actual_model",
                 "resolved_model",
@@ -573,6 +630,29 @@ def finalize_job(
         }
     )
     deliver_callback(job_id)
+
+
+def _is_opencode_transport_failure(exc):
+    if isinstance(exc, ProviderFailure):
+        return True
+    return any(token in str(exc) for token in (
+        "MODEL_IDENTITY_MISSING", "ACTUAL_PROVIDER_MISMATCH", "ACTUAL_MODEL_MISMATCH",
+        "OPENCODE_CATALOG_REFRESH_FAILED",
+    ))
+
+
+def _select_next_opencode_route(run_id, job_id, job_type, payload):
+    if _provider_runtime is None:
+        raise NoEligibleProvider("NO_ELIGIBLE_FREE_MODEL")
+    request = RouteRequest(
+        task_class=_task_class_of(job_type),
+        task_profile=classify_task(payload, _task_class_of(job_type)),
+        privacy_class=payload.get("privacy_class", "ALLOWED"),
+        free_first=True,
+        run_id=run_id,
+        task_id=_routing_task_id(payload, job_id),
+    )
+    return _provider_runtime.select(request)
 
 
 def run_job_thread(
@@ -616,7 +696,7 @@ def run_job_thread(
                 )
                 return
             try:
-                if route_decision is not None:
+                if route_decision is not None and backend != "opencode-builder-8001":
                     _provider_direct_completion(
                         job_id,
                         run_id,
@@ -630,15 +710,66 @@ def run_job_thread(
                 if backend == "opencode-builder-8001":
                     _opencode_sem.acquire()
                 try:
-                    handler(
-                        job_id,
-                        run_id,
-                        job_type,
-                        payload,
-                        backend,
-                        fixture,
-                        rec.get("timeout_s", DEFAULT_TIMEOUT_S),
-                    )
+                    route_attempt = 1
+                    while True:
+                        try:
+                            handler(
+                                job_id,
+                                run_id,
+                                job_type,
+                                payload,
+                                backend,
+                                fixture,
+                                rec.get("timeout_s", DEFAULT_TIMEOUT_S),
+                            )
+                            break
+                        except Exception as exc:
+                            if backend != "opencode-builder-8001" or not _is_opencode_transport_failure(exc):
+                                raise
+                            selected_provider = rec.get("provider")
+                            selected_model = rec.get("model")
+                            fatal = isinstance(exc, ProviderFailure) and not exc.retryable
+                            if selected_provider and selected_model:
+                                _provider_runtime.router.record_transport_failure(
+                                    run_id,
+                                    selected_provider,
+                                    selected_model,
+                                    failure_class="TRANSPORT_FATAL" if fatal else "TRANSPORT",
+                                    fatal=fatal,
+                                )
+                                _log_line({
+                                    "_event": "model_attempt",
+                                    "run_id": run_id,
+                                    "job_id": job_id,
+                                    "attempt_id": attempt_id,
+                                    "provider": selected_provider,
+                                    "model": selected_model,
+                                    "attempt_number": route_attempt,
+                                    "failure_class": "TRANSPORT_FATAL" if fatal else "TRANSPORT",
+                                    "excluded_scope": "RUN" if fatal or route_attempt == 2 else None,
+                                })
+                            if not fatal and route_attempt == 1:
+                                route_attempt = 2
+                                continue
+                            next_route = _select_next_opencode_route(run_id, job_id, job_type, payload)
+                            route_decision = next_route
+                            payload["x-metadata"] = {
+                                **(payload.get("x-metadata") or {}),
+                                "execution_provider": next_route["selected_provider"],
+                                "execution_model": next_route["selected_model"],
+                                "model_alias": MORPHEUS_MODEL_ALIAS,
+                            }
+                            rec["provider"] = next_route["selected_provider"]
+                            rec["model"] = next_route["selected_model"]
+                            rec["selected_provider"] = next_route["selected_provider"]
+                            rec["selected_model"] = next_route["selected_model"]
+                            rec["route_decision"] = next_route
+                            rec.setdefault("failover", []).append({
+                                "provider": selected_provider,
+                                "model": selected_model,
+                                "next_model_reason": "TRANSPORT_FAILURE",
+                            })
+                            route_attempt = 1
                 finally:
                     if backend == "opencode-builder-8001":
                         _opencode_sem.release()
@@ -682,6 +813,9 @@ def _provider_direct_completion(
         task_class=task_class,
         privacy_class="ALLOWED",
         free_first=True,
+        run_id=run_id,
+        task_id=_routing_task_id(payload, job_id),
+        task_profile=classify_task(payload, task_class),
     )
     messages = [
         {"role": "user", "content": str(payload.get("task_description", ""))[:12000]}
@@ -1098,10 +1232,11 @@ def _ws(run_id):
 
 
 def _agent_md(name, tools, permissions, blurb, model=None):
+    worker_ref = model or MORPHEUS_MODEL_ALIAS
     return (
         "---\n"
         "description: %s\n"
-        "model: lmstudio/%s\n"
+        "model: %s\n"
         "temperature: 0\n"
         "tools:\n%s"
         "permission:\n%s"
@@ -1109,7 +1244,7 @@ def _agent_md(name, tools, permissions, blurb, model=None):
         "You are a bounded harness worker (%s). Follow the task text exactly.\n"
         % (
             blurb,
-            model or LMSTUDIO_MODEL,
+            worker_ref,
             "".join(
                 "  %s: %s\n" % (k, "true" if v else "false") for k, v in tools.items()
             ),
@@ -1186,33 +1321,37 @@ BUILD_PERMS = {
 
 
 def _opencode_script(ws, agent_name, agent_md, prompt, timeout_s, provider=None, model=None):
-    provider = provider or "lmstudio"
-    worker_url = OLLAMA_URL if provider == "ollama" else LMSTUDIO_URL
-    worker_model = model or (OLLAMA_MODEL if provider == "ollama" else LMSTUDIO_MODEL)
+    if not provider or not model:
+        raise RuntimeError("NO_ELIGIBLE_FREE_MODEL")
+    config = json.dumps({
+        "$schema": "https://opencode.ai/config.json",
+        "share": "disabled",
+        "autoupdate": False,
+        "provider": {
+            provider: {
+                "models": {
+                    model: {}
+                }
+            }
+        }
+    }, separators=(",", ":"))
     return (
         "set -e; cd '%s'; "
         "mkdir -p .opencode/agents; "
         "cat > .opencode/agents/%s.md << 'EOFAGENT'\n%s\nEOFAGENT\n"
-        "cp -r '%s' ./local_llm 2>/dev/null || true; "
-        "export GHIW_LOCAL_LLM_ENABLED=true "
-        "GHIW_LMSTUDIO_BASE_URL='%s' GHIW_LMSTUDIO_MODEL_ID='%s' "
-        "GHIW_LMSTUDIO_TIMEOUT_SECONDS=%d GHIW_LOCAL_LLM_CONTEXT_LIMIT=32768 "
-        "GHIW_LOCAL_LLM_MAX_ATTEMPTS=1 GHIW_LOCAL_LLM_CONCURRENCY=1; "
-        'export OPENCODE_CONFIG_CONTENT="$(python3 -m local_llm.opencode_cli)"; '
+        "export OPENCODE_CONFIG_CONTENT='%s'; "
         "export PATH='/opt/dev-fabric/opencode:/usr/local/bin:/usr/bin:/bin'; "
-        "%s run --agent %s --model 'lmstudio/%s' --format json %s "
+        "%s run --agent %s --model '%s/%s' --format json %s "
         "> build.jsonl 2> build.stderr"
     ) % (
         ws,
         agent_name,
         agent_md,
-        LOCAL_LLM_SRC,
-        worker_url,
-        worker_model,
-        int(timeout_s),
+        config,
         OPENCODE_BIN,
         agent_name,
-        worker_model,
+        provider,
+        model,
         json.dumps(prompt),
     )
 
@@ -1223,18 +1362,16 @@ def _worker_identity(payload):
 
 
 def _opencode_worker_identity(payload):
-    """Choose the reachable local worker for OpenCode jobs.
-
-    The control-plane default historically records ``lmstudio`` for the
-    builder, but that endpoint is an optional worker and may be unavailable.
-    The self-hosted Ollama worker is the canonical zero-cost fallback for
-    planning/building. Keep the recorded HAMH identity unchanged while
-    routing the actual OpenCode process to the available local endpoint.
-    """
+    """Resolve the physical worker selected by the live free pool."""
     provider, model = _worker_identity(payload)
-    if provider in (None, "lmstudio") and model in (None, LMSTUDIO_MODEL):
-        return "ollama", OLLAMA_MODEL
+    if not provider or not model:
+        raise RuntimeError("NO_ELIGIBLE_FREE_MODEL")
     return provider, model
+
+
+def _worker_model_ref(payload):
+    provider, model = _opencode_worker_identity(payload)
+    return "%s/%s" % (provider, model)
 
 
 def _parse_opencode_jsonl(ws):
@@ -1285,6 +1422,90 @@ def _parse_opencode_jsonl(ws):
     return "\n".join(text_parts), tool_events
 
 
+def _opencode_observed_identity(ws):
+    """Extract provider/model metadata from OpenCode events, without prose."""
+    raw = pct_stdout("cat '%s' 2>/dev/null || true" % os.path.join(ws, "build.jsonl"))
+    providers, models = set(), set()
+    for line in raw.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        stack = [event]
+        while stack:
+            value = stack.pop()
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    key_lower = str(key).lower()
+                    if key_lower in {"provider", "providerid", "provider_id"} and isinstance(child, str):
+                        providers.add(child)
+                    if key_lower in {"model", "modelid", "model_id"} and isinstance(child, str):
+                        models.add(child)
+                    if isinstance(child, (dict, list)):
+                        stack.append(child)
+            elif isinstance(value, list):
+                stack.extend(value)
+    return {
+        "provider": sorted(providers)[0] if providers else None,
+        "model": sorted(models)[0] if models else None,
+    }
+
+
+def _opencode_proof(ws, expected_provider=None, expected_model=None):
+    identity = _opencode_observed_identity(ws)
+    if expected_provider and identity["provider"] and identity["provider"] != expected_provider:
+        raise RuntimeError("ACTUAL_PROVIDER_MISMATCH")
+    if expected_model and identity["model"] and identity["model"] != expected_model:
+        raise RuntimeError("ACTUAL_MODEL_MISMATCH")
+    if not identity["provider"] or not identity["model"]:
+        raise RuntimeError("MODEL_IDENTITY_MISSING")
+    raw = pct_stdout("cat '%s' 2>/dev/null || true" % os.path.join(ws, "build.jsonl"))
+    usage = {"input_tokens": 0, "output_tokens": 0}
+    actual_cost = None
+    for line in raw.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        stack = [event]
+        while stack:
+            value = stack.pop()
+            if isinstance(value, dict):
+                usage_value = value.get("usage")
+                if isinstance(usage_value, dict):
+                    usage["input_tokens"] = max(
+                        usage["input_tokens"],
+                        int(usage_value.get("input_tokens", usage_value.get("prompt_tokens", 0)) or 0),
+                    )
+                    usage["output_tokens"] = max(
+                        usage["output_tokens"],
+                        int(usage_value.get("output_tokens", usage_value.get("completion_tokens", 0)) or 0),
+                    )
+                for key in ("cost", "total_cost", "actual_cost"):
+                    if value.get(key) is not None:
+                        try:
+                            actual_cost = float(value[key])
+                        except (TypeError, ValueError):
+                            pass
+                for child in value.values():
+                    if isinstance(child, (dict, list)):
+                        stack.append(child)
+            elif isinstance(value, list):
+                stack.extend(value)
+    return {
+        "selected_provider": expected_provider or identity["provider"],
+        "selected_model": expected_model or identity["model"],
+        "actual_provider": identity["provider"],
+        "actual_model": identity["model"],
+        "execution_proof": "PASS",
+        "usage": usage,
+        "actual_cost": actual_cost,
+        "cost_observability": "PASS" if actual_cost is not None or any(usage.values()) else "UNAVAILABLE",
+        "free_eligible": False,
+        "failover": [],
+    }
+
+
 def _extract_json(text):
     """Extract the first balanced JSON object from a string (fence-aware)."""
     import re as _re
@@ -1330,97 +1551,6 @@ def _write_attempts(tool_events):
     writes = [e for e in tool_events if e in ("edit", "write")]
     denied = [e for e in tool_events if e.startswith("denied")]
     return len(writes), len(denied)
-
-
-def _plan_model_schema():
-    """Derive the model-owned plan shape from the canonical contract.
-
-    Adapter-owned identity, context and safety fields are deliberately not
-    exposed to the model.  The two stricter semantic requirements below are
-    the formatter boundary, not a change to autodev.plan.v1.
-    """
-    canonical = copy.deepcopy(registry.get_schema("autodev.plan.v1"))
-    owned = {"targets", "acceptance_criteria", "required_tests", "risks",
-             "build_scope"}
-    schema = {
-        "type": "object",
-        "required": ["targets", "acceptance_criteria", "required_tests",
-                      "risks", "build_scope", "research_summary"],
-        "properties": {},
-        "additionalProperties": False,
-    }
-    for name in owned:
-        if name in canonical.get("properties", {}):
-            schema["properties"][name] = canonical["properties"][name]
-    # research_summary is adapter-context content, represented as a model
-    # field for serialization but never used to manufacture plan semantics.
-    schema["properties"]["research_summary"] = {
-        "type": "string", "maxLength": 4000
-    }
-    schema["properties"]["targets"]["required"] = ["files", "symbols"]
-    schema["properties"]["targets"]["properties"]["symbols"] = {
-        "type": "array", "items": {"type": "string"}
-    }
-    schema["properties"]["build_scope"]["properties"]["allowed_files"]["minItems"] = 1
-    # Ollama's structured-output compiler accepts the JSON Schema structural
-    # subset used by the contract, but some deployed versions reject string
-    # length annotations while loading the model vocabulary. Canonical
-    # validation below still enforces those limits.
-    def strip_ollama_annotations(value):
-        if isinstance(value, dict):
-            value.pop("maxLength", None)
-            value.pop("minLength", None)
-            for child in value.values():
-                strip_ollama_annotations(child)
-        elif isinstance(value, list):
-            for child in value:
-                strip_ollama_annotations(child)
-    strip_ollama_annotations(schema)
-    return schema
-
-
-def _ollama_format_plan(candidate_text, model=None):
-    """Perform exactly one local, no-tools serialization pass."""
-    if not isinstance(candidate_text, str) or not candidate_text.strip():
-        return None, "formatter candidate is empty"
-    # The formatter receives only the candidate text, with common credential
-    # forms redacted before it leaves the adapter process.
-    candidate_text = re.sub(
-        r"(?i)(api[_-]?key|token|secret|password)\s*[:=]\s*[^\s,}]+",
-        r"\1=<redacted>", candidate_text,
-    )
-    prompt = (
-        "Transform the supplied planning result into the JSON schema. "
-        "Do not add implementation targets, tests, acceptance criteria, or "
-        "risks that are not supported by the supplied plan. If mandatory "
-        "semantic information is absent, return an object with the affected "
-        "required arrays empty; do not guess. Return JSON only.\n\n"
-        "SUPPLIED PLAN:\n%s"
-    ) % candidate_text[:16000]
-    body = json.dumps({
-        # ``model`` remains an ignored compatibility argument for direct
-        # callers from older tests; formatter routing is always explicit and
-        # local, never inherited from the worker model.
-        "model": OLLAMA_FORMATTER_MODEL,
-        "prompt": prompt,
-        "format": _plan_model_schema(),
-        "stream": False,
-        "options": {"temperature": 0},
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        OLLAMA_URL + "/api/generate", data=body,
-        headers={"Content-Type": "application/json"}, method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=OLLAMA_FORMATTER_TIMEOUT_S) as response:
-            raw = json.loads(response.read().decode("utf-8"))
-        text = raw.get("response", "") if isinstance(raw, dict) else ""
-        obj = _extract_json(text)
-        if not isinstance(obj, dict):
-            return None, "formatter response is not parseable JSON"
-        return obj, None
-    except Exception as exc:  # noqa: BLE001 - fail closed at the contract boundary
-        return None, "formatter request failed: %s" % type(exc).__name__
 
 
 def _plan_scope_errors(plan):
@@ -1597,6 +1727,7 @@ def job_baseline(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
 
 def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    route_provider, route_model = _opencode_worker_identity(payload)
     area = job_type.split(".")[1]
     prompt = (
         "You are a read-only research worker. Workspace: current directory. "
@@ -1615,14 +1746,17 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
             RESEARCH_TOOLS,
             RESEARCH_PERMS,
             "Read-only research worker",
-            _worker_identity(payload)[1],
+            _worker_model_ref(payload),
         ),
         prompt,
         timeout_s,
         *_opencode_worker_identity(payload),
     )
-    pct_exec(script, timeout=timeout_s)
+    execution = pct_exec(script, timeout=timeout_s)
+    if execution.returncode != 0:
+        raise ProviderFailure("opencode execution failure", retryable=True)
     text, events = _parse_opencode_jsonl(ws)
+    cloud_proof = _opencode_proof(ws, route_provider, route_model)
     note = text.strip()
     obj = _extract_json(text)
     if isinstance(obj, dict) and isinstance(obj.get("note"), str):
@@ -1651,12 +1785,26 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
             failure_signature="CONTRACT_INVALID",
         )
         return
-    result["x-metadata"] = {"backend": backend}
-    finalize_job(job_id, "completed", result=result)
+    result["x-metadata"] = {
+        "backend": backend,
+        "provider": route_provider,
+        "model": route_model,
+        "model_alias": MORPHEUS_MODEL_ALIAS,
+        "provider_execution": cloud_proof,
+    }
+    finalize_job(
+        job_id,
+        "completed",
+        result=result,
+        provider=route_provider,
+        model=route_model,
+        provider_execution=cloud_proof,
+    )
 
 
 def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    route_provider, route_model = _opencode_worker_identity(payload)
     head_before, status_before, _ = _git_state(ws)
     explicit_plan = _explicit_scoped_plan(payload, run_id, head_before)
     if explicit_plan is not None:
@@ -1697,13 +1845,15 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         "plan-worker",
         _agent_md(
             "plan-worker", PLAN_SERIALIZATION_TOOLS, PLAN_PERMS,
-            "Read-only planning worker", _worker_identity(payload)[1],
+            "Read-only planning worker", _worker_model_ref(payload),
         ),
         prompt,
         timeout_s,
         *_opencode_worker_identity(payload),
     )
-    pct_exec(script, timeout=timeout_s)
+    execution = pct_exec(script, timeout=timeout_s)
+    if execution.returncode != 0:
+        raise ProviderFailure("opencode execution failure", retryable=True)
     text, events = _parse_opencode_jsonl(ws)
     # OpenCode 1.18 + qwen3:1.7b can occasionally stop after a tool/reasoning
     # turn without an assistant text event. Retry the worker once with a
@@ -1721,13 +1871,15 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
             "plan-worker",
             _agent_md(
                 "plan-worker", PLAN_SERIALIZATION_TOOLS, PLAN_PERMS,
-                "Read-only planning worker", _worker_identity(payload)[1],
+                "Read-only planning worker", _worker_model_ref(payload),
             ),
             retry_prompt,
             timeout_s,
             *_opencode_worker_identity(payload),
         )
-        pct_exec(retry_script, timeout=timeout_s)
+        retry_execution = pct_exec(retry_script, timeout=timeout_s)
+        if retry_execution.returncode != 0:
+            raise ProviderFailure("opencode execution failure", retryable=True)
         retry_text, retry_events = _parse_opencode_jsonl(ws)
         text = retry_text
         events.extend(retry_events)
@@ -1738,11 +1890,7 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     )
     writes, denied = _write_attempts(events)
     formatter_used = False
-    formatter_error = None
     parse_failed = not isinstance(obj, dict)
-    if not isinstance(obj, dict):
-        obj, formatter_error = _ollama_format_plan(text)
-        formatter_used = True
     if not isinstance(obj, dict):
         obj = {}
     plan = {
@@ -1778,28 +1926,9 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         consistency_errors.append("$.safety.sentinel_absent: must be true")
     if plan["safety"]["repo_unchanged"] is not True:
         consistency_errors.append("$.safety.repo_unchanged: must be true")
-    if (not v["ok"] or consistency_errors) and not formatter_used:
-        repaired, formatter_error = _ollama_format_plan(text)
-        formatter_used = True
-        if isinstance(repaired, dict):
-            obj = repaired
-            plan["targets"] = {
-                "files": obj.get("targets", {}).get("files", []),
-                "symbols": obj.get("targets", {}).get("symbols", []),
-            }
-            plan["acceptance_criteria"] = obj.get("acceptance_criteria", [])
-            plan["required_tests"] = obj.get("required_tests", [])
-            plan["risks"] = obj.get("risks", [])
-            plan["build_scope"] = {
-                "allowed_files": obj.get("build_scope", {}).get("allowed_files", [])
-            }
-            plan["context"]["research_summary"] = obj.get("research_summary", "")[:4000]
-            v = registry.validate(plan, "autodev.plan.v1")
-            consistency_errors = _plan_scope_errors(plan)
     if not v["ok"] or consistency_errors:
         errors = list(v["errors"]) + consistency_errors
-        if formatter_error:
-            errors.insert(0, formatter_error)
+        errors.insert(0, "native cloud JSON serialization failed; no local formatter is configured")
         finalize_job(
             job_id,
             "failed",
@@ -1813,12 +1942,35 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         "semantic_attempt_id": (payload.get("attempt_id") or ""),
         "contract_serialization_pass": formatter_used,
         "formatter_calls": 1 if formatter_used else 0,
+        "serialization_path": "native_cloud_json",
+        "provider": route_provider,
+        "model": route_model,
+        "model_alias": MORPHEUS_MODEL_ALIAS,
+        "provider_execution": _opencode_proof(ws, route_provider, route_model),
     }
-    finalize_job(job_id, "completed", result=plan)
+    finalize_job(
+        job_id,
+        "completed",
+        result=plan,
+        provider=route_provider,
+        model=route_model,
+        provider_execution=plan["x-metadata"]["provider_execution"],
+    )
 
 
 def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    route_provider, route_model = _opencode_worker_identity(payload)
+    dashboard_error = _dashboard_scope_error(payload)
+    if dashboard_error:
+        finalize_job(
+            job_id,
+            "failed",
+            error=dashboard_error,
+            failure_class="SECURITY_BLOCK",
+            failure_signature="DASHBOARD_SCOPE_DENY",
+        )
+        return
     allowed = payload.get("build_scope", {}).get("allowed_files", []) or payload.get(
         "targets", {}
     ).get("files", [])
@@ -1859,14 +2011,17 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         "build-worker",
         _agent_md(
             "build-worker", BUILD_TOOLS, BUILD_PERMS,
-            "Bounded build worker", _worker_identity(payload)[1],
+            "Bounded build worker", _worker_model_ref(payload),
         ),
         prompt,
         timeout_s,
         *_opencode_worker_identity(payload),
     )
     r = pct_exec(script, timeout=timeout_s)
+    if r.returncode != 0:
+        raise ProviderFailure("opencode execution failure", retryable=True)
     text, events = _parse_opencode_jsonl(ws)
+    cloud_proof = _opencode_proof(ws, route_provider, route_model)
     obj = _extract_json(text)
     changed = pct_stdout(
         "cd '%s' && git status --porcelain 2>/dev/null | "
@@ -1946,8 +2101,21 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
             failure_signature="CONTRACT_INVALID",
         )
         return
-    result["x-metadata"] = {"backend": backend}
-    finalize_job(job_id, "completed", result=result)
+    result["x-metadata"] = {
+        "backend": backend,
+        "provider": route_provider,
+        "model": route_model,
+        "model_alias": MORPHEUS_MODEL_ALIAS,
+        "provider_execution": cloud_proof,
+    }
+    finalize_job(
+        job_id,
+        "completed",
+        result=result,
+        provider=route_provider,
+        model=route_model,
+        provider_execution=cloud_proof,
+    )
 
 
 def job_verify(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
@@ -2059,7 +2227,21 @@ def job_verify(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
             failure_signature="CONTRACT_INVALID",
         )
         return
-    result["x-metadata"] = {"backend": backend}
+    result["x-metadata"] = {
+        "backend": backend,
+        "provider": (JOBS.get(job_id) or {}).get("provider"),
+        "model": (JOBS.get(job_id) or {}).get("model"),
+    }
+    if not all_passed and _provider_runtime is not None:
+        rec = JOBS.get(job_id) or {}
+        if rec.get("provider") and rec.get("model"):
+            _provider_runtime.router.record_semantic_failure(
+                run_id,
+                _routing_task_id(payload, job_id),
+                rec["provider"],
+                rec["model"],
+                verified=True,
+            )
     finalize_job(job_id, "completed", result=result)
 
 
@@ -2287,18 +2469,19 @@ def _dispatch(
         return None, err("BAD_MODEL_REVISION", "invalid model_revision")
     if task_class is not None and task_class not in HAMH_TASK_CLASSES:
         return None, err("BAD_TASK_CLASS", "unknown task_class %r" % task_class)
-    # contract validation at the boundary
+    effective_task_class = task_class or _task_class_of(job_type)
+    task_id = _routing_task_id(payload, job_id)
+    task_profile = classify_task({**payload, "job_type": job_type}, effective_task_class)
+    # contract validation at the boundary; physical routing is resolved after
+    # validation from the live free pool.
     if input_contract not in registry.CONTRACTS:
         return None, err(
             "UNKNOWN_INPUT_CONTRACT", "unknown input_contract %r" % input_contract
         )
     payload = dict(payload)
     metadata = dict(payload.get("x-metadata") or {})
-    metadata["execution_provider"] = provider or ("embedded" if backend == "embedded" else "lmstudio")
-    metadata["execution_model"] = model or (
-        "embedded" if backend == "embedded"
-        else (OLLAMA_MODEL if provider == "ollama" else LMSTUDIO_MODEL)
-    )
+    metadata["execution_provider"] = provider or ("embedded" if backend == "embedded" else MORPHEUS_MODEL_ALIAS)
+    metadata["execution_model"] = model or ("embedded" if backend == "embedded" else "runtime-selected")
     payload["x-metadata"] = metadata
     v = registry.validate(payload, input_contract)
     if not v["ok"]:
@@ -2309,6 +2492,10 @@ def _dispatch(
             "errors": v["errors"],
             "error_count": v["error_count"],
         }
+    if backend == "opencode-builder-8001" and job_type in {"build", "fix"}:
+        dashboard_error = _dashboard_scope_error(payload)
+        if dashboard_error:
+            return None, err("DASHBOARD_SCOPE_DENY", dashboard_error)
     # idempotent dispatch FIRST (before any resolution side effects: a
     # rejected/duplicate dispatch must never pollute the resolution artifact)
     with _lock:
@@ -2324,49 +2511,48 @@ def _dispatch(
                 "IDEMPOTENCY_CONFLICT",
                 "job_id already used with different attempt/fingerprint",
             )
-    effective_task_class = task_class or _task_class_of(job_type)
     route_decision = None
-    if (
-        _provider_runtime is not None
-        and _provider_runtime.enabled
-        and backend != "embedded"
-        and effective_task_class not in ("baseline", "build", "fix", "plan")
-    ):
-        preference_provider = (
-            provider
-            if provider in {"groq", "openrouter", "ollama", "lmstudio"}
-            else ""
+    if backend == "opencode-builder-8001":
+        if _provider_runtime is None:
+            return None, err("NO_ELIGIBLE_FREE_MODEL", "provider runtime unavailable")
+        request = RouteRequest(
+            provider=provider or "",
+            model=model or "",
+            task_class=effective_task_class,
+            task_profile=task_profile,
+            privacy_class=payload.get("privacy_class", "ALLOWED"),
+            free_first=True,
+            run_id=run_id,
+            task_id=task_id,
         )
-        preference_model = model if preference_provider else ""
         try:
-            route_decision = _provider_runtime.select(
-                RouteRequest(
-                    provider=preference_provider,
-                    model=preference_model,
-                    task_class=effective_task_class,
-                    privacy_class=payload.get("privacy_class", "ALLOWED"),
-                    free_first=True,
-                )
-            )
+            _provider_runtime.begin_run(run_id)
+            _store_model_pool_snapshot(run_id)
+            route_decision = _provider_runtime.select(request)
         except NoEligibleProvider:
-            if preference_provider or os.environ.get(
-                "AUTODEV_FREE_FIRST_REQUIRED", "false"
-            ).lower() in {"1", "true", "yes"}:
-                return None, err(
-                    "NO_ELIGIBLE_FREE_PROVIDER", "no eligible free provider"
-                )
+            _provider_runtime.catalog.refresh_live()
+            _pool_snapshots.discard(run_id)
+            _store_model_pool_snapshot(run_id)
+            try:
+                route_decision = _provider_runtime.select(request)
+            except NoEligibleProvider:
+                code = "NO_ELIGIBLE_FREE_VISION_MODEL" if task_profile.get("requires_vision") else "NO_ELIGIBLE_FREE_MODEL"
+                return None, err(code, "no current zero-cost model satisfies task capabilities")
+        provider = route_decision.get("selected_provider")
+        model = route_decision.get("selected_model")
+        metadata["execution_provider"] = provider
+        metadata["execution_model"] = model
+        metadata["model_alias"] = MORPHEUS_MODEL_ALIAS
+        metadata["task_capability_profile"] = task_profile
+        payload["x-metadata"] = metadata
     harness_provider = (route_decision or {}).get("selected_provider") or provider
     harness_model = (route_decision or {}).get("selected_model") or model
     # deterministic harness resolution at dispatch (HAMH seam, ADR H3).
     # Unknown models fall back to the explicit baseline profile.
     harness_resolution = None
     if hamh_resolver is not None:
-        eff_provider = harness_provider or (
-            "embedded" if backend == "embedded" else "lmstudio"
-        )
-        eff_model = harness_model or (
-            "embedded" if backend == "embedded" else LMSTUDIO_MODEL
-        )
+        eff_provider = harness_provider or "embedded"
+        eff_model = harness_model or "embedded"
         eff_task_class = effective_task_class
         harness_resolution = hamh_resolver.resolve(
             eff_provider,
@@ -2464,6 +2650,7 @@ def _job_view(rec, with_result=True):
             "backend",
             "provider",
             "model",
+            "model_alias",
             "harness_provider",
             "harness_model",
             "route_provider",
@@ -2473,6 +2660,9 @@ def _job_view(rec, with_result=True):
             "selected_provider",
             "selected_model",
             "routing_event_id",
+            "selection_reason",
+            "required_capabilities",
+            "task_capability_profile",
             "resolved_model",
             "actual_provider",
             "actual_model",

@@ -3,6 +3,8 @@
 
 import copy
 import os
+from .capabilities import classify_task, normalize_live_capabilities
+from .session import RunRoutingState
 
 from .protocol import (
     FREE_CLASSES,
@@ -22,7 +24,7 @@ AUTOMATIC_PAID_AGENT_ESCALATION = False
 
 
 class ProviderRouter:
-    def __init__(self, catalog, max_failover=None):
+    def __init__(self, catalog, max_failover=None, state=None):
         configured = (
             max_failover
             if max_failover is not None
@@ -34,6 +36,9 @@ class ProviderRouter:
             configured = 3
         self.catalog = catalog
         self.max_failover = max(1, configured)
+        self.state = state or RunRoutingState()
+        self.semantic_threshold = max(1, int(os.environ.get("MAX_SEMANTIC_FAILURES_PER_MODEL_PER_TASK", "2")))
+        self.run_demotion_threshold = max(1, int(os.environ.get("MAX_DISTINCT_TASK_FAILURES_BEFORE_RUN_DEMOTION", "3")))
 
     @staticmethod
     def _caps(request):
@@ -41,12 +46,26 @@ class ProviderRouter:
         capability = TASK_CAPABILITIES.get(request.task_class)
         if capability and capability not in required:
             required.append(capability)
+        profile = request.task_profile or {}
+        if profile.get("requires_code") and "BUILD_CAPABLE" not in required:
+            required.append("BUILD_CAPABLE")
+        if profile.get("requires_vision") and "VISION_CAPABLE" not in required:
+            required.append("VISION_CAPABLE")
+        if profile.get("requires_repository_tools") and "TOOL_CAPABLE" not in required:
+            required.append("TOOL_CAPABLE")
+        if profile.get("requires_structured_output") and "STRUCTURED_OUTPUT_CAPABLE" not in required:
+            required.append("STRUCTURED_OUTPUT_CAPABLE")
         return required
 
     def _candidate_rows(self, request):
         rows = []
+        state = self.state.load(request.run_id) if request.run_id else RunRoutingState.empty("")
+        excluded = set(request.excluded_models or []) | set(state["run_model_exclusions"])
+        task_excluded = set(state["task_model_exclusions"].get(request.task_id, set())) if request.task_id else set()
         for original in self.catalog.model_entries():
             entry = copy.deepcopy(original)
+            normalize_live_capabilities(entry)
+            identity = "%s/%s" % (entry.get("provider"), entry.get("model"))
             if (
                 request.model
                 and request.provider == entry.get("provider")
@@ -55,22 +74,56 @@ class ProviderRouter:
                 continue
             if is_deepseek_identifier(entry.get("provider"), entry.get("model")):
                 continue
+            if identity in excluded or identity in task_excluded:
+                continue
+            if entry.get("provider") in state["provider_exclusions"]:
+                continue
+            if entry.get("authenticated") is False:
+                continue
             if entry.get("quarantined") or entry.get("availability") is not True:
                 continue
             if entry.get("health") not in ("HEALTHY", "DEGRADED"):
                 continue
-            if not all(
-                (entry.get("capabilities") or {}).get(name) is True
-                for name in self._caps(request)
+            if not all((entry.get("capabilities") or {}).get(name) is True for name in self._caps(request)):
+                continue
+            profile = request.task_profile or classify_task({"task_class": request.task_class}, request.task_class)
+            caps = entry.get("capabilities") or {}
+            if profile.get("requires_vision") and (
+                not caps.get("VISION_CAPABLE") or entry.get("vision_probe") == "FAIL"
             ):
+                continue
+            if profile.get("requires_repository_tools") and (
+                not caps.get("TOOL_CAPABLE") or entry.get("tool_probe") != "PASS"
+            ):
+                continue
+            if profile.get("requires_structured_output") and (
+                not caps.get("STRUCTURED_OUTPUT_CAPABLE")
+                or float(entry.get("structured_output_score") or 0) < 0.8
+            ):
+                continue
+            if profile.get("requires_long_context") and int(entry.get("context_length") or 0) < int(profile.get("minimum_context_tokens") or 0):
                 continue
             is_free = promotion_eligibility(entry) or probe_eligibility(entry)
             if not is_free:
                 continue
             if entry.get("cost_class") not in FREE_CLASSES:
                 continue
+            entry["_rank_score"] = self._rank_score(entry, request, state)
             rows.append(entry)
         return rows
+
+    @staticmethod
+    def _rank_score(entry, request, state):
+        """Score evidence, never a source-code model/provider order."""
+        score = float(entry.get("score") or 0)
+        score += float(entry.get("historical_success_rate") or 0) * 100
+        score += float(entry.get("task_class_success", {}).get(request.task_class, 0) or 0) * 100
+        score += float(entry.get("tool_success_rate") or 0) * 25 if request.task_profile.get("requires_repository_tools") else 0
+        score += float(entry.get("structured_output_success") or 0) * 25 if request.task_profile.get("requires_structured_output") else 0
+        score += float(entry.get("vision_success") or 0) * 25 if request.task_profile.get("requires_vision") else 0
+        score -= float(entry.get("recent_failures") or 0) * 10
+        score -= float(entry.get("latency_ms") or 0) / 100000
+        return score
 
     def _decision(self, entry, request, rank, fallback_chain=None):
         return {
@@ -86,7 +139,11 @@ class ProviderRouter:
             "cost_class": entry.get("cost_class"),
             "free_eligible": True,
             "task_class": request.task_class,
+            "task_id": request.task_id,
+            "required_capabilities": self._caps(request),
+            "task_capability_profile": request.task_profile or {},
             "routing_reason": "FREE_ELIGIBLE_CAPABILITY_HEALTH_QUOTA",
+            "selection_reason": "LIVE_ZERO_COST_CAPABILITY_SCORE",
             "routing_rank": rank,
             "fallback_chain": fallback_chain or [],
             "paid_escalation": False,
@@ -102,30 +159,59 @@ class ProviderRouter:
         rows = self._candidate_rows(request)
         if not rows:
             raise NoEligibleProvider("NO_ELIGIBLE_FREE_PROVIDER")
-        rows.sort(
-            key=lambda entry: (
-                0 if entry["provider"] == request.provider else 1,
-                0 if entry["provider"] == "groq" else 1,
-                entry.get("provider", ""),
-                entry.get("model", ""),
-            )
-        )
-        return self._decision(rows[0], request, 0)
+        rows.sort(key=lambda entry: (-entry["_rank_score"], entry.get("provider", ""), entry.get("model", "")))
+        decision = self._decision(rows[0], request, 0)
+        if request.run_id:
+            self.state.record(request.run_id, selection={
+                "task_id": request.task_id,
+                "task_class": request.task_class,
+                "provider": decision["selected_provider"],
+                "model": decision["selected_model"],
+                "reason": decision["selection_reason"],
+            })
+        return decision
 
     def candidates(self, request):
         rows = self._candidate_rows(request)
-        rows.sort(
-            key=lambda entry: (
-                0 if entry["provider"] == request.provider else 1,
-                0 if entry["provider"] == "groq" else 1,
-                entry.get("provider", ""),
-                entry.get("model", ""),
-            )
-        )
+        rows.sort(key=lambda entry: (-entry["_rank_score"], entry.get("provider", ""), entry.get("model", "")))
         return [
             self._decision(entry, request, index)
             for index, entry in enumerate(rows[: self.max_failover])
         ]
+
+    def record_transport_failure(self, run_id, provider, model, failure_class="TRANSPORT", fatal=False, provider_wide=False):
+        if not run_id:
+            return
+        identity = "%s/%s" % (provider, model)
+        state = self.state.load(run_id)
+        count = int(state["model_transport_failure_count"].get(identity, 0)) + 1
+        event = {
+            "model_transport_failure_count": {identity: count},
+            "model_last_failure_class": {identity: failure_class},
+        }
+        if fatal or count >= 2:
+            event["run_model_exclusions"] = [identity]
+        if provider_wide:
+            event["provider_exclusions"] = [provider]
+        self.state.record(run_id, **event)
+
+    def record_semantic_failure(self, run_id, task_id, provider, model, verified=True):
+        if not run_id or not verified:
+            return False
+        identity = "%s/%s" % (provider, model)
+        key = "%s|%s" % (task_id, identity)
+        state = self.state.load(run_id)
+        count = int(state["model_semantic_failure_count"].get(key, 0)) + 1
+        event = {"model_semantic_failure_count": {key: count}, "model_last_failure_class": {identity: "SEMANTIC"}}
+        if count >= self.semantic_threshold:
+            event["task_model_exclusions"] = {task_id: [identity]}
+        tasks = set(state["distinct_task_failures"].get(identity, set()))
+        tasks.add(str(task_id))
+        if len(tasks) >= self.run_demotion_threshold:
+            event["distinct_task_failures"] = {identity: sorted(tasks)}
+            event["run_model_exclusions"] = [identity]
+        self.state.record(run_id, **event)
+        return count >= self.semantic_threshold
 
     def record_execution(self, decision, response, outbound_request_id, attempt_id):
         updated = copy.deepcopy(decision)

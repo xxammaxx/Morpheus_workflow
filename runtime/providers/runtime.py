@@ -26,6 +26,14 @@ class ProviderRuntime:
         )
         self.catalog = catalog or ProviderCatalog()
         self.router = ProviderRouter(self.catalog)
+        self._refreshed_runs = set()
+
+    def begin_run(self, run_id):
+        """Refresh OpenCode's live catalog once for the canonical run."""
+        if not run_id or run_id in self._refreshed_runs:
+            return None
+        self._refreshed_runs.add(run_id)
+        return self.catalog.refresh_live()
 
     def select(self, request):
         if not self.enabled:
@@ -99,6 +107,8 @@ class ProviderRuntime:
         return result
 
     def invoke_with_failover(self, request, messages, task_class, timeout, attempt_id):
+        if request.run_id:
+            self.begin_run(request.run_id)
         decisions = self.router.candidates(request)
         if not decisions:
             raise NoEligibleProvider("NO_ELIGIBLE_FREE_PROVIDER")
@@ -115,24 +125,40 @@ class ProviderRuntime:
                 ).strip()
                 if lease_id:
                     decision["probe_lease_id"] = lease_id
-            try:
-                execution = self.direct_invoke(
-                    decision, messages, task_class, timeout, attempt_id
-                )
-                execution.failover_chain = failures
-                execution.decision["fallback_chain"] = failures
-                execution.execution_proof["failover"] = failures
-                return execution
-            except ProviderFailure as exc:
-                if not exc.retryable or exc.uncertain:
-                    raise
-                failures.append(
-                    {
-                        "provider": decision["selected_provider"],
-                        "model": decision["selected_model"],
-                        "failure": exc.__class__.__name__,
-                    }
-                )
+            for attempt_number in range(1, 3):
+                try:
+                    execution = self.direct_invoke(
+                        decision, messages, task_class, timeout, attempt_id
+                    )
+                    execution.failover_chain = failures
+                    execution.decision["fallback_chain"] = failures
+                    execution.execution_proof["failover"] = failures
+                    execution.decision["attempt_number"] = attempt_number
+                    return execution
+                except ProviderFailure as exc:
+                    status = getattr(exc, "status", None)
+                    fatal = (not exc.retryable) or status in {401, 403, 404}
+                    provider_wide = status in {401, 403}
+                    self.router.record_transport_failure(
+                        request.run_id,
+                        decision["selected_provider"],
+                        decision["selected_model"],
+                        failure_class="TRANSPORT_FATAL" if fatal else "TRANSPORT",
+                        fatal=fatal,
+                        provider_wide=provider_wide,
+                    )
+                    failures.append(
+                        {
+                            "provider": decision["selected_provider"],
+                            "model": decision["selected_model"],
+                            "attempt_number": attempt_number,
+                            "failure_class": "TRANSPORT_FATAL" if fatal else "TRANSPORT",
+                            "failure": str(exc)[:120],
+                            "next_model_reason": "MODEL_EXCLUDED" if fatal or attempt_number == 2 else "RETRY_SAME_MODEL",
+                        }
+                    )
+                    if fatal or attempt_number == 2:
+                        break
         raise NoEligibleProvider("NO_ELIGIBLE_FREE_PROVIDER")
 
 
