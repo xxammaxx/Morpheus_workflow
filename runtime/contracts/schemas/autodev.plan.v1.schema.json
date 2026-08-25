@@ -22,6 +22,7 @@
     },
     "acceptance_criteria": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 4, "maxLength": 512 } },
     "required_tests": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 3, "maxLength": 256 } },
+    "changes_expected": { "type": "boolean" },
     "risks": { "type": "array", "items": { "type": "string", "maxLength": 512 } },
     "build_scope": {
       "type": "object",

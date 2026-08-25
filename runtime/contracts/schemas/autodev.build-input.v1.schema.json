@@ -90,6 +90,9 @@
         "maxLength": 256
       }
     },
+    "changes_expected": {
+      "type": "boolean"
+    },
     "build_scope": {
       "type": "object",
       "required": [
