@@ -43,6 +43,10 @@ class CredentialSyncTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
             self.assertNotIn("secret", json.dumps({"report": "metadata-only"}))
 
+    def test_remote_helper_assigns_auth_directory_to_target_user(self):
+        self.assertIn("os.chown(directory, info.pw_uid, info.pw_gid)", sync.REMOTE_HELPER)
+        self.assertIn("os.chmod(directory, 0o700)", sync.REMOTE_HELPER)
+
 
 if __name__ == "__main__":
     unittest.main()
