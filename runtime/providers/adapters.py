@@ -114,7 +114,7 @@ class ProviderAdapter:
             raise ProviderFailure("provider unavailable", retryable=True) from exc
         except TimeoutError as exc:
             raise ProviderFailure(
-                "provider timeout", retryable=False, uncertain=True
+                "provider timeout", retryable=True
             ) from exc
         except ValueError as exc:
             raise ProviderFailure("provider returned invalid JSON") from exc
@@ -218,20 +218,18 @@ class ProviderAdapter:
 
 class OpenRouterAdapter(ProviderAdapter):
     def discover_models(self):
-        entries = super().discover_models()
-        entries.append(normalized_entry(
-            "openrouter", "openrouter/free", self.base_url,
-            availability=True, health="HEALTHY", cost_class="FREE_HARD_STOP",
-            input_price=0, output_price=0, route_exists=True,
-            route_cost_proven=True, privacy_class="ALLOWED",
-            usage_terms_permit=True, automatic_paid_fallback=False,
-            capabilities={"RESEARCH_CAPABLE": True},
-        ))
-        return entries
+        # Do not synthesize an ``openrouter/free`` model.  Eligibility must
+        # come from the current machine-readable catalog and account offer.
+        return super().discover_models()
 
 
 def build_adapters():
     configs = {
+        "openai": (
+            os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+            "OPENAI_API_KEY",
+            {},
+        ),
         "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", {}),
         "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY", {}),
         "lmstudio": (

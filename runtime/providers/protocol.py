@@ -33,6 +33,7 @@ TASK_CAPABILITIES = {
     "review": "REVIEW_CAPABLE",
     "verify": "REVIEW_CAPABLE",
 }
+ROUTING_FAILURE_CLASSES = {"TRANSPORT", "SEMANTIC", "HARNESS"}
 
 
 def now_utc():
@@ -97,6 +98,10 @@ class RouteRequest:
     requested_capabilities: list = field(default_factory=list)
     privacy_class: str = "ALLOWED"
     free_first: bool = True
+    run_id: str = ""
+    task_id: str = ""
+    task_profile: dict = field(default_factory=dict)
+    excluded_models: list = field(default_factory=list)
 
 
 @dataclass
@@ -134,6 +139,7 @@ def normalize_usage(payload):
 
 
 def normalized_entry(provider, model, endpoint, **values):
+    supplied_zero_cost = "zero_cost_verified" in values
     entry = {
         "provider": provider,
         "model": model,
@@ -156,9 +162,25 @@ def normalized_entry(provider, model, endpoint, **values):
         "capabilities": values.pop("capabilities", {}),
         "context_length": values.pop("context_length", 0),
         "supports_tools": values.pop("supports_tools", False),
+        "zero_cost_verified": values.pop("zero_cost_verified", False),
+        "authenticated": values.pop("authenticated", True),
+        "supports_vision": values.pop("supports_vision", False),
+        "structured_output_score": values.pop("structured_output_score", 0.0),
+        "tool_probe": values.pop("tool_probe", "UNKNOWN"),
+        "vision_probe": values.pop("vision_probe", "UNKNOWN"),
+        "score": values.pop("score", 0.0),
         "last_verified_at": values.pop("last_verified_at", now_utc()),
     }
     entry.update(values)
+    if not supplied_zero_cost:
+        entry["zero_cost_verified"] = bool(
+            entry.get("input_price") == 0
+            and entry.get("output_price") == 0
+            and (
+                entry.get("route_cost_proven") is True
+                or "CATALOG_FREE" in set(entry.get("free_evidence") or [])
+            )
+        )
     free_eligibility(entry)
     return entry
 
@@ -194,9 +216,10 @@ def free_eligibility(entry, privacy_class="ALLOWED", require_execution=True):
     eligible = (
         entry.get("cost_class") in FREE_CLASSES
         and zero_priced
+        and entry.get("zero_cost_verified") is True
         and (
             entry.get("account_class") not in ("unknown", "")
-            or (entry.get("provider") == "openrouter" and entry.get("model") == "openrouter/free")
+            or entry.get("route_cost_proven") is True
         )
         and entry.get("usage_terms_permit") is True
         and entry.get("automatic_paid_fallback") is False
@@ -242,10 +265,10 @@ def probe_eligibility(entry):
         and entry.get("cost_class") in FREE_CLASSES
         and entry.get("input_price") == 0
         and entry.get("output_price") == 0
+        and entry.get("zero_cost_verified") is True
         and (
-            entry.get("provider") == "openrouter"
-            and entry.get("model") == "openrouter/free"
-            or entry.get("account_class") not in ("unknown", "")
+            entry.get("account_class") not in ("unknown", "")
+            or entry.get("route_cost_proven") is True
         )
         and (_hard_zero_route(entry) or entry.get("route_cost_proven") is True)
         and entry.get("probe_attempted") is not True

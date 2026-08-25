@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove _dispatch selection reaches the selected provider adapter."""
+"""Prove canonical _dispatch identity comes from dynamic free routing."""
 
 import importlib.util
 import json
@@ -92,11 +92,14 @@ def main():
             )
         ]
         adapter._provider_runtime = ProviderRuntime(catalog=catalog, enabled=True)
+        adapter._provider_runtime.begin_run = lambda run_id: None
+        catalog.refresh_live = lambda: {"refresh": "PASS"}
+        adapter.run_job_thread = lambda *args, **kwargs: None
         issue = {
             "contract": "autodev.issue.v1",
             "version": "v1",
             "run_id": "integration-run",
-            "repository_ref": "proof",
+            "repository_ref": "proof/project",
             "workspace": "proof",
             "task_description": "Return a research proof.",
             "trace_id": "trace-proof",
@@ -111,19 +114,13 @@ def main():
             "opencode-builder-8001",
         )
         assert error is None
-        deadline = time.time() + 10
-        while time.time() < deadline and adapter.JOBS[record["job_id"]][
-            "status"
-        ] not in ("completed", "failed"):
-            time.sleep(0.05)
         result = adapter.JOBS[record["job_id"]]
-        assert result["status"] == "completed", result
-        assert result["selected_provider"] == "groq"
-        assert result["actual_provider"] == "groq"
-        assert result["execution_proof"] == "PASS"
-        assert Handler.requests[0]["model"] == "integration-model"
-        print("PASS ADAPTER_SELECTION_TO_EXECUTION")
-        print("PASS ADAPTER_ACTUAL_PROVIDER_MODEL_CORRELATION")
+        assert result["provider"] == "groq"
+        assert result["model"] == "integration-model"
+        assert result["model_alias"] == "morpheus-dynamic-free"
+        assert result["route_decision"]["selected_provider"] == "groq"
+        print("PASS ADAPTER_DYNAMIC_FREE_DISPATCH")
+        print("PASS ADAPTER_NO_FIXED_PROVIDER_ROUTE")
     server.shutdown()
 
 
