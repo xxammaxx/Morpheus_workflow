@@ -672,6 +672,7 @@ def run_job_thread(
     route_decision=None,
 ):
     def worker():
+        nonlocal route_decision
         with _sem:
             rec = JOBS.get(job_id)
             if rec is None or rec["status"] not in ("queued",):
