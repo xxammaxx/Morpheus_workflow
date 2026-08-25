@@ -2216,14 +2216,14 @@ return [{json: {
             "Poll Batch",
             "GET",
             cfg.adapter
-            + "/v1/batches/{{ $json.data ? $json.data.batch_id : $json.batch_id }}",
+            + "/v1/batches/{{ $json.data ? $json.data.batch_id : $json.batch_id }}?polls={{ $json.polls || 0 }}",
             "{}",
             P(3, 0),
             cfg.cr_harness,
             send_body=False,
             params_extra={
                 "url": cfg.adapter
-                + "/v1/batches/{{ $json.data ? $json.data.batch_id : $json.batch_id }}"
+                + "/v1/batches/{{ $json.data ? $json.data.batch_id : $json.batch_id }}?polls={{ $json.polls || 0 }}"
             },
         )
         parse = code_node(
@@ -2251,11 +2251,45 @@ return [{json: {ok: false, failure_class: 'TIMEOUT',
         )
         for n in (w, poll, parse, done, failed, inc, lim, timeout):
             wf.add_node(n)
+        retry = bool_if(
+            "Retry Interrupted?",
+            "!String($json.batch_id || '').includes(':recovery-')",
+            P(6, 1),
+        )
+        recover = code_node(
+            "Prepare Research Recovery",
+            """const s = $json;
+const original = (($items('Prep Research Batch')[0] || {}).json || {});
+const recovery = 1;
+const jobs = (original.jobs || []).map((job) => {
+  const area = String(job.job_type || 'research.unknown').split('.').pop();
+  const id = original.run_id + ':research.' + area + ':recovery-' + recovery;
+  return Object.assign({}, job, {
+    job_id: id,
+    attempt_id: id,
+    recovery_of: job.job_id
+  });
+});
+return [{json: {
+  run_id: original.run_id,
+  batch_id: original.run_id + ':research-batch:recovery-' + recovery,
+  jobs: jobs,
+  barrier: 'all',
+  recovery_of: s.batch_id,
+  recovery_attempt: recovery
+}}];""",
+            P(7, 1),
+        )
+        wf.add_node(retry)
+        wf.add_node(recover)
         wf.add(dispatch, w)
         wf.add(w, poll)
         wf.add(poll, parse)
         wf.add(parse, done)
         wf.add(done, failed, 1)
+        wf.add(failed, retry, 0)
+        wf.add(retry, recover, 0)
+        wf.add(recover, dispatch)
         wf.add(failed, inc, 1)
         wf.add(inc, lim)
         wf.add(lim, w, 1)
@@ -2318,7 +2352,7 @@ return [{json: {ok: false, failure_class: failedJob.failure_class || 'INFRA_FAIL
             P(6, 1),
         )
         wf.add_node(fail)
-        wf.add(failed, fail, 0)
+        wf.add(retry, fail, 1)
         return wf
 
     return builder(cfg)
