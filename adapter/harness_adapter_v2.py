@@ -1570,6 +1570,27 @@ def _changes_expected(payload, allowed):
     return bool(allowed)
 
 
+DASHBOARD_RUNTIME_DENY_TERMS = (
+    "systemkarte",
+    "datenfluss",
+    "control tower",
+    "mermaid",
+)
+
+
+def _runtime_dashboard_scope_denied(payload, allowed):
+    """Keep Morpheus product development outside the runtime Builder boundary."""
+
+    paths = [str(path).replace("\\", "/").lower() for path in (allowed or [])]
+    if any(path == "dashboard" or path.startswith("dashboard/") for path in paths):
+        return True
+    task_text = " ".join(
+        str(payload.get(key, ""))
+        for key in ("task_description", "acceptance_hint")
+    ).lower()
+    return any(term in task_text for term in DASHBOARD_RUNTIME_DENY_TERMS)
+
+
 def _ensure_workspace(run_id, repository_ref=None):
     """Create a clean worker workspace, materializing the requested repo.
 
@@ -1902,6 +1923,35 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     allowed = payload.get("build_scope", {}).get("allowed_files", []) or payload.get(
         "targets", {}
     ).get("files", [])
+    if _runtime_dashboard_scope_denied(payload, allowed):
+        result = {
+            "contract": "autodev.build-result.v1",
+            "version": "v1",
+            "run_id": run_id,
+            "attempt_id": payload.get("attempt_id"),
+            "status": "failed",
+            "changed_files": [],
+            "summary": "Runtime Builder refused a Morpheus Control Tower scope.",
+            "test_results": {"passed": 0, "failed": 0},
+            "failure": {
+                "failure_signature": "RUNTIME_DASHBOARD_SCOPE_DENIED",
+                "message": "dashboard/** and Control Tower implementation belong to the Morpheus development agent.",
+            },
+            "x-metadata": {
+                "backend": backend,
+                "morpheus_builder_dashboard_access": False,
+                "qwen_dashboard_modifications": 0,
+            },
+        }
+        finalize_job(
+            job_id,
+            "failed",
+            result=result,
+            error=result["failure"]["message"],
+            failure_class="SECURITY_BLOCK",
+            failure_signature="RUNTIME_DASHBOARD_SCOPE_DENIED",
+        )
+        return
     changes_expected = _changes_expected(payload, allowed)
     before = _git_snapshot(ws)
     if before["entries"]:
