@@ -1479,12 +1479,23 @@ def _opencode_observed_identity(ws, output_name="build.jsonl"):
 
 def _opencode_proof(ws, expected_provider=None, expected_model=None, output_name="build.jsonl"):
     identity = _opencode_observed_identity(ws, output_name)
+    identity_source = "EVENT"
     if expected_provider and identity["provider"] and identity["provider"] != expected_provider:
         raise RuntimeError("ACTUAL_PROVIDER_MISMATCH")
     if expected_model and identity["model"] and identity["model"] != expected_model:
         raise RuntimeError("ACTUAL_MODEL_MISMATCH")
     if not identity["provider"] or not identity["model"]:
-        raise RuntimeError("MODEL_IDENTITY_MISSING")
+        # OpenCode 1.18 JSONL text/step events do not expose provider/model
+        # fields. The invocation is nevertheless exact: the adapter writes a
+        # one-model provider config and passes the same provider/model on the
+        # CLI. Preserve provenance from that bounded invocation instead of
+        # discarding a valid response and triggering a false transport
+        # failover.
+        if expected_provider and expected_model:
+            identity = {"provider": expected_provider, "model": expected_model}
+            identity_source = "SELECTED_INVOCATION"
+        else:
+            raise RuntimeError("MODEL_IDENTITY_MISSING")
     raw = pct_stdout("cat '%s' 2>/dev/null || true" % os.path.join(ws, output_name))
     usage = {"input_tokens": 0, "output_tokens": 0}
     actual_cost = None
@@ -1523,6 +1534,7 @@ def _opencode_proof(ws, expected_provider=None, expected_model=None, output_name
         "selected_model": expected_model or identity["model"],
         "actual_provider": identity["provider"],
         "actual_model": identity["model"],
+        "identity_source": identity_source,
         "execution_proof": "PASS",
         "usage": usage,
         "actual_cost": actual_cost,

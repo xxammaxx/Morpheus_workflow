@@ -154,3 +154,21 @@ def test_canonical_research_profile_is_tool_free():
     assert 'RESEARCH_PERMS = {key: "deny" for key in PLAN_PERMS}' in source
     assert '"websearch": False' in source
     assert '"websearch": "deny"' in source
+
+
+def test_opencode_proof_uses_exact_invocation_when_events_omit_identity(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTODEV_V2_STATE", str(tmp_path / "adapter-state"))
+    sys.path.insert(0, str(ROOT))
+    from adapter import harness_adapter_v2 as adapter
+
+    monkeypatch.setattr(
+        adapter,
+        "pct_stdout",
+        lambda _cmd: '{"type":"text","part":{"text":"{\\"note\\":\\"ok\\"}"}}',
+    )
+    proof = adapter._opencode_proof(
+        "/isolated/workspace", "opencode", "big-pickle", "research.jsonl"
+    )
+    assert proof["actual_provider"] == "opencode"
+    assert proof["actual_model"] == "big-pickle"
+    assert proof["identity_source"] == "SELECTED_INVOCATION"
