@@ -179,3 +179,10 @@ def test_research_promotes_structured_capability_only_after_json_note():
     assert "_record_opencode_capability_proof(route_provider, route_model)" in source
     assert 'entry["structured_output_probe"] = "PASS"' in source
     assert 'capabilities[capability] = True' in source
+
+
+def test_catalog_refresh_preserves_live_capability_probe_evidence():
+    source = (ROOT / "runtime" / "providers" / "catalog.py").read_text()
+    assert '"tool_probe"' in source
+    assert '"structured_output_score"' in source
+    assert '"structured_output_probe"' in source

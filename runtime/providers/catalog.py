@@ -214,6 +214,10 @@ class ProviderCatalog:
                 "actual_provider",
                 "actual_model",
                 "resolved_model",
+                "tool_probe",
+                "vision_probe",
+                "structured_output_score",
+                "structured_output_probe",
             ):
                 if key in previous:
                     entry[key] = previous[key]
