@@ -1950,6 +1950,7 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
         _record_opencode_capability_proof(route_provider, route_model)
     result["x-metadata"] = {
         "backend": backend,
+        "build_provenance": provenance_meta,
         "provider": route_provider,
         "model": route_model,
         "model_alias": MORPHEUS_MODEL_ALIAS,
