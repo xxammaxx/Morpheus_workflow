@@ -98,7 +98,7 @@ def test_research_recovery_is_bounded_and_preserves_poll_budget(tmp_path):
     prep = next(
         node for node in workflow["nodes"] if node["name"] == "Prep Research Batch"
     )
-    assert "timeout_s: 60" in prep["parameters"]["jsCode"]
+    assert "timeout_s: 180" in prep["parameters"]["jsCode"]
 
     recovery = next(
         node for node in workflow["nodes"] if node["name"] == "Prepare Research Recovery"
