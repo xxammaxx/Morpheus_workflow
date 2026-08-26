@@ -138,3 +138,10 @@ def test_research_timeout_kills_remote_opencode_attempt():
     assert "timeout --kill-after=5s %ss %s run" in source
     assert "opencode research model attempt timed out" in source
     assert "        attempt_timeout_s,\n        OPENCODE_BIN," in source
+
+
+def test_parallel_research_workers_use_distinct_artifacts():
+    source = (ROOT / "adapter" / "harness_adapter_v2.py").read_text()
+    assert 'output_name = ".opencode/research-%s.jsonl" % artifact_key' in source
+    assert 'stderr_name = ".opencode/research-%s.stderr" % artifact_key' in source
+    assert "agent_name = \"research-worker-%s\" % artifact_key" in source
