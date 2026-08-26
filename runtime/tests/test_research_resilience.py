@@ -146,3 +146,8 @@ def test_parallel_research_workers_use_distinct_artifacts():
     assert 'output_name = ".opencode/research-%s.jsonl" % artifact_key' in source
     assert 'stderr_name = ".opencode/research-%s.stderr" % artifact_key' in source
     assert "agent_name = \"research-worker-%s\" % artifact_key" in source
+
+
+def test_canonical_research_profile_is_tool_free():
+    source = (ROOT / "adapter" / "harness_adapter_v2.py").read_text()
+    assert "RESEARCH_TOOLS = dict(PLAN_SERIALIZATION_TOOLS)" in source
