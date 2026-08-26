@@ -1323,7 +1323,17 @@ BUILD_PERMS = {
 }
 
 
-def _opencode_script(ws, agent_name, agent_md, prompt, timeout_s, provider=None, model=None):
+def _opencode_script(
+    ws,
+    agent_name,
+    agent_md,
+    prompt,
+    timeout_s,
+    provider=None,
+    model=None,
+    output_name="build.jsonl",
+    stderr_name="build.stderr",
+):
     if not provider or not model:
         raise RuntimeError("NO_ELIGIBLE_FREE_MODEL")
     attempt_timeout_s = max(1, int(timeout_s or DEFAULT_TIMEOUT_S))
@@ -1346,7 +1356,7 @@ def _opencode_script(ws, agent_name, agent_md, prompt, timeout_s, provider=None,
         "export OPENCODE_CONFIG_CONTENT='%s'; "
         "export PATH='/opt/dev-fabric/opencode:/usr/local/bin:/usr/bin:/bin'; "
         "timeout --kill-after=5s %ss %s run --agent %s --model '%s/%s' --format json %s "
-        "> build.jsonl 2> build.stderr"
+        "> %s 2> %s"
     ) % (
         ws,
         agent_name,
@@ -1358,6 +1368,8 @@ def _opencode_script(ws, agent_name, agent_md, prompt, timeout_s, provider=None,
         provider,
         model,
         json.dumps(prompt),
+        output_name,
+        stderr_name,
     )
 
 
@@ -1379,9 +1391,9 @@ def _worker_model_ref(payload):
     return "%s/%s" % (provider, model)
 
 
-def _parse_opencode_jsonl(ws):
-    """Return (assistant_text, tool_events) parsed from build.jsonl."""
-    path = os.path.join(ws, "build.jsonl")
+def _parse_opencode_jsonl(ws, output_name="build.jsonl"):
+    """Return (assistant_text, tool_events) parsed from an OpenCode JSONL file."""
+    path = os.path.join(ws, output_name)
     text_parts, tool_events = [], []
     # build.jsonl lives inside the isolated builder CT, not on the adapter
     # host. Read it through the existing pct boundary rather than checking
@@ -1427,9 +1439,9 @@ def _parse_opencode_jsonl(ws):
     return "\n".join(text_parts), tool_events
 
 
-def _opencode_observed_identity(ws):
+def _opencode_observed_identity(ws, output_name="build.jsonl"):
     """Extract provider/model metadata from OpenCode events, without prose."""
-    raw = pct_stdout("cat '%s' 2>/dev/null || true" % os.path.join(ws, "build.jsonl"))
+    raw = pct_stdout("cat '%s' 2>/dev/null || true" % os.path.join(ws, output_name))
     providers, models = set(), set()
     for line in raw.splitlines():
         try:
@@ -1456,15 +1468,15 @@ def _opencode_observed_identity(ws):
     }
 
 
-def _opencode_proof(ws, expected_provider=None, expected_model=None):
-    identity = _opencode_observed_identity(ws)
+def _opencode_proof(ws, expected_provider=None, expected_model=None, output_name="build.jsonl"):
+    identity = _opencode_observed_identity(ws, output_name)
     if expected_provider and identity["provider"] and identity["provider"] != expected_provider:
         raise RuntimeError("ACTUAL_PROVIDER_MISMATCH")
     if expected_model and identity["model"] and identity["model"] != expected_model:
         raise RuntimeError("ACTUAL_MODEL_MISMATCH")
     if not identity["provider"] or not identity["model"]:
         raise RuntimeError("MODEL_IDENTITY_MISSING")
-    raw = pct_stdout("cat '%s' 2>/dev/null || true" % os.path.join(ws, "build.jsonl"))
+    raw = pct_stdout("cat '%s' 2>/dev/null || true" % os.path.join(ws, output_name))
     usage = {"input_tokens": 0, "output_tokens": 0}
     actual_cost = None
     for line in raw.splitlines():
@@ -1833,11 +1845,15 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
         '{"note": "<max 2500 chars, factual findings about the %s aspect>"}\n'
         "No markdown fences, no extra text."
     ) % (area, payload.get("task_description", ""), area)
+    artifact_key = re.sub(r"[^A-Za-z0-9_-]", "-", job_id)
+    agent_name = "research-worker-%s" % artifact_key
+    output_name = ".opencode/research-%s.jsonl" % artifact_key
+    stderr_name = ".opencode/research-%s.stderr" % artifact_key
     script = _opencode_script(
         ws,
-        "research-worker",
+        agent_name,
         _agent_md(
-            "research-worker",
+            agent_name,
             RESEARCH_TOOLS,
             RESEARCH_PERMS,
             "Read-only research worker",
@@ -1846,6 +1862,8 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
         prompt,
         timeout_s,
         *_opencode_worker_identity(payload),
+        output_name,
+        stderr_name,
     )
     try:
         execution = pct_exec(script, timeout=timeout_s)
@@ -1856,8 +1874,8 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
         ) from exc
     if execution.returncode != 0:
         raise ProviderFailure("opencode execution failure", retryable=True)
-    text, events = _parse_opencode_jsonl(ws)
-    cloud_proof = _opencode_proof(ws, route_provider, route_model)
+    text, events = _parse_opencode_jsonl(ws, output_name)
+    cloud_proof = _opencode_proof(ws, route_provider, route_model, output_name)
     note = text.strip()
     obj = _extract_json(text)
     if isinstance(obj, dict) and isinstance(obj.get("note"), str):
