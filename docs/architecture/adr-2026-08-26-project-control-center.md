@@ -2,6 +2,27 @@
 
 ## Decision
 
+## Reality Refresh
+
+`CURRENT_ARCHITECTURE=n8n Data Tables are canonical run/attempt state; the
+Python stdlib BFF projects n8n and Adapter reads; Adapter ledger is the
+execution telemetry source; GitHub is the collaborative issue backlog.`
+
+`CURRENT_CONTROL_TOWER=German read-only V1.1 views for overview, runs,
+providers, system map, and data flow; viewer-token authentication; no writes.`
+
+`AVAILABLE_COMMAND_PATHS=POST /webhook/autodev/start is deployed; the new
+allow-listed BFF /api/v1/commands path is implemented but requires the
+authenticated n8n command gateway deployment.`
+
+`AVAILABLE_EVENT_SOURCES=n8n run/attempt tables, Adapter canonical ledger
+projection, optional canonical project/issue/event tables, provider runtime
+metadata.`
+
+`MISSING_PRIMITIVES=deployed n8n command gateway and canonical project/issue
+continuation workflows; production operator/admin credentials; live
+post-deploy command and continuation evidence.`
+
 The Control Tower is a role-aware operator BFF and projection UI. It has no
 database, event ledger, retry policy, provider selection, or browser state
 machine. `POST /api/v1/commands` accepts only the versioned allow-list and
