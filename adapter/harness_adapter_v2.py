@@ -1839,8 +1839,8 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
     prompt = (
         "You are a read-only research worker. Workspace: current directory. "
         "Research the '%s' aspect of this task: %s\n"
-        "You may READ, glob, grep, list files. Keep this research bounded: use at most "
-        "eight read/glob/grep/list calls, then return the JSON note immediately. "
+        "This is a bounded note task: do not call tools; return the JSON note immediately "
+        "from the task context. "
         "You must NOT write, edit, run commands "
         "or use the network. "
         "Respond with ONLY a JSON object of this exact shape:\n"

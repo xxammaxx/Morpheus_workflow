@@ -138,7 +138,7 @@ def test_research_timeout_kills_remote_opencode_attempt():
     assert "timeout --kill-after=5s %ss %s run" in source
     assert "opencode research model attempt timed out" in source
     assert "        attempt_timeout_s,\n        OPENCODE_BIN," in source
-    assert "use at most \"" in source
+    assert "do not call tools; return the JSON note immediately" in source
 
 
 def test_parallel_research_workers_use_distinct_artifacts():
