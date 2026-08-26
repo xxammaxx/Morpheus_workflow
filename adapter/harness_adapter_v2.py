@@ -1544,6 +1544,25 @@ def _opencode_proof(ws, expected_provider=None, expected_model=None, output_name
     }
 
 
+def _record_opencode_capability_proof(provider, model, capability="STRUCTURED_OUTPUT_CAPABLE"):
+    """Persist capability evidence observed at the OpenCode boundary."""
+    runtime = _provider_runtime
+    catalog = getattr(runtime, "catalog", None) if runtime is not None else None
+    if catalog is None or not provider or not model:
+        return False
+    for entry in getattr(catalog, "entries", None) or []:
+        if entry.get("provider") != provider or entry.get("model") != model:
+            continue
+        capabilities = dict(entry.get("capabilities") or {})
+        capabilities[capability] = True
+        entry["capabilities"] = capabilities
+        entry["structured_output_score"] = 1.0
+        entry["structured_output_probe"] = "PASS"
+        catalog.save()
+        return True
+    return False
+
+
 def _extract_json(text):
     """Extract the first balanced JSON object from a string (fence-aware)."""
     import re as _re
@@ -1927,6 +1946,8 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
             failure_signature="CONTRACT_INVALID",
         )
         return
+    if isinstance(obj, dict) and isinstance(obj.get("note"), str):
+        _record_opencode_capability_proof(route_provider, route_model)
     result["x-metadata"] = {
         "backend": backend,
         "provider": route_provider,
