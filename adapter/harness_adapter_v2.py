@@ -1268,6 +1268,7 @@ PLAN_TOOLS = {
     # attempt; PLAN_PERMS keeps execution fail-closed.
     "write": True,
     "webfetch": False,
+    "websearch": False,
     "task": False,
     "skill": False,
     "question": False,
@@ -1286,6 +1287,7 @@ PLAN_PERMS = {
     "edit": "deny",
     "write": "deny",
     "webfetch": "deny",
+    "websearch": "deny",
     "task": "deny",
     "skill": "deny",
     "question": "deny",
