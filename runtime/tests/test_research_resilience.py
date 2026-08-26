@@ -131,3 +131,9 @@ def test_research_transport_exclusions_survive_router_restart(tmp_path):
         RouteRequest(task_class="research", run_id="research-run", task_id="research.docs")
     )
     assert selected["selected_model"] != "a"
+
+
+def test_research_timeout_kills_remote_opencode_attempt():
+    source = (ROOT / "adapter" / "harness_adapter_v2.py").read_text()
+    assert "timeout --kill-after=5s %ss %s run" in source
+    assert "opencode research model attempt timed out" in source

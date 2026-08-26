@@ -1326,6 +1326,7 @@ BUILD_PERMS = {
 def _opencode_script(ws, agent_name, agent_md, prompt, timeout_s, provider=None, model=None):
     if not provider or not model:
         raise RuntimeError("NO_ELIGIBLE_FREE_MODEL")
+    attempt_timeout_s = max(1, int(timeout_s or DEFAULT_TIMEOUT_S))
     config = json.dumps({
         "$schema": "https://opencode.ai/config.json",
         "share": "disabled",
@@ -1344,7 +1345,7 @@ def _opencode_script(ws, agent_name, agent_md, prompt, timeout_s, provider=None,
         "cat > .opencode/agents/%s.md << 'EOFAGENT'\n%s\nEOFAGENT\n"
         "export OPENCODE_CONFIG_CONTENT='%s'; "
         "export PATH='/opt/dev-fabric/opencode:/usr/local/bin:/usr/bin:/bin'; "
-        "%s run --agent %s --model '%s/%s' --format json %s "
+        "timeout --kill-after=5s %ss %s run --agent %s --model '%s/%s' --format json %s "
         "> build.jsonl 2> build.stderr"
     ) % (
         ws,
@@ -1352,6 +1353,7 @@ def _opencode_script(ws, agent_name, agent_md, prompt, timeout_s, provider=None,
         agent_md,
         config,
         OPENCODE_BIN,
+        attempt_timeout_s,
         agent_name,
         provider,
         model,
