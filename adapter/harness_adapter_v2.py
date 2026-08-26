@@ -1295,7 +1295,11 @@ PLAN_PERMS = {
 # dynamically selected, but do not expose repository tools: the task context
 # already carries the exact target and the worker must return structured JSON.
 RESEARCH_TOOLS = dict(PLAN_SERIALIZATION_TOOLS)
-RESEARCH_PERMS = dict(PLAN_PERMS)
+# The canonical Research profile is a serialization-only worker.  OpenCode
+# 1.18 can still expose a tool when its permission is allow, even when the
+# corresponding agent `tools` flag is false; deny every capability here so a
+# model cannot enter a repository-exploration loop.
+RESEARCH_PERMS = {key: "deny" for key in PLAN_PERMS}
 BUILD_TOOLS = {
     "read": True,
     "edit": True,
@@ -1840,7 +1844,7 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
     route_provider, route_model = _opencode_worker_identity(payload)
     area = job_type.split(".")[1]
     prompt = (
-        "You are a read-only research worker. Workspace: current directory. "
+        "You are a bounded research worker. The task context is authoritative. "
         "Research the '%s' aspect of this task: %s\n"
         "This is a bounded note task: do not call tools; return the JSON note immediately "
         "from the task context. "
