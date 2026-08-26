@@ -2970,6 +2970,24 @@ class Handler(BaseHTTPRequestHandler):
                 ),
             )
             return
+        if path == "/v1/events":
+            # The adapter exposes a bounded projection of its existing
+            # append-only run ledger. It does not create a second event store.
+            try:
+                limit = min(250, max(1, int((query.get("limit") or [250])[0])))
+            except (TypeError, ValueError):
+                limit = 250
+            events = []
+            if os.path.exists(LEDGER_FILE):
+                with open(LEDGER_FILE, encoding="utf-8") as stream:
+                    for line in stream.readlines()[-limit:]:
+                        try:
+                            record = json.loads(line)
+                        except ValueError:
+                            continue
+                        events.append({key: record.get(key) for key in ("timestamp", "ts", "run_id", "job_id", "attempt_id", "job_type", "status", "provider", "model", "failure_signature", "input_contract", "output_contract", "routing_event_id", "worker_id", "mcp_call_id") if record.get(key) is not None})
+            self._send(200, ok({"events": events, "source": "canonical_run_ledger"}))
+            return
         if path.startswith("/v1/jobs/"):
             jid = path[len("/v1/jobs/") :]
             rec = JOBS.get(jid)

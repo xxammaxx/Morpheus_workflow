@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Morpheus Control Tower: authenticated, read-only operational projection."""
+"""Morpheus Control Tower BFF: read projections plus audited n8n commands."""
 import base64
 import datetime as dt
 import hashlib
@@ -15,7 +15,13 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "1.1.2"
+from control_center import (ADMIN_COMMANDS, COMMAND_PATHS, OPERATOR_COMMANDS,
+                            READ_ROLES, audit_entry, blueprint_projection,
+                            correlation_id,
+                            project_projection, redact, role_for_token,
+                            validate_command)
+
+VERSION = "1.2.0"
 ACTIVE_RUN_STATES = frozenset({"ACCEPTED", "BASELINING", "RESEARCHING", "PLANNING", "BUILDING", "VERIFYING", "REVIEWING", "DECIDING", "RUNNING", "ACTIVE"})
 TERMINAL_FAILURE_STATES = frozenset({"FAILED", "BLOCKED"})
 STALE_RUN_SECONDS = int(os.environ.get("CONTROL_TOWER_STALE_RUN_SECONDS", "1800"))
@@ -29,6 +35,14 @@ N8N_API_KEY = os.environ.get("N8N_API_KEY", "")
 HARNESS_TOKEN = os.environ.get("HARNESS_TOKEN", "")
 VIEWER_TOKEN = os.environ.get("CONTROL_TOWER_VIEW_TOKEN", "")
 TABLE_IDS = {"runs": os.environ.get("MORPHEUS_RUNS_TABLE", ""), "attempts": os.environ.get("MORPHEUS_ATTEMPTS_TABLE", "")}
+TABLE_IDS.update({"projects": os.environ.get("MORPHEUS_PROJECTS_TABLE", ""), "issues": os.environ.get("MORPHEUS_ISSUES_TABLE", ""), "events": os.environ.get("MORPHEUS_EVENTS_TABLE", "")})
+OPERATOR_TOKEN = os.environ.get("CONTROL_TOWER_OPERATOR_TOKEN", "")
+ADMIN_TOKEN = os.environ.get("CONTROL_TOWER_ADMIN_TOKEN", "")
+COMMAND_TOKEN = os.environ.get("MORPHEUS_COMMAND_TOKEN", "")
+COMMAND_BASE = os.environ.get("MORPHEUS_COMMAND_BASE", "").rstrip("/")
+if not COMMAND_BASE:
+    COMMAND_BASE = N8N_BASE.rsplit("/api/v1", 1)[0]
+COMMAND_TIMEOUT = float(os.environ.get("CONTROL_TOWER_COMMAND_TIMEOUT", "8"))
 GOLDEN_RUN = "run-mt6unuge-agsdu4"
 FAILURE_RUN = "run-mt6uony8-jjp9hf"
 _table_lock = threading.Lock()
@@ -50,10 +64,20 @@ if not HARNESS_TOKEN:
     HARNESS_TOKEN = read_credential("harness_token")
 if not VIEWER_TOKEN:
     VIEWER_TOKEN = read_credential("viewer_token")
+if not OPERATOR_TOKEN:
+    OPERATOR_TOKEN = read_credential("operator_token")
+if not ADMIN_TOKEN:
+    ADMIN_TOKEN = read_credential("admin_token")
+if not COMMAND_TOKEN:
+    COMMAND_TOKEN = read_credential("command_token")
 
 
 def now():
     return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def re_correlation_id(value):
+    return isinstance(value, str) and 3 <= len(value) <= 96 and all(char.isalnum() or char in "_-:." for char in value)
 
 
 def safe_status(ok, checked=None):
@@ -132,7 +156,7 @@ def provider_pool_status(size):
 
 
 class Upstream:
-    """Only GET requests are possible by construction."""
+    """Read-only upstream client; writes use command_post's fixed n8n path."""
     def __init__(self, base, headers=None):
         self.base = base
         self.headers = headers or {}
@@ -169,7 +193,7 @@ def list_items(payload):
 def sanitize_run(row):
     if not isinstance(row, dict):
         return {}
-    allowed = ("run_id", "state", "current_job", "decision", "reason_code", "created_at", "updated_at", "started_at", "ended_at", "job_id", "attempt_id", "job", "status", "result_ref", "task_ref", "repository_ref", "attempt_count", "failure_signature", "strategy_delta", "selected_provider", "selected_model", "resolved_model", "actual_provider", "actual_model", "cost_class", "actual_cost", "free_eligible", "fallback_chain", "paid_escalation", "harness_id", "harness_fingerprint")
+    allowed = ("run_id", "project_id", "issue_number", "state", "current_job", "decision", "reason_code", "created_at", "updated_at", "started_at", "ended_at", "job_id", "attempt_id", "job", "status", "result_ref", "task_ref", "repository_ref", "attempt_count", "failure_signature", "strategy_delta", "selected_provider", "selected_model", "resolved_model", "actual_provider", "actual_model", "cost_class", "actual_cost", "free_eligible", "fallback_chain", "paid_escalation", "harness_id", "harness_fingerprint", "input_contract", "output_contract", "payload", "source", "target", "worker_id", "mcp_call_id", "routing_event_id")
     return {key: row.get(key) for key in allowed if key in row}
 
 
@@ -213,6 +237,30 @@ def adapter_health():
     return safe_status(status == 200)
 
 
+def adapter_events():
+    if not HARNESS_TOKEN:
+        return [], False
+    status, payload = Upstream(ADAPTER_BASE, {"X-Harness-Token": HARNESS_TOKEN}).get("/v1/events", {"limit": 250})
+    return (list_items(payload), status == 200)
+
+
+def command_post(path, body):
+    """The only mutating upstream path: an allow-listed n8n webhook."""
+    url = COMMAND_BASE + path if path.startswith("/") else COMMAND_BASE + "/" + path
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    if COMMAND_TOKEN:
+        headers["X-AutoDev-Token"] = COMMAND_TOKEN
+    if N8N_API_KEY:
+        headers["X-N8N-API-KEY"] = N8N_API_KEY
+    request = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=COMMAND_TIMEOUT) as response:
+            value = json.loads(response.read().decode("utf-8"))
+            return response.status, value if isinstance(value, dict) else {"data": value}
+    except (OSError, ValueError, urllib.error.HTTPError) as exc:
+        return 502, {"error": "canonical command unavailable", "error_class": type(exc).__name__}
+
+
 def n8n_health():
     status, payload = Upstream(N8N_BASE, {"X-N8N-API-KEY": N8N_API_KEY}).get("/workflows", {"limit": 250})
     health = safe_status(status == 200)
@@ -233,9 +281,39 @@ def timeline(attempts):
     return sorted(events, key=lambda x: x.get("timestamp") or "")
 
 
+def debugging_events(run_id=None):
+    attempts, attempts_ok = table_rows("attempts")
+    canonical_events, events_ok = table_rows("events")
+    external, external_ok = adapter_events()
+    events = []
+    for item in attempts:
+        row = sanitize_run(item)
+        if run_id and row.get("run_id") != run_id:
+            continue
+        for event_name, timestamp, status in (("ATTEMPT_STARTED", row.get("started_at"), "RUNNING"), ("ATTEMPT_FINISHED", row.get("ended_at"), row.get("status", "UNKNOWN"))):
+            if timestamp:
+                events.append({"timestamp": timestamp, "source": "n8n", "target": "Control Tower", "event": event_name,
+                               "run_id": row.get("run_id"), "attempt_id": row.get("attempt_id"), "status": status,
+                               "contract": row.get("output_contract") or row.get("input_contract") or "UNKNOWN",
+                               "provider": row.get("actual_provider") or row.get("selected_provider"),
+                               "model": row.get("actual_model") or row.get("selected_model"),
+                               "payload": {"job_id": row.get("job_id"), "result_ref": row.get("result_ref")}})
+    for event in canonical_events + external:
+        if not isinstance(event, dict) or (run_id and event.get("run_id") != run_id):
+            continue
+        clean = redact(event)
+        clean.setdefault("source", "Adapter")
+        clean.setdefault("timestamp", clean.get("ts") or clean.get("created_at"))
+        events.append(clean)
+    events = [redact(e) for e in events if e.get("timestamp")]
+    return sorted(events, key=lambda x: x.get("timestamp") or ""), attempts_ok or events_ok or external_ok
+
+
 def projection():
     runs, runs_ok = table_rows("runs")
     attempts, attempts_ok = table_rows("attempts")
+    projects, projects_ok = table_rows("projects")
+    issues, issues_ok = table_rows("issues")
     runtime, runtime_ok = adapter_runtime()
     health_n8n = n8n_health()
     health_adapter = adapter_health()
@@ -250,7 +328,17 @@ def projection():
     if health_adapter["status"] != "HEALTHY": alerts.append({"severity": "HIGH", "code": "ADAPTER_UNAVAILABLE", "message": "Adapter UNAVAILABLE"})
     for run in clean_runs:
         if is_stale_run(run): alerts.append({"severity": "WARNING", "code": "STALE_ACTIVE_RUN", "message": "Active run has not been updated for a long time", "run_id": run.get("run_id")})
-    return {"contract": "autodev.control-tower-overview.v1", "version": "v1", "generated_at": now(), "freshness": {"checked_at": now(), "freshness_seconds": 0}, "system_health": {"n8n": health_n8n, "adapter": health_adapter, "provider_pool": safe_status(runtime_ok and provider_pool_status(len(pool)) == "HEALTHY") | {"status": provider_pool_status(len(pool))}}, "free_pool": {"size": len(pool), "providers": pool}, "run_counts": run_counts, "recent_runs": recent, "alerts": alerts, "release": {"dashboard_version": VERSION, "core_v1_release": "v1.0.0", "morpheus_release": "v1.1.2", "dashboard_release": "v1.1.2", "v1_release": "v1.0.0", "n8n_autodev_workflows": health_n8n.get("workflow_count", 0), "free_first_active": bool(runtime.get("free_first_enabled")), "paid_escalation": bool(runtime.get("automatic_paid_agent_escalation")), "deepseek": "INELIGIBLE"}, "sources": {"n8n": "LIVE" if runs_ok and health_n8n["status"] == "HEALTHY" else "UNAVAILABLE", "adapter": "LIVE" if runtime_ok else "UNAVAILABLE"}}
+    project_rows = project_projection(projects, issues, clean_runs)
+    active = choose_active_run(clean_runs)
+    debug, debug_ok = debugging_events(active.get("run_id") if active else None)
+    modules = {"n8n": health_n8n, "adapter": health_adapter, "provider_pool": {"status": provider_pool_status(len(pool))}, "event_stream": safe_status(debug_ok)}
+    ok_modules = sum(value.get("status") == "HEALTHY" for value in modules.values())
+    return {"contract": "autodev.control-tower-overview.v1", "version": "v1", "generated_at": now(), "freshness": {"checked_at": now(), "freshness_seconds": 0}, "system_health": modules, "system_health_summary": {"ok": ok_modules, "total": len(modules)}, "free_pool": {"size": len(pool), "providers": pool}, "run_counts": run_counts, "recent_runs": recent, "projects": project_rows, "active_run": active, "debugging": {"current_run_id": active.get("run_id") if active else None, "stage": active.get("current_job") if active else None, "events": debug, "source": "LIVE" if debug_ok else "IDLE"}, "alerts": alerts, "release": {"dashboard_version": VERSION, "core_v1_release": "v1.0.0", "morpheus_release": "v1.1.2", "dashboard_release": VERSION, "v1_release": "v1.0.0", "n8n_autodev_workflows": health_n8n.get("workflow_count", 0), "free_first_active": bool(runtime.get("free_first_enabled")), "paid_escalation": bool(runtime.get("automatic_paid_agent_escalation")), "deepseek": "INELIGIBLE"}, "sources": {"n8n": "LIVE" if runs_ok and health_n8n["status"] == "HEALTHY" else "UNAVAILABLE", "adapter": "LIVE" if runtime_ok else "UNAVAILABLE", "projects": "LIVE" if projects_ok or issues_ok else "DERIVED"}}
+
+
+def choose_active_run(runs):
+    active = [run for run in runs if is_active_run(run)]
+    return sort_recent_runs(active, 1)[0] if active else None
 
 
 def run_view(run_id):
@@ -279,7 +367,30 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(value, separators=(",", ":")).encode()
         self.send_response(code); self.headers_out(); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
     def authorized(self):
-        return bool(VIEWER_TOKEN) and hmac.compare_digest(self.headers.get("X-Control-Tower-Token", ""), VIEWER_TOKEN)
+        return self.role() in READ_ROLES
+    def role(self):
+        return role_for_token(self.headers.get("X-Control-Tower-Token", ""), OPERATOR_TOKEN, ADMIN_TOKEN, VIEWER_TOKEN)
+    def csrf_valid(self):
+        # A custom header prevents a cross-site HTML form from reaching this
+        # endpoint. Same-origin fetches send it explicitly.
+        origin = self.headers.get("Origin") or self.headers.get("Referer")
+        host = self.headers.get("Host", "")
+        if origin:
+            parsed = urllib.parse.urlparse(origin)
+            if parsed.netloc and parsed.netloc != host:
+                return False
+        return self.headers.get("X-Control-Tower-Request") == "1"
+    def request_body(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0 or length > 600_000:
+            raise ValueError("request body is missing or too large")
+        raw = self.rfile.read(length)
+        if len(raw) != length:
+            raise ValueError("incomplete request body")
+        value = json.loads(raw.decode("utf-8"))
+        if not isinstance(value, dict):
+            raise ValueError("request body must be an object")
+        return value
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
         if path == "/healthz":
@@ -292,6 +403,14 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authorized(): return self.send_json(401, {"error": "unauthorized"})
         if self.command != "GET": return self.send_json(405, {"error": "method not allowed"})
         if path == "/api/v1/overview": return self.send_json(200, projection())
+        if path == "/api/v1/session": return self.send_json(200, {"role": self.role(), "read_only": self.role() == "VIEWER", "commands": sorted(OPERATOR_COMMANDS if self.role() == "OPERATOR" else ADMIN_COMMANDS | OPERATOR_COMMANDS) if self.role() in READ_ROLES else []})
+        if path == "/api/v1/projects":
+            return self.send_json(200, {"contract": "autodev.project-view.v1", "version": "v1", "projects": projection()["projects"]})
+        if path == "/api/v1/debugging":
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            run_id = query.get("run_id", [None])[0] if query.get("run_id", [None])[0] else None
+            events, ok = debugging_events(run_id)
+            return self.send_json(200, {"contract": "autodev.debugging.v1", "version": "v1", "run_id": run_id, "source": "LIVE" if ok else "IDLE", "events": events})
         if path == "/api/v1/runs":
             runs, _ = table_rows("runs"); return self.send_json(200, {"contract": "autodev.run-view.v1", "version": "v1", "runs": [sanitize_run(x) for x in runs]})
         if path.startswith("/api/v1/runs/") and path.endswith("/timeline"):
@@ -299,9 +418,35 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/v1/runs/"):
             return self.send_json(200, run_view(urllib.parse.unquote(path[len("/api/v1/runs/"):])) )
         if path in ("/api/v1/providers", "/api/v1/runtime"):
-            runtime, ok = adapter_runtime(); return self.send_json(200 if ok else 503, {"contract": "autodev.runtime-health.v1", "version": "v1", "source": "LIVE" if ok else "UNAVAILABLE", **runtime})
+            runtime, ok = adapter_runtime(); return self.send_json(200, {"contract": "autodev.runtime-health.v1", "version": "v1", "source": "LIVE" if ok else "UNAVAILABLE", **runtime})
         return self.send_json(404, {"error": "not found"})
-    def do_POST(self): self.send_json(405, {"error": "method not allowed"})
+    def do_POST(self):
+        path = urllib.parse.urlparse(self.path).path
+        if path != "/api/v1/commands":
+            return self.send_json(405, {"error": "method not allowed"})
+        role = self.role()
+        if role not in READ_ROLES:
+            return self.send_json(401, {"error": "operator authentication required"})
+        if not self.csrf_valid():
+            return self.send_json(403, {"error": "csrf validation failed"})
+        try:
+            body = self.request_body()
+            command = body.get("command")
+            target = redact(body.get("target")) if isinstance(body.get("target"), dict) else {}
+            payload = body.get("payload", {})
+            command, payload = validate_command(command, payload, role)
+            correlation = body.get("correlation_id")
+            if not isinstance(correlation, str) or not re_correlation_id(correlation):
+                correlation = correlation_id(command, target)
+            envelope = {"contract": "autodev.control-command.v1", "version": "v1", "command": command, "target": target, "payload": redact(payload), "actor": {"role": role}, "correlation_id": correlation}
+            status, result = command_post(COMMAND_PATHS[command], envelope)
+            result = redact(result)
+            result.update({"contract": "autodev.command-result.v1", "command": command, "correlation_id": correlation, "audit": audit_entry(command, role, target, "ACCEPTED" if status < 300 else "FAILED", payload.get("project_id"), payload.get("run_id"), correlation)})
+            return self.send_json(202 if status < 300 else status, result)
+        except PermissionError as exc:
+            return self.send_json(403, {"error": str(exc)})
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            return self.send_json(400, {"error": str(exc)})
     do_PUT = do_POST; do_PATCH = do_POST; do_DELETE = do_POST
 
 

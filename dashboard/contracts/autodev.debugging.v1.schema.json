@@ -1,0 +1,14 @@
+{
+  "$id": "autodev.debugging.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Correlated Control Tower debugging projection",
+  "type": "object",
+  "required": ["contract", "version", "source", "events"],
+  "properties": {
+    "contract": {"const": "autodev.debugging.v1"},
+    "version": {"const": "v1"},
+    "run_id": {"type": ["string", "null"]},
+    "source": {"enum": ["LIVE", "IDLE"]},
+    "events": {"type": "array", "items": {"type": "object", "required": ["timestamp"], "additionalProperties": true}}
+  }
+}
