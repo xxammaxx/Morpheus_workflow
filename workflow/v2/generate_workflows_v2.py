@@ -2193,7 +2193,7 @@ const jobs = ['code', 'docs', 'tests'].map((area) => ({
   model: s.model || null,
   model_revision: s.model_revision || null,
   task_class: 'research',
-  timeout_s: 60
+  timeout_s: 180
 }));
 return [{json: {
   run_id: runId, batch_id: runId + ':research-batch',
