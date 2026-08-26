@@ -1291,7 +1291,10 @@ PLAN_PERMS = {
     "question": "deny",
     "todowrite": "deny",
 }
-RESEARCH_TOOLS = dict(PLAN_TOOLS)
+# Canonical Issue #8 Research is a bounded single-note task. Keep its model
+# dynamically selected, but do not expose repository tools: the task context
+# already carries the exact target and the worker must return structured JSON.
+RESEARCH_TOOLS = dict(PLAN_SERIALIZATION_TOOLS)
 RESEARCH_PERMS = dict(PLAN_PERMS)
 BUILD_TOOLS = {
     "read": True,
