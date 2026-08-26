@@ -172,3 +172,10 @@ def test_opencode_proof_uses_exact_invocation_when_events_omit_identity(tmp_path
     assert proof["actual_provider"] == "opencode"
     assert proof["actual_model"] == "big-pickle"
     assert proof["identity_source"] == "SELECTED_INVOCATION"
+
+
+def test_research_promotes_structured_capability_only_after_json_note():
+    source = (ROOT / "adapter" / "harness_adapter_v2.py").read_text()
+    assert "_record_opencode_capability_proof(route_provider, route_model)" in source
+    assert 'entry["structured_output_probe"] = "PASS"' in source
+    assert 'capabilities[capability] = True' in source
