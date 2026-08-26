@@ -152,3 +152,5 @@ def test_canonical_research_profile_is_tool_free():
     source = (ROOT / "adapter" / "harness_adapter_v2.py").read_text()
     assert "RESEARCH_TOOLS = dict(PLAN_SERIALIZATION_TOOLS)" in source
     assert 'RESEARCH_PERMS = {key: "deny" for key in PLAN_PERMS}' in source
+    assert '"websearch": False' in source
+    assert '"websearch": "deny"' in source
