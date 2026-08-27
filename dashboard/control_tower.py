@@ -25,7 +25,7 @@ VERSION = "1.2.0"
 ACTIVE_RUN_STATES = frozenset({"ACCEPTED", "BASELINING", "RESEARCHING", "PLANNING", "BUILDING", "VERIFYING", "REVIEWING", "DECIDING", "RUNNING", "ACTIVE"})
 TERMINAL_FAILURE_STATES = frozenset({"FAILED", "BLOCKED"})
 STALE_RUN_SECONDS = int(os.environ.get("CONTROL_TOWER_STALE_RUN_SECONDS", "1800"))
-FREE_POOL_MINIMUM = 2
+FREE_POOL_MINIMUM = 1
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 STARTED = time.monotonic()
@@ -81,7 +81,13 @@ def re_correlation_id(value):
 
 
 def safe_status(ok, checked=None):
-    return {"status": "HEALTHY" if ok else "UNAVAILABLE", "checked_at": checked or now(), "freshness_seconds": 0}
+    return {
+        "status": "HEALTHY" if ok else "UNAVAILABLE",
+        "diagnostic_status": "OK" if ok else "NICHT_OK",
+        "role": "REQUIRED",
+        "checked_at": checked or now(),
+        "freshness_seconds": 0,
+    }
 
 
 def parse_timestamp(value):
@@ -193,7 +199,7 @@ def list_items(payload):
 def sanitize_run(row):
     if not isinstance(row, dict):
         return {}
-    allowed = ("run_id", "project_id", "issue_number", "state", "current_job", "decision", "reason_code", "created_at", "updated_at", "started_at", "ended_at", "job_id", "attempt_id", "job", "status", "result_ref", "task_ref", "repository_ref", "attempt_count", "failure_signature", "strategy_delta", "selected_provider", "selected_model", "resolved_model", "actual_provider", "actual_model", "cost_class", "actual_cost", "free_eligible", "fallback_chain", "paid_escalation", "harness_id", "harness_fingerprint", "input_contract", "output_contract", "payload", "source", "target", "worker_id", "mcp_call_id", "routing_event_id")
+    allowed = ("run_id", "project_id", "issue_number", "state", "current_job", "decision", "reason_code", "created_at", "updated_at", "started_at", "ended_at", "job_id", "attempt_id", "job", "status", "result_ref", "task_ref", "repository_ref", "attempt_count", "failure_signature", "strategy_delta", "selected_provider", "selected_model", "resolved_model", "actual_provider", "actual_model", "cost_class", "actual_cost", "free_eligible", "fallback_chain", "paid_escalation", "harness_id", "harness_fingerprint", "input_contract", "output_contract", "payload", "source", "target", "worker_id", "mcp_call_id", "routing_event_id", "correlation_id", "contract", "validation")
     return {key: row.get(key) for key in allowed if key in row}
 
 
@@ -292,9 +298,11 @@ def debugging_events(run_id=None):
             continue
         for event_name, timestamp, status in (("ATTEMPT_STARTED", row.get("started_at"), "RUNNING"), ("ATTEMPT_FINISHED", row.get("ended_at"), row.get("status", "UNKNOWN"))):
             if timestamp:
-                events.append({"timestamp": timestamp, "source": "n8n", "target": "Control Tower", "event": event_name,
+                events.append({"timestamp": timestamp, "source": row.get("source") or "n8n", "target": row.get("target") or "UNKNOWN", "event": event_name,
                                "run_id": row.get("run_id"), "attempt_id": row.get("attempt_id"), "status": status,
-                               "contract": row.get("output_contract") or row.get("input_contract") or "UNKNOWN",
+                               "correlation_id": row.get("correlation_id") or "UNKNOWN",
+                               "contract": row.get("contract") or row.get("output_contract") or row.get("input_contract") or "UNKNOWN",
+                               "validation": row.get("validation") or "UNKNOWN",
                                "provider": row.get("actual_provider") or row.get("selected_provider"),
                                "model": row.get("actual_model") or row.get("selected_model"),
                                "payload": {"job_id": row.get("job_id"), "result_ref": row.get("result_ref")}})
@@ -302,7 +310,13 @@ def debugging_events(run_id=None):
         if not isinstance(event, dict) or (run_id and event.get("run_id") != run_id):
             continue
         clean = redact(event)
-        clean.setdefault("source", "Adapter")
+        clean.setdefault("source", "UNKNOWN")
+        clean.setdefault("target", "UNKNOWN")
+        clean.setdefault("run_id", "UNKNOWN")
+        clean.setdefault("attempt_id", "UNKNOWN")
+        clean.setdefault("correlation_id", "UNKNOWN")
+        clean.setdefault("contract", "UNKNOWN")
+        clean.setdefault("validation", "UNKNOWN")
         clean.setdefault("timestamp", clean.get("ts") or clean.get("created_at"))
         events.append(clean)
     events = [redact(e) for e in events if e.get("timestamp")]
@@ -320,9 +334,14 @@ def projection():
     clean_runs = [sanitize_run(x) for x in runs]
     recent = sort_recent_runs(clean_runs)
     pool = [p for p in runtime.get("providers", []) if p.get("free_eligible")]
+    mcp = runtime.get("mcp") if isinstance(runtime.get("mcp"), dict) else {}
+    mcp_servers = runtime.get("mcp_servers") if isinstance(runtime.get("mcp_servers"), list) else mcp.get("servers", [])
+    lmstudio_configured = any(str(p.get("provider", "")).lower() == "lmstudio" for p in runtime.get("providers", []))
+    opencode = runtime.get("opencode") if isinstance(runtime.get("opencode"), dict) else {}
+    opencode_ok = opencode.get("ct8001_reachable") is True and opencode.get("binary_present") is True and bool(opencode.get("version")) and opencode.get("version") != "UNKNOWN"
     run_counts = build_run_counts(clean_runs)
     alerts = []
-    if len(pool) < FREE_POOL_MINIMUM: alerts.append({"severity": "HIGH", "code": "FREE_POOL_BELOW_MIN", "message": "Free provider pool below two eligible providers"})
+    if len(pool) < FREE_POOL_MINIMUM: alerts.append({"severity": "HIGH", "code": "FREE_POOL_BELOW_MIN", "message": "No eligible zero-cost route available"})
     if runtime.get("automatic_paid_agent_escalation"): alerts.append({"severity": "CRITICAL", "code": "PAID_ESCALATION_ENABLED", "message": "Automatic paid escalation enabled"})
     if health_n8n["status"] != "HEALTHY": alerts.append({"severity": "HIGH", "code": "N8N_UNAVAILABLE", "message": "n8n UNAVAILABLE"})
     if health_adapter["status"] != "HEALTHY": alerts.append({"severity": "HIGH", "code": "ADAPTER_UNAVAILABLE", "message": "Adapter UNAVAILABLE"})
@@ -331,9 +350,20 @@ def projection():
     project_rows = project_projection(projects, issues, clean_runs)
     active = choose_active_run(clean_runs)
     debug, debug_ok = debugging_events(active.get("run_id") if active else None)
-    modules = {"n8n": health_n8n, "adapter": health_adapter, "provider_pool": {"status": provider_pool_status(len(pool))}, "event_stream": safe_status(debug_ok)}
-    ok_modules = sum(value.get("status") == "HEALTHY" for value in modules.values())
-    return {"contract": "autodev.control-tower-overview.v1", "version": "v1", "generated_at": now(), "freshness": {"checked_at": now(), "freshness_seconds": 0}, "system_health": modules, "system_health_summary": {"ok": ok_modules, "total": len(modules)}, "free_pool": {"size": len(pool), "providers": pool}, "run_counts": run_counts, "recent_runs": recent, "projects": project_rows, "active_run": active, "debugging": {"current_run_id": active.get("run_id") if active else None, "stage": active.get("current_job") if active else None, "events": debug, "source": "LIVE" if debug_ok else "IDLE"}, "alerts": alerts, "release": {"dashboard_version": VERSION, "core_v1_release": "v1.0.0", "morpheus_release": "v1.1.2", "dashboard_release": VERSION, "v1_release": "v1.0.0", "n8n_autodev_workflows": health_n8n.get("workflow_count", 0), "free_first_active": bool(runtime.get("free_first_enabled")), "paid_escalation": bool(runtime.get("automatic_paid_agent_escalation")), "deepseek": "INELIGIBLE"}, "sources": {"n8n": "LIVE" if runs_ok and health_n8n["status"] == "HEALTHY" else "UNAVAILABLE", "adapter": "LIVE" if runtime_ok else "UNAVAILABLE", "projects": "LIVE" if projects_ok or issues_ok else "DERIVED"}}
+    pool_health = provider_pool_status(len(pool))
+    pool_module = {"status": pool_health, "diagnostic_status": "OK" if pool_health == "HEALTHY" else "NICHT_OK", "role": "REQUIRED", "checked_at": now(), "freshness_seconds": 0}
+    event_module = safe_status(debug_ok)
+    mcp_module = {"status": "OK" if mcp.get("status") == "OK" else "NICHT_KONFIGURIERT" if mcp.get("status") == "NICHT_KONFIGURIERT" else "NICHT_OK", "diagnostic_status": mcp.get("status", "NICHT_KONFIGURIERT"), "role": "OPTIONAL", "checked_at": now(), "freshness_seconds": 0, "servers": mcp_servers}
+    lmstudio_module = {"status": "OK" if lmstudio_configured else "NICHT_KONFIGURIERT", "diagnostic_status": "OK" if lmstudio_configured else "NICHT_KONFIGURIERT", "role": "OPTIONAL", "checked_at": now(), "freshness_seconds": 0}
+    opencode_module = {"status": "HEALTHY" if opencode_ok else "UNAVAILABLE", "diagnostic_status": "OK" if opencode_ok else "NICHT_OK", "role": "REQUIRED", "checked_at": now(), "freshness_seconds": 0, "version": opencode.get("version", "UNKNOWN")}
+    modules = {"n8n": health_n8n, "adapter": health_adapter, "opencode": opencode_module, "provider_pool": pool_module, "event_stream": event_module, "mcp": mcp_module, "lmstudio": lmstudio_module}
+    deepseek_policy = runtime.get("deepseek_policy") if isinstance(runtime.get("deepseek_policy"), dict) else {}
+    deepseek_denied = all(deepseek_policy.get(key) is False for key in ("catalog_eligible", "router_eligible", "explicit_request_allowed", "fallback_allowed", "opencode_default"))
+    mandatory_ok = health_n8n["status"] == "HEALTHY" and health_adapter["status"] == "HEALTHY" and opencode_ok and pool_health == "HEALTHY" and runtime.get("automatic_paid_agent_escalation") is False and deepseek_denied
+    optional_missing = []
+    if mcp_module["status"] == "NICHT_KONFIGURIERT": optional_missing.append("MCP")
+    if lmstudio_module["status"] == "NICHT_KONFIGURIERT": optional_missing.append("LM Studio")
+    return {"contract": "autodev.control-tower-overview.v1", "version": "v1", "generated_at": now(), "freshness": {"checked_at": now(), "freshness_seconds": 0}, "system_health": modules, "system_health_summary": {"status": "OK" if mandatory_ok else "NICHT_OK", "diagnostic_status": "OK" if mandatory_ok else "NICHT_OK", "mandatory_ok": mandatory_ok, "ok": sum(value.get("status") in {"HEALTHY", "OK"} for value in modules.values()), "total": len(modules), "optional_not_configured": len(optional_missing)}, "free_pool": {"size": len(pool), "providers": pool}, "run_counts": run_counts, "recent_runs": recent, "projects": project_rows, "active_run": active, "debugging": {"current_run_id": active.get("run_id") if active else None, "stage": active.get("current_job") if active else None, "events": debug, "source": "LIVE" if debug_ok else "IDLE"}, "alerts": alerts, "optional_components_not_configured": optional_missing, "release": {"dashboard_version": VERSION, "core_v1_release": "v1.0.0", "morpheus_release": "v1.1.2", "dashboard_release": VERSION, "v1_release": "v1.0.0", "n8n_autodev_workflows": health_n8n.get("workflow_count", 0), "free_first_active": bool(runtime.get("free_first_enabled")), "paid_escalation": bool(runtime.get("automatic_paid_agent_escalation")), "deepseek": "INELIGIBLE"}, "sources": {"n8n": "LIVE" if runs_ok and health_n8n["status"] == "HEALTHY" else "UNAVAILABLE", "adapter": "LIVE" if runtime_ok else "UNAVAILABLE", "projects": "LIVE" if projects_ok or issues_ok else "DERIVED"}}
 
 
 def choose_active_run(runs):

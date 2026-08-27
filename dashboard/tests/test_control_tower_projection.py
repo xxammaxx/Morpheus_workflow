@@ -49,10 +49,32 @@ class ProjectionTests(unittest.TestCase):
         runs = [{"run_id": "old", "updated_at": "2026-01-01T00:00:00Z"}, {"run_id": "new", "updated_at": "2026-02-01T00:00:00Z"}, {"run_id": "unknown"}]
         self.assertEqual([run["run_id"] for run in control_tower.sort_recent_runs(runs)], ["new", "old", "unknown"])
 
-    def test_pool_health_requires_two_free_providers(self):
+    def test_pool_health_requires_one_free_provider(self):
         self.assertEqual(control_tower.provider_pool_status(2), "HEALTHY")
-        self.assertEqual(control_tower.provider_pool_status(1), "DEGRADED")
+        self.assertEqual(control_tower.provider_pool_status(1), "HEALTHY")
         self.assertEqual(control_tower.provider_pool_status(0), "UNAVAILABLE")
+
+    def test_optional_mcp_does_not_fail_mandatory_system(self):
+        original = (control_tower.table_rows, control_tower.adapter_runtime, control_tower.n8n_health, control_tower.adapter_health, control_tower.adapter_events)
+        try:
+            control_tower.table_rows = lambda name: ([], True)
+            control_tower.adapter_runtime = lambda: ({
+                "free_first_enabled": True,
+                "automatic_paid_agent_escalation": False,
+                "providers": [{"provider": "openrouter", "model": "x:free", "free_eligible": True}],
+                "mcp": {"status": "NICHT_KONFIGURIERT", "servers": []},
+                "opencode": {"ct8001_reachable": True, "binary_present": True, "version": "1.18.22"},
+                "deepseek_policy": {key: False for key in ("catalog_eligible", "router_eligible", "explicit_request_allowed", "fallback_allowed", "opencode_default")},
+            }, True)
+            control_tower.n8n_health = lambda: control_tower.safe_status(True)
+            control_tower.adapter_health = lambda: control_tower.safe_status(True)
+            control_tower.adapter_events = lambda: ([], True)
+            value = control_tower.projection()
+            self.assertEqual(value["system_health_summary"]["status"], "OK")
+            self.assertEqual(value["system_health"]["mcp"]["status"], "NICHT_KONFIGURIERT")
+            self.assertEqual(value["optional_components_not_configured"], ["MCP", "LM Studio"])
+        finally:
+            (control_tower.table_rows, control_tower.adapter_runtime, control_tower.n8n_health, control_tower.adapter_health, control_tower.adapter_events) = original
 
     def test_stale_only_applies_to_active_runs(self):
         reference = control_tower.dt.datetime(2026, 8, 25, tzinfo=control_tower.dt.timezone.utc)

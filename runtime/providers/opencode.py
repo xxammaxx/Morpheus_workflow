@@ -104,6 +104,23 @@ def _json_values(value):
             yield from _json_values(child)
 
 
+def _json_documents(output):
+    """Extract balanced JSON documents from OpenCode's verbose output."""
+    decoder = json.JSONDecoder()
+    text = str(output or "")
+    cursor = 0
+    while cursor < len(text):
+        start = text.find("{", cursor)
+        if start < 0:
+            return
+        try:
+            value, end = decoder.raw_decode(text[start:])
+        except json.JSONDecodeError:
+            cursor = start + 1
+            continue
+        cursor = start + end
+        if isinstance(value, dict):
+            yield value
 def parse_catalog_output(output):
     """Extract model metadata from JSON or JSON-lines CLI output.
 
@@ -112,20 +129,14 @@ def parse_catalog_output(output):
     enrich those identities from their authoritative machine-readable APIs.
     """
     objects = []
-    for line in str(output or "").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            objects.extend(_json_values(json.loads(line)))
-        except (TypeError, ValueError):
-            continue
+    for document in _json_documents(output):
+        objects.extend(_json_values(document))
     entries = []
     for obj in objects:
         models = obj.get("models") if isinstance(obj, dict) else None
         if isinstance(models, list):
             objects.extend(item for item in models if isinstance(item, dict))
-        provider = obj.get("provider") or obj.get("provider_id")
+        provider = obj.get("provider") or obj.get("provider_id") or obj.get("providerID")
         model = obj.get("id") or obj.get("model") or obj.get("model_id")
         if not provider and isinstance(model, str) and "/" in model:
             provider, model = model.split("/", 1)

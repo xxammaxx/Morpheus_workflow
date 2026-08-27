@@ -25,6 +25,8 @@ class ControlCenterPolicyTests(unittest.TestCase):
             validate_command("START_ISSUE", {"repository_url": "http://127.0.0.1/x", "issue": "#42"}, "OPERATOR")
         with self.assertRaises(ValueError):
             validate_command("START_ISSUE", {"repository_url": "https://github.com/o/r", "issue": "#42", "api_key": "x"}, "OPERATOR")
+        with self.assertRaises(ValueError):
+            validate_command("START_PROJECT", {"blueprint_md": "# safe", "model": "deepseek/deepseek-chat"}, "OPERATOR")
 
     def test_blueprint_is_structured_and_persistent_intent(self):
         value = blueprint_projection("# Ziel\nEin Produkt\n## Acceptance Criteria\n- Tests grün")

@@ -15,6 +15,7 @@ from .protocol import (
     credential_inventory,
     free_eligibility,
     now_utc,
+    is_deepseek_identifier,
 )
 
 DEFAULT_CREDENTIAL_ENV = {
@@ -24,6 +25,18 @@ DEFAULT_CREDENTIAL_ENV = {
 }
 
 def apply_policy(entry, provider, account_class="unknown"):
+    if is_deepseek_identifier(provider, entry.get("model")):
+        entry.update({
+            "catalog_eligible": False,
+            "router_eligible": False,
+            "explicit_request_allowed": False,
+            "fallback_allowed": False,
+            "opencode_default": False,
+            "free_eligible": False,
+            "automatic_paid_fallback": False,
+            "privacy_class": "BLOCKED",
+        })
+        return free_eligibility(entry)
     raw = (entry.get("provider_metadata") or {}).get("raw_model_metadata") or {}
     pricing = raw.get("pricing") if isinstance(raw, dict) else {}
     prompt = pricing.get("prompt") if isinstance(pricing, dict) else None
@@ -83,7 +96,10 @@ def apply_policy(entry, provider, account_class="unknown"):
             "automatic_paid_fallback": False,
             "free_evidence": ["CATALOG_FREE", "ACCOUNT_FREE_ELIGIBLE"],
         })
-    if provider == "openrouter" and str(entry.get("model", "")).lower() == "openrouter/free":
+    if provider == "openrouter" and (
+        str(entry.get("model", "")).lower() == "openrouter/free"
+        or str(entry.get("model", "")).lower().endswith(":free")
+    ):
         entry.update({
             "privacy_class": "ALLOWED",
             "usage_terms_permit": True,
@@ -144,6 +160,8 @@ class ProviderCatalog:
             self.authenticated_providers = set(data.get("authenticated_providers") or [])
             self.auth_inventory_known = data.get("auth_inventory_known", False)
             for entry in self.entries:
+                if is_deepseek_identifier(entry.get("provider"), entry.get("model")):
+                    apply_policy(entry, entry.get("provider"), entry.get("account_class", "unknown"))
                 free_eligibility(entry)
         except (OSError, ValueError, TypeError):
             self.entries = []
@@ -278,7 +296,9 @@ class ProviderCatalog:
         remains fail-closed because stale entries still need current free and
         capability evidence.
         """
-        auth_path = discover_auth_file(auth_file)
+        auth_path = discover_auth_file(
+            auth_file or os.environ.get("AUTODEV_OPENCODE_AUTH_FILE")
+        )
         authenticated = set()
         if auth_path:
             authenticated = authenticated_api_key_providers(load_auth_file(auth_path))
@@ -288,12 +308,17 @@ class ProviderCatalog:
             free_eligibility(entry)
         report = {"refresh": "FAILED", "catalog_entries": 0}
         try:
-            live = refresh_catalog(opencode_bin or os.environ.get("OPENCODE_BIN", "opencode"), cwd=cwd)
+            live = refresh_catalog(
+                opencode_bin
+                or os.environ.get("AUTODEV_OPENCODE_CATALOG_BIN")
+                or os.environ.get("OPENCODE_BIN", "opencode"),
+                cwd=cwd,
+            )
             report = {"refresh": "PASS", "catalog_entries": len(live["entries"])}
             self.catalog_version = now_utc()
             for raw in live["entries"]:
                 provider = raw.get("provider")
-                if provider not in self.adapters or provider == "deepseek":
+                if provider not in self.adapters or is_deepseek_identifier(provider, raw.get("model")):
                     continue
                 if self.auth_inventory_known and provider not in authenticated:
                     continue

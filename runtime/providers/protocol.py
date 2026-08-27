@@ -128,6 +128,12 @@ class NoEligibleProvider(RuntimeError):
     code = "NO_ELIGIBLE_FREE_PROVIDER"
 
 
+class DeepSeekPolicyViolation(RuntimeError):
+    """Raised before any provider or worker invocation can be attempted."""
+
+    code = "DEEPSEEK_RETIRED"
+
+
 def normalize_usage(payload):
     usage = payload.get("usage") if isinstance(payload, dict) else {}
     usage = usage if isinstance(usage, dict) else {}
@@ -201,6 +207,18 @@ def _privacy_ok(entry, requested):
 
 
 def free_eligibility(entry, privacy_class="ALLOWED", require_execution=True):
+    # A retired provider/model is never eligible, even when an old catalog
+    # snapshot, credential, alias, or local endpoint claims it is free.
+    if is_deepseek_identifier(entry.get("provider"), entry.get("model")):
+        entry.update({
+            "free_eligible": False,
+            "catalog_eligible": False,
+            "router_eligible": False,
+            "explicit_request_allowed": False,
+            "fallback_allowed": False,
+            "opencode_default": False,
+        })
+        return False
     stages = set(entry.get("free_evidence") or [])
     zero_priced = entry.get("input_price") == 0 and entry.get("output_price") == 0
     required_stages = set(FREE_EVIDENCE_STAGES) if require_execution else {
@@ -300,6 +318,11 @@ def safe_id(value):
 
 def is_deepseek_identifier(provider, model):
     return "deepseek" in ("%s/%s" % (provider or "", model or "")).lower()
+
+
+def assert_runtime_model_allowed(provider, model):
+    if is_deepseek_identifier(provider, model):
+        raise DeepSeekPolicyViolation("DeepSeek is retired for Morpheus runtime agents")
 
 
 def json_bytes(payload):

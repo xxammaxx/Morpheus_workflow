@@ -52,6 +52,13 @@ class FlowMapTests(unittest.TestCase):
         self.assertIn("/api/v1/commands", APP)
         self.assertNotIn("XMLHttpRequest", APP)
 
+    def test_live_debug_edges_and_display_pause_are_event_derived(self):
+        self.assertIn("debugPaused", APP)
+        self.assertIn("pendingDebugData", APP)
+        self.assertIn("Keine LIVE-Kante aus korrelierten Ereignissen beobachtet", APP)
+        self.assertNotIn("REDACTED_UNLESS_OBSERVED", APP)
+        self.assertIn("item.correlation_id", APP)
+
 
 if __name__ == "__main__":
     unittest.main()

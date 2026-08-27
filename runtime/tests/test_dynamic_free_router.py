@@ -8,7 +8,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from providers.catalog import ProviderCatalog
-from providers.protocol import NoEligibleProvider, RouteRequest, normalized_entry
+from providers.protocol import DeepSeekPolicyViolation, NoEligibleProvider, RouteRequest, normalized_entry, probe_eligibility
+from providers.catalog import apply_policy
 from providers.router import ProviderRouter
 from providers.session import RunRoutingState
 
@@ -63,6 +64,28 @@ def test_free_auth_and_deepseek_gates(tmp_path):
     ]
     selected = ProviderRouter(catalog(tmp_path, entries)).select(RouteRequest(task_class="research"))
     assert selected["selected_provider"] == "zen"
+
+
+def test_deepseek_explicit_request_fails_before_selection(tmp_path):
+    deepseek = model("openrouter", "deepseek/deepseek-chat")
+    assert deepseek["free_eligible"] is False
+    assert deepseek["catalog_eligible"] is False
+    router = ProviderRouter(catalog(tmp_path, [deepseek]))
+    try:
+        router.select(RouteRequest(provider="openrouter", model="deepseek/deepseek-chat"))
+    except DeepSeekPolicyViolation:
+        pass
+    else:
+        raise AssertionError("explicit DeepSeek request was not rejected")
+
+
+def test_openrouter_free_suffix_is_catalog_eligible():
+    entry = model("openrouter", "cohere/north-mini-code:free")
+    apply_policy(entry, "openrouter", "opencode-api-key")
+    assert entry["zero_cost_verified"] is True
+    assert entry["free_eligible"] is False  # execution proof is still required
+    assert probe_eligibility(entry) is True
+    assert entry["cost_class"] == "FREE_HARD_STOP"
 
 
 def test_vision_is_hard_filter(tmp_path):

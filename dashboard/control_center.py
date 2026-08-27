@@ -25,15 +25,20 @@ OPERATOR_COMMANDS = frozenset({
 })
 ADMIN_COMMANDS = frozenset({
     "RUN_ROUTER_TEST", "RUN_MCP_TEST", "RUN_SYSTEM_TEST", "REFRESH_CATALOG",
-    "SYNC_CREDENTIALS", "RESTART_ADAPTER", "GLOBAL_PROVIDER_DISABLE",
-    "GLOBAL_PROVIDER_ENABLE", "GLOBAL_MODEL_DISABLE", "GLOBAL_MODEL_ENABLE",
-    "DEPLOY_RELEASE",
+    "SYNC_CREDENTIALS",
 })
 READ_ROLES = frozenset({"VIEWER", "OPERATOR", "ADMIN"})
 COMMAND_ROLES = {"OPERATOR": OPERATOR_COMMANDS, "ADMIN": OPERATOR_COMMANDS | ADMIN_COMMANDS}
 
 COMMAND_PATHS = {name: "/webhook/autodev/control" for name in OPERATOR_COMMANDS | ADMIN_COMMANDS}
 COMMAND_PATHS.update({"START_ISSUE": "/webhook/autodev/start"})
+
+ROUTER_TESTS = frozenset({
+    "Dynamischer Router", "Modellkatalog", "Free Pool", "Credential-Erkennung",
+    "Capability Filter", "Tool Routing", "Vision Routing", "Structured Output",
+    "Transport Failover", "Semantic Failover", "Run Blacklist",
+    "Paid Fallback Sperre", "DeepSeek Sperre",
+})
 
 SECRET_KEYS = re.compile(r"(?:authorization|cookie|token|secret|password|api[_-]?key|private[_-]?key|ssh[_-]?key|credential|reasoning|chain.?of.?thought)", re.I)
 REASONING_KEYS = {"reasoning_content", "reasoning", "chain_of_thought", "chain-of-thought", "thoughts"}
@@ -106,6 +111,29 @@ def validate_command(command: object, payload: object, role: str) -> tuple[str, 
     for key in payload:
         if not isinstance(key, str) or key.startswith("__") or len(key) > 64:
             raise ValueError("invalid payload key")
+    if command in {
+        "PAUSE_RUN", "RESUME_RUN", "ABORT_RUN", "RETRY_STAGE", "RETRY_RUN",
+        "EXCLUDE_MODEL_FOR_RUN", "EXCLUDE_PROVIDER_FOR_RUN", "APPROVE_HUMAN_GATE",
+    } and not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", str(payload.get("run_id", ""))):
+        raise ValueError("run_id is required")
+    if command == "EXCLUDE_MODEL_FOR_RUN":
+        model = str(payload.get("model", ""))
+        if not re.fullmatch(r"[A-Za-z0-9._/-]{1,128}", model):
+            raise ValueError("model is required")
+        if "deepseek" in model.lower():
+            raise ValueError("DeepSeek is retired")
+    if command == "EXCLUDE_PROVIDER_FOR_RUN":
+        provider = str(payload.get("provider", ""))
+        if not re.fullmatch(r"[A-Za-z0-9._/-]{1,64}", provider):
+            raise ValueError("provider is required")
+        if "deepseek" in provider.lower():
+            raise ValueError("DeepSeek is retired")
+    if command == "RUN_ROUTER_TEST" and payload.get("test") not in ROUTER_TESTS:
+        raise ValueError("unknown router diagnostic")
+    if command == "RUN_MCP_TEST" and not re.fullmatch(r"[A-Za-z0-9._-]{1,96}", str(payload.get("test", ""))):
+        raise ValueError("MCP server name is required")
+    if any("deepseek" in str(payload.get(key, "")).lower() for key in ("provider", "model")):
+        raise ValueError("DeepSeek is retired")
     if command in {"START_ISSUE", "START_PROJECT", "START_REPO_ANALYSIS", "START_BLUEPRINT_PROJECT"}:
         if "repository_url" in payload:
             payload["repository_url"] = validate_repository_url(payload["repository_url"])
