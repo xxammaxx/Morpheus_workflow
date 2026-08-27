@@ -407,7 +407,11 @@ def _mcp_snapshot():
 
 def _opencode_runtime_snapshot():
     """Prove the worker runtime independently of any provider health."""
-    result = pct_exec("command -v opencode >/dev/null 2>&1 && opencode --version", timeout=15)
+    result = pct_exec(
+        "export PATH='/opt/dev-fabric/opencode:/usr/local/bin:/usr/bin:/bin'; "
+        "command -v opencode >/dev/null 2>&1 && opencode --version",
+        timeout=15,
+    )
     output = (result.stdout or result.stderr or "").strip()
     version = next((line.strip() for line in output.splitlines() if re.search(r"\d+\.\d+\.\d+", line)), "UNKNOWN")
     return {

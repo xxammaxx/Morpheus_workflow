@@ -209,6 +209,11 @@ def test_opencode_proof_preserves_dynamic_free_route_eligibility(tmp_path, monke
     assert proof["free_eligible"] is True
 
 
+def test_runtime_health_probe_uses_worker_opencode_path():
+    source = (ROOT / "adapter" / "harness_adapter_v2.py").read_text()
+    assert "export PATH='/opt/dev-fabric/opencode:/usr/local/bin:/usr/bin:/bin'" in source
+
+
 def test_research_promotes_structured_capability_only_after_json_note():
     source = (ROOT / "adapter" / "harness_adapter_v2.py").read_text()
     assert "_record_opencode_capability_proof(route_provider, route_model)" in source
