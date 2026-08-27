@@ -54,6 +54,19 @@ class ProjectionTests(unittest.TestCase):
         self.assertEqual(control_tower.provider_pool_status(1), "HEALTHY")
         self.assertEqual(control_tower.provider_pool_status(0), "UNAVAILABLE")
 
+    def test_n8n_health_counts_all_sixteen_canonical_workflows(self):
+        original_get = control_tower.Upstream.get
+        try:
+            control_tower.Upstream.get = lambda self, path, params=None: (200, {
+                "data": [{"name": f"{prefix} Canonical"} for prefix in (
+                    "00", "01", "02", "05", "06", "07", "08", "10",
+                    "20", "30", "40", "50", "60", "70", "80", "90"
+                )]
+            })
+            self.assertEqual(control_tower.n8n_health()["workflow_count"], 16)
+        finally:
+            control_tower.Upstream.get = original_get
+
     def test_optional_mcp_does_not_fail_mandatory_system(self):
         original = (control_tower.table_rows, control_tower.adapter_runtime, control_tower.n8n_health, control_tower.adapter_health, control_tower.adapter_events)
         try:

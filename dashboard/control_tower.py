@@ -271,7 +271,7 @@ def n8n_health():
     status, payload = Upstream(N8N_BASE, {"X-N8N-API-KEY": N8N_API_KEY}).get("/workflows", {"limit": 250})
     health = safe_status(status == 200)
     workflows = list_items(payload) if status == 200 else []
-    canonical_prefixes = {"00", "01", "02", "10", "20", "30", "40", "50", "60", "70", "80", "90"}
+    canonical_prefixes = {"00", "01", "02", "05", "06", "07", "08", "10", "20", "30", "40", "50", "60", "70", "80", "90"}
     health["workflow_count"] = sum(1 for item in workflows if str(item.get("name", ""))[:2] in canonical_prefixes and str(item.get("name", ""))[2:3] == " ")
     return health
 
