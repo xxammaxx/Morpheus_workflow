@@ -87,6 +87,10 @@ class ProjectionTests(unittest.TestCase):
         finally:
             control_tower.table_rows, control_tower.adapter_events = original
 
+    def test_adapter_event_container_is_projected(self):
+        events = [{"run_id": "run-1", "event": "DISPATCH_ACCEPTED"}]
+        self.assertEqual(control_tower.list_items({"data": {"events": events}}), events)
+
     def test_stale_only_applies_to_active_runs(self):
         reference = control_tower.dt.datetime(2026, 8, 25, tzinfo=control_tower.dt.timezone.utc)
         self.assertFalse(control_tower.is_stale_run({"state": "BUILDING", "updated_at": "2026-08-24T23:55:00Z"}, 1800, reference))

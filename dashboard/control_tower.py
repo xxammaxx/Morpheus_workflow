@@ -190,7 +190,7 @@ def list_items(payload):
     if isinstance(value, list):
         return value
     if isinstance(value, dict):
-        for key in ("data", "items", "results", "executions", "workflows", "rows"):
+        for key in ("data", "items", "results", "executions", "workflows", "rows", "events"):
             if isinstance(value.get(key), list):
                 return value[key]
     return []
