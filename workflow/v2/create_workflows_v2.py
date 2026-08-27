@@ -73,6 +73,24 @@ def create_table(name, columns):
     return resp["id"]
 
 
+def ensure_columns(table_id, columns):
+    """Add only missing canonical Data Table columns during schema evolution."""
+    st, resp = api("GET", "/api/v1/data-tables/%s/columns" % table_id)
+    if st != 200:
+        raise SystemExit("list columns failed for %s: %s" % (table_id, resp))
+    existing = {column.get("name") for column in resp if isinstance(column, dict)}
+    for name in columns:
+        if name in existing:
+            continue
+        st, resp = api(
+            "POST",
+            "/api/v1/data-tables/%s/columns" % table_id,
+            {"name": name, "type": "string"},
+        )
+        if st not in (200, 201, 409):
+            raise SystemExit("add column %s failed for %s: %s" % (name, table_id, resp))
+
+
 def create_credential(name, header_name, value):
     st, resp = api("GET", "/api/v1/credentials?limit=250")
     for c in resp.get("data", []):
@@ -168,6 +186,7 @@ def main():
         ["timestamp", "actor", "role", "command", "target", "project_id", "run_id",
          "result", "correlation_id"],
     )
+    ensure_columns(runs_id, ["project_id", "issue_number"])
     print("TABLES runs=%s attempts=%s projects=%s issues=%s audit=%s" %
           (runs_id, attempts_id, projects_id, issues_id, audit_id))
 
