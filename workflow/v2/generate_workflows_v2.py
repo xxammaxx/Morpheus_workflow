@@ -212,6 +212,41 @@ def set_node(name, values, pos):
     )
 
 
+def github_http_node(name, method, url, body_expr, pos, cred, send_body=True):
+    """A GitHub API call through n8n's managed GitHub credential.
+
+    The control center never receives this credential and no URL is accepted
+    from the browser without first being normalized by the gateway code node.
+    """
+    p = {
+        "method": method,
+        "url": "=" + url,
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": True,
+        "headerParameters": {"parameters": [
+            {"name": "Accept", "value": "application/vnd.github+json"},
+            {"name": "X-GitHub-Api-Version", "value": "2022-11-28"},
+        ]},
+        "sendBody": send_body,
+        "specifyBody": "json",
+        "jsonBody": "={{ " + body_expr + " }}",
+        "options": {},
+    }
+    return node(name, "n8n-nodes-base.httpRequest", p, pos, 4, {"githubApi": cred})
+
+
+def ssh_exec_node(name, command, pos, cred):
+    return node(
+        name,
+        "n8n-nodes-base.ssh",
+        {"operation": "execute", "command": command},
+        pos,
+        1,
+        {"sshPrivateKey": cred},
+    )
+
+
 # --------------------------------------------------------------- workflow --
 class WF:
     def __init__(self, name):
@@ -273,6 +308,11 @@ class Cfg:
         self.cr_n8n = cfg["creds"]["n8n_api"]
         self.cr_harness = cfg["creds"]["harness_token"]
         self.cr_api = cfg["creds"]["api_auth"]
+        self.cr_github = cfg.get("creds", {}).get("github_api")
+        self.cr_ssh = cfg.get("creds", {}).get("runner_ssh")
+        self.projects = cfg.get("tables", {}).get("projects", "")
+        self.issues = cfg.get("tables", {}).get("issues", "")
+        self.audit = cfg.get("tables", {}).get("audit", "")
 
     def rows(self, table):
         return "%s/api/v1/data-tables/%s/rows" % (self.n8n, table)
@@ -285,6 +325,15 @@ class Cfg:
 
     def batches(self):
         return self.adapter + "/v1/batches"
+
+    def project_rows(self):
+        return self.rows(self.projects)
+
+    def issue_rows(self):
+        return self.rows(self.issues)
+
+    def audit_rows(self):
+        return self.rows(self.audit)
 
 
 def dt_filter(filters):
@@ -550,6 +599,9 @@ const issue = {
   max_attempts: task.max_attempts || 2,
   created_at: now.toISOString(),
   trace_id: 'trace-' + runId, source: 'autodev-start-api',
+  'x-metadata': {project_id: task.project_id || '', project_mode: task.project_mode || 'MANUAL',
+    issue_number: task.issue_number || '', correlation_id: task.correlation_id ||
+      (task['x-metadata'] && task['x-metadata'].correlation_id) || ''},
 };
 """
         + JS_VALIDATOR
@@ -1395,6 +1447,21 @@ return [{json: Object.assign({}, s, {split: sp, split_ok: !!sp && !!sp.contract}
         P(36, 4),
     )
     wf.add("Decision SPLIT?", c5, 1)
+
+    # A successful run is followed by a canonical project reassessment.  The
+    # reassessment workflow owns the GitHub refresh and AUTO/MANUAL decision;
+    # the browser never advances a project locally.
+    wf.add_node(
+        http_node(
+            "Project Reassessment",
+            "POST",
+            cfg.webhook + "/webhook/autodev/project/reassess",
+            "JSON.stringify({project_id: (($json.issue || {})['x-metadata'] || {}).project_id || '', project_mode: (($json.issue || {})['x-metadata'] || {}).project_mode || 'MANUAL', repository_url: ($json.issue || {}).repository_ref || '', run_id: ($json.issue || {}).run_id || ''})",
+            P(36, 2),
+            cfg.cr_api,
+        )
+    )
+    wf.add("Done State Restore", "Project Reassessment")
 
     # ---- ensure-wiring pass: add missing edges (idempotent)
     def ensure(src, dst, out_index=0):
@@ -2625,6 +2692,78 @@ return [{json: {ok: true, decision_contract: s.decision_contract}}];""",
     return wf
 
 
+# ============================================ Control Center runtime layer ==
+def build_05_control_gateway(cfg):
+    """n8n-owned, authenticated command boundary for the Control Tower."""
+    wf = WF("05 AutoDev Control Gateway")
+    P = lambda x, y: [x * 260, y * 170]  # noqa: E731
+    wf.add_node(webhook_node("Control Webhook", "autodev/control", "POST", cfg.cr_api, P(0, 0)))
+    wf.add_node(code_node("Validate Control Command", r"""const raw=$json.body||$json, e=raw&&typeof raw==='object'?raw:{}, p=e.payload;
+const op=new Set(['START_PROJECT','START_ISSUE','START_REPO_ANALYSIS','START_BLUEPRINT_PROJECT','PAUSE_RUN','RESUME_RUN','ABORT_RUN','RETRY_STAGE','RETRY_RUN','EXCLUDE_MODEL_FOR_RUN','EXCLUDE_PROVIDER_FOR_RUN','APPROVE_HUMAN_GATE']);
+const adm=new Set(['RUN_ROUTER_TEST','RUN_MCP_TEST','RUN_SYSTEM_TEST','REFRESH_CATALOG','SYNC_CREDENTIALS','RESTART_ADAPTER','GLOBAL_PROVIDER_DISABLE','GLOBAL_PROVIDER_ENABLE','GLOBAL_MODEL_DISABLE','GLOBAL_MODEL_ENABLE','DEPLOY_RELEASE']);
+const errors=[]; const command=e.command, role=e.actor&&e.actor.role;
+if(e.contract!=='autodev.control-command.v1'||e.version!=='v1')errors.push('CONTRACT_INVALID');
+if(!op.has(command)&&!adm.has(command))errors.push('COMMAND_NOT_ALLOWED');
+if(!['OPERATOR','ADMIN'].includes(role))errors.push('ROLE_INVALID');
+if(adm.has(command)&&role!=='ADMIN')errors.push('ROLE_FORBIDDEN');
+if(!/^[A-Za-z0-9_.:-]{3,96}$/.test(String(e.correlation_id||'')))errors.push('CORRELATION_ID_INVALID');
+if(!e.target||typeof e.target!=='object'||Array.isArray(e.target))errors.push('TARGET_INVALID');
+if(!p||typeof p!=='object'||Array.isArray(p))errors.push('PAYLOAD_INVALID');
+const repo=String(p&&p.repository_url||''); let u=null, parts=[];
+if(repo){try{u=new URL(repo); parts=u.pathname.split('/').filter(Boolean); if(u.protocol!=='https:'||u.hostname!=='github.com'||u.username||u.password||u.search||u.hash||parts.length!==2)errors.push('REPOSITORY_URL_INVALID')}catch(x){errors.push('REPOSITORY_URL_INVALID')}}
+if(['START_ISSUE','START_REPO_ANALYSIS','START_BLUEPRINT_PROJECT'].includes(command)&&!repo)errors.push('REPOSITORY_REQUIRED');
+if(command==='START_ISSUE'&&!(/^#?[1-9][0-9]{0,8}$/.test(String(p&&p.issue||''))||/^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/[1-9][0-9]{0,8}$/.test(String(p&&p.issue||''))))errors.push('ISSUE_INVALID');
+if(['START_PROJECT','START_BLUEPRINT_PROJECT'].includes(command)&&typeof(p&&p.blueprint_md)!=='string')errors.push('BLUEPRINT_REQUIRED');
+if(typeof(p&&p.blueprint_md)==='string'&&p.blueprint_md.length>512000)errors.push('BLUEPRINT_TOO_LARGE');
+if(Object.keys(p||{}).some(k=>/authorization|cookie|token|secret|password|api[_-]?key|private[_-]?key|reasoning|chain.?of.?thought/i.test(k)))errors.push('SECRET_FIELD_REJECTED');
+if(/deepseek/i.test(String(p&&p.model||'')))errors.push('DEEPSEEK_RETIRED');
+const issueRaw=String(p&&p.issue||''), issue=parts.length===2?(issueRaw.match(/\/issues\/([1-9][0-9]{0,8})$/)||[])[1]||issueRaw.replace(/^#/,''):'';
+return [{json:{valid:!errors.length,errors,envelope:e,command,role,payload:p||{},github_owner:parts[0]||'',github_repo:parts[1]||'',issue_url:parts.length===2&&issue?`https://api.github.com/repos/${parts[0]}/${parts[1]}/issues/${issue}`:'',route:command,audit_row:{timestamp:new Date().toISOString(),actor:'control-tower',role,command,target:JSON.stringify(e.target||{}),project_id:p&&p.project_id||'',run_id:p&&p.run_id||'',result:errors.length?'REJECTED':'ACCEPTED',correlation_id:String(e.correlation_id||'')}}}];""", P(1, 0)))
+    wf.add_node(bool_if("Command Valid?", "$json.valid === true", P(2, 0)))
+    wf.add_node(respond_node("Reject Command", P(3, -1), "={{ JSON.stringify({status: 'error', code: 'COMMAND_REJECTED', errors: $json.errors || []}) }}"))
+    wf.add_node(http_node("Persist Command Audit", "POST", cfg.audit_rows(), "JSON.stringify({data: [$json.audit_row], returnType: 'all'})", P(3, 1), cfg.cr_n8n))
+    wf.add_node(code_node("Restore Valid Command", "const v=$('Validate Control Command').first().json; return [{json:v}];", P(4, 1)))
+    wf.add("Control Webhook", "Validate Control Command"); wf.add("Validate Control Command", "Command Valid?"); wf.add("Command Valid?", "Reject Command", 1); wf.add("Command Valid?", "Persist Command Audit", 0); wf.add("Persist Command Audit", "Restore Valid Command")
+
+    wf.add_node(if_node("Is Issue Start?", [{"leftValue":"={{$json.route}}","rightValue":"=START_ISSUE","operator":{"type":"string","operation":"equals"}}], P(5,1)))
+    wf.add_node(github_http_node("Fetch GitHub Issue", "GET", "{{ $json.issue_url }}", "{}", P(6,1), cfg.cr_github, False))
+    wf.add_node(code_node("Prepare Canonical Issue Start", r"""const v=$('Restore Valid Command').first().json,i=$json||{},p=v.payload,n=Number(p.issue||i.number||0); const task={task_ref:`github:${v.github_owner}/${v.github_repo}#${n}`,repository_ref:p.repository_url,workspace:p.workspace||`${v.github_owner}-${v.github_repo}`,task_description:[i.title,i.body,p.additional_instruction].filter(Boolean).join('\n\n'),acceptance_hint:p.acceptance_hint||'',max_attempts:Number(p.max_attempts||2),'x-metadata':{project_id:p.project_id||'',project_mode:p.project_mode||'MANUAL',issue_number:n,correlation_id:v.envelope.correlation_id}}; return [{json:{start_request:{task,backend:p.backend||'opencode-builder-8001',fixture:p.fixture||null}}}];""", P(7,1)))
+    wf.add_node(http_node("Start Canonical Run", "POST", cfg.webhook+"/webhook/autodev/start", "JSON.stringify($json.start_request)", P(8,1), cfg.cr_api))
+    wf.add_node(code_node("Issue Start Result", "const v=$('Restore Valid Command').first().json; return [{json:{status:'ACCEPTED',command:v.command,correlation_id:v.envelope.correlation_id,result:$json,source:'n8n-control-gateway'}}];", P(9,1)))
+    wf.add_node(respond_node("Respond Issue Start", P(10,1)))
+    wf.add("Restore Valid Command", "Is Issue Start?"); wf.add("Is Issue Start?", "Fetch GitHub Issue", 0); wf.add("Fetch GitHub Issue", "Prepare Canonical Issue Start"); wf.add("Prepare Canonical Issue Start", "Start Canonical Run"); wf.add("Start Canonical Run", "Issue Start Result"); wf.add("Issue Start Result", "Respond Issue Start")
+
+    wf.add_node(if_node("Is Router Test?", [{"leftValue":"={{$json.route}}","rightValue":"=RUN_ROUTER_TEST","operator":{"type":"string","operation":"equals"}}], P(5,2)))
+    wf.add_node(http_node("Read Router Runtime", "GET", cfg.adapter+"/v1/status/runtime", "{}", P(6,2), cfg.cr_harness, send_body=False))
+    wf.add_node(code_node("Router Test Result", "return [{json:{status:'OK',module:'router',source:'adapter',runtime:$json}}];", P(7,2))); wf.add_node(respond_node("Respond Router Test", P(8,2)))
+    wf.add("Is Issue Start?", "Is Router Test?", 1); wf.add("Is Router Test?", "Read Router Runtime", 0); wf.add("Read Router Runtime", "Router Test Result"); wf.add("Router Test Result", "Respond Router Test")
+
+    wf.add_node(if_node("Is MCP Test?", [{"leftValue":"={{$json.route}}","rightValue":"=RUN_MCP_TEST","operator":{"type":"string","operation":"equals"}}], P(5,3)))
+    if cfg.cr_ssh:
+        wf.add_node(ssh_exec_node("Discover MCP Tools", "/root/.opencode/bin/opencode mcp list --json 2>&1 | head -c 12000", P(6,3), cfg.cr_ssh))
+        wf.add_node(code_node("MCP Test Result", "const o=String($json.stdout||$json.data||''); return [{json:{status:o?'OK':'NICHT_OK',module:'mcp',failed_stage:o?null:'TOOL_DISCOVERY',safe_error_message:o?null:'No MCP discovery output',output:o.slice(0,12000)}}];", P(7,3)))
+        wf.add("Is Router Test?", "Is MCP Test?", 1); wf.add("Is MCP Test?", "Discover MCP Tools", 0); wf.add("Discover MCP Tools", "MCP Test Result")
+    else:
+        wf.add_node(code_node("MCP Test Result", "return [{json:{status:'NICHT_OK',module:'mcp',failed_stage:'CONFIGURATION',safe_error_message:'Runner SSH credential unavailable'}}];", P(7,3))); wf.add("Is Router Test?", "Is MCP Test?", 1); wf.add("Is MCP Test?", "MCP Test Result", 0)
+    wf.add_node(respond_node("Respond MCP Test", P(8,3))); wf.add("MCP Test Result", "Respond MCP Test")
+
+    wf.add_node(if_node("Is System Test?", [{"leftValue":"={{$json.route}}","rightValue":"=RUN_SYSTEM_TEST","operator":{"type":"string","operation":"equals"}}], P(5,4)))
+    wf.add_node(http_node("Read n8n System Status", "GET", cfg.n8n+"/workflows?limit=1", "{}", P(6,4), cfg.cr_n8n, send_body=False))
+    wf.add_node(code_node("System Test Result", "const ok=Array.isArray($json.data)||Array.isArray($json); return [{json:{status:ok?'OK':'NICHT_OK',module:'n8n',source:'n8n-public-api'}}];", P(7,4))); wf.add_node(respond_node("Respond System Test", P(8,4)))
+    wf.add("Is MCP Test?", "Is System Test?", 1); wf.add("Is System Test?", "Read n8n System Status", 0); wf.add("Read n8n System Status", "System Test Result"); wf.add("System Test Result", "Respond System Test")
+
+    wf.add_node(if_node("Is Repo Analysis?", [{"leftValue":"={{$json.route}}","rightValue":"=START_REPO_ANALYSIS","operator":{"type":"string","operation":"equals"}}], P(5,5)))
+    wf.add_node(github_http_node("Fetch Repository Issues", "GET", "https://api.github.com/repos/{{ $json.github_owner }}/{{ $json.github_repo }}/issues?state=open&per_page=100", "{}", P(6,5), cfg.cr_github, False))
+    wf.add_node(http_node("Run Project Analysis", "POST", cfg.webhook+"/webhook/autodev/project/analyse", "JSON.stringify({envelope: $('Restore Valid Command').first().json.envelope, issues: $json})", P(7,5), cfg.cr_api))
+    wf.add("Is System Test?", "Is Repo Analysis?", 1); wf.add("Is Repo Analysis?", "Fetch Repository Issues", 0); wf.add("Fetch Repository Issues", "Run Project Analysis"); wf.add_node(respond_node("Respond Repo Analysis", P(8,5))); wf.add("Run Project Analysis", "Respond Repo Analysis")
+
+    wf.add_node(bool_if("Is Blueprint Start?", "$json.route === 'START_BLUEPRINT_PROJECT' || $json.route === 'START_PROJECT'", P(5,6)))
+    wf.add_node(http_node("Run Blueprint Bootstrap", "POST", cfg.webhook+"/webhook/autodev/project/blueprint", "JSON.stringify($('Restore Valid Command').first().json.envelope)", P(6,6), cfg.cr_api))
+    wf.add("Is Repo Analysis?", "Is Blueprint Start?", 1); wf.add("Is Blueprint Start?", "Run Blueprint Bootstrap", 0); wf.add("Run Blueprint Bootstrap", "Respond Repo Analysis")
+    wf.add_node(code_node("Unsupported Valid Command", "return [{json:{status:'ACCEPTED',command:$json.command,message:'Command accepted at n8n boundary; canonical action is not active in this deployment'}}];", P(6,7))); wf.add_node(respond_node("Respond Unsupported", P(7,7))); wf.add("Is Blueprint Start?", "Unsupported Valid Command", 1); wf.add("Unsupported Valid Command", "Respond Unsupported")
+    return wf
+
+
 # ============================================================ 90 Split ==
 def build_90(cfg):
     wf = WF("90 AutoDev Split")
@@ -2701,6 +2840,53 @@ return [{json: {ok: true, split: s.split}}];""",
     )
     wf.add("Store Split Artifact", "Return Split")
     return wf
+
+
+def build_06_project_analysis(cfg):
+    wf = WF("06 AutoDev Project Analysis")
+    P = lambda x, y: [x * 260, y * 170]  # noqa: E731
+    wf.add_node(webhook_node("Project Analysis Webhook", "autodev/project/analyse", "POST", cfg.cr_api, P(0, 0)))
+    wf.add_node(code_node("Normalize Project Analysis", r"""const env=$json.body||$json,e=env.envelope||{},p=e.payload||{},raw=env.issues; const issues=Array.isArray(raw)?raw:(raw&&Array.isArray(raw.data)?raw.data:[]); const projectId=p.project_id||`project-${String(e.github_owner||'')}-${String(e.github_repo||'')}`;
+function status(i){const l=(i.labels||[]).map(x=>String(x.name||x).toUpperCase());if(i.pull_request)return'OBSOLETE';if(i.state==='closed')return'DONE';if(l.some(x=>x.includes('DUPLICATE')))return'DUPLICATE';if(l.some(x=>x.includes('BLOCKED')))return'BLOCKED';if(l.some(x=>x.includes('RUNNING')))return'RUNNING';return'READY'}
+const rows=issues.filter(i=>!i.pull_request).map(i=>({project_id:projectId,issue_number:String(i.number||''),title:String(i.title||''),body:String(i.body||'').slice(0,12000),state:String(i.state||'open'),morpheus_status:status(i),depends_on:(String(i.body||'').match(/DEPENDS_ON=([^\\n]+)/i)||[])[1]||'',changes_expected:!String(i.body||'').match(/CHANGES_EXPECTED=false/i),github_url:i.html_url||'',blueprint_section:(String(i.body||'').match(/BLUEPRINT_SECTION=([^\\n]+)/i)||[])[1]||'',updated_at:i.updated_at||new Date().toISOString()})); const counts={READY:0,RUNNING:0,BLOCKED:0,DONE:0,OBSOLETE:0,DUPLICATE:0,UNKNOWN:0}; rows.forEach(r=>counts[r.morpheus_status]=(counts[r.morpheus_status]||0)+1);
+return[{json:{project_row:{project_id:projectId,name:p.project_name||`${e.github_owner}/${e.github_repo}`,repository_url:p.repository_url||'',blueprint_ref:p.blueprint_ref||'',project_mode:p.project_mode||'MANUAL',status:counts.BLOCKED?'BLOCKED':counts.RUNNING?'RUNNING':'READY',current_run_id:'',current_issue:'',created_at:new Date().toISOString(),updated_at:new Date().toISOString(),blueprint_sha256:p.blueprint_sha256||'',blueprint_coverage:'UNKNOWN'},issue_rows:rows,summary:{project_id:projectId,counts,source:'github-read-only'}}}];""", P(1,0)))
+    wf.add_node(http_node("Persist Project Projection", "POST", cfg.project_rows(), "JSON.stringify({data: [$json.project_row], returnType: 'all'})", P(2,0), cfg.cr_n8n))
+    wf.add_node(http_node("Persist Issue Projection", "POST", cfg.issue_rows(), "JSON.stringify({data: $('Normalize Project Analysis').first().json.issue_rows, returnType: 'all'})", P(3,0), cfg.cr_n8n))
+    wf.add_node(code_node("Project Analysis Result", "const s=$('Normalize Project Analysis').first().json;return[{json:{status:'ACCEPTED',project:s.project_row,summary:s.summary,issue_count:s.issue_rows.length,source:'n8n-project-analysis'}}];", P(4,0)))
+    wf.add_node(respond_node("Respond Project Analysis", P(5,0)))
+    wf.add("Project Analysis Webhook","Normalize Project Analysis");wf.add("Normalize Project Analysis","Persist Project Projection");wf.add("Persist Project Projection","Persist Issue Projection");wf.add("Persist Issue Projection","Project Analysis Result");wf.add("Project Analysis Result","Respond Project Analysis")
+    return wf
+
+
+def build_07_blueprint_bootstrap(cfg):
+    wf = WF("07 AutoDev Blueprint Bootstrap")
+    P = lambda x, y: [x * 260, y * 170]  # noqa: E731
+    wf.add_node(webhook_node("Blueprint Webhook", "autodev/project/blueprint", "POST", cfg.cr_api, P(0,0)))
+    wf.add_node(code_node("Parse Blueprint Graph", r"""const env=$json.body||$json,p=env.payload||{},md=String(p.blueprint_md||'').replace(/\\r/g,'');const lines=md.split('\\n'),heads=[],sections={};let cur='';for(const line of lines){const m=line.match(/^#{1,3}\\s+(.+?)\\s*$/);if(m){cur=m[1].trim();heads.push(cur);sections[cur]=[]}else if(cur&&line.trim())sections[cur].push(line.trim())}const find=names=>{const k=heads.find(h=>names.includes(h.toLowerCase()));return k?sections[k]||[]:[]};const goal=find(['ziel','projektziel','goal','objective']),req=find(['anforderungen','requirements']),ac=find(['acceptance criteria','akzeptanzkriterien']),mil=find(['meilensteine','milestones']);if(!goal.length&&!req.length&&!ac.length)return[{json:{valid:false,error:'BLUEPRINT_MISSING_REQUIRED_SECTIONS'}}];const slug=String(p.project_name||'blueprint').toLowerCase().replace(/[^a-z0-9-]+/g,'-').replace(/^-|-$/g,'').slice(0,60)||'blueprint-project',repoUrl=String(p.repository_url||''),repoParts=repoUrl.split('/').filter(Boolean),owner=String(p.github_owner||repoParts[repoParts.length-2]||'xxammaxx'),repo=repoParts[repoParts.length-1]||slug,pid=p.project_id||`project-${slug}`,work=[...mil,...req].filter(Boolean),nodes=work.map((text,i)=>({index:i+1,title:text.replace(/^[-*]\\s*/,'').slice(0,180),blueprint_section:mil.includes(text)?'milestones':'requirements'})),rows=nodes.map((n,i)=>({project_id:pid,issue_number:`plan-${i+1}`,title:n.title,body:`# Ziel\\n\\n${n.title}\\n\\n# Kontext\\n\\nBlueprint: docs/blueprint.md\\n\\n# Scope\\n\\n${n.title}\\n\\n# Nicht-Scope\\n\\nNicht in diesem Arbeitspaket.\\n\\n# Abhängigkeiten\\n\\n${i?'DEPENDS_ON=plan-'+i:'Keine'}\\n\\n# Acceptance Criteria\\n\\n${ac.join('\\n')}\\n\\n# Verifikation\\n\\nAutomatisierte Tests und Gate-Nachweis.\\n\\n# Artefakte\\n\\nBLUEPRINT_SECTION=${n.blueprint_section}`,state:'open',morpheus_status:i?'BLOCKED':'READY',depends_on:i?`plan-${i}`:'',changes_expected:'true',github_url:'',blueprint_section:n.blueprint_section,updated_at:new Date().toISOString()}));const sha=Array.from(new TextEncoder().encode(md)).reduce((h,b)=>((h*33+b)>>>0),5381).toString(16);return[{json:{valid:true,owner,repo,new_repository:!repoUrl,blueprint_md:md,blueprint_b64:Buffer.from(md).toString('base64'),create_github_issues:p.create_github_issues===true&&!p.dry_run,project_row:{project_id:pid,name:p.project_name||'Blueprint Project',repository_url:repoUrl,blueprint_ref:'docs/blueprint.md',project_mode:p.project_mode==='AUTO'?'AUTO':'MANUAL',status:'READY',current_run_id:'',current_issue:rows[0]?.issue_number||'',created_at:new Date().toISOString(),updated_at:new Date().toISOString(),blueprint_sha256:sha,blueprint_coverage:'PENDING'},issue_rows:rows,graph:{nodes,edges:nodes.slice(1).map((n,i)=>({from:'plan-'+(i+1),to:'plan-'+(i+2)}))},blueprint:{goal,scope:find(['scope']),non_scope:find(['nicht-scope','non-scope']),architecture:find(['architektur','architecture']),requirements:req,milestones:mil,acceptance_criteria:ac}}}];""", P(1,0)))
+    wf.add_node(bool_if("Blueprint Valid?","$json.valid === true",P(2,0)));wf.add_node(respond_node("Reject Blueprint",P(3,-1),"={{ JSON.stringify({status:'error',code:$json.error||'BLUEPRINT_INVALID'}) }}"))
+    wf.add_node(bool_if("Create New Repository?","$json.new_repository === true",P(3,1)))
+    wf.add_node(github_http_node("Create GitHub Repository","POST","https://api.github.com/user/repos","JSON.stringify({name: $('Parse Blueprint Graph').first().json.repo, private: true, auto_init: true, description: $('Parse Blueprint Graph').first().json.project_row.name})",P(4,1),cfg.cr_github))
+    wf.add_node(code_node("Normalize Created Repository","const s=$('Parse Blueprint Graph').first().json,r=$json;const project={...s.project_row,repository_url:r.html_url||`https://github.com/${s.owner}/${s.repo}`};return[{json:{...s,project_row:project,repository_url:project.repository_url}}];",P(5,1)))
+    wf.add_node(code_node("Normalize Existing Repository","const s=$json;return[{json:{...s,repository_url:s.project_row.repository_url}}];",P(4,2)))
+    wf.add_node(github_http_node("Persist Blueprint in Repository","PUT","https://api.github.com/repos/{{ $json.owner }}/{{ $json.repo }}/contents/docs/blueprint.md","JSON.stringify({message: 'chore: persist canonical blueprint',content: $json.blueprint_b64})",P(6,1),cfg.cr_github))
+    wf.add_node(code_node("Restore Blueprint State","const s=$('Parse Blueprint Graph').first().json;let repo=s.project_row.repository_url;try{repo=$('Normalize Created Repository').first().json.project_row.repository_url}catch(e){}try{repo=$('Normalize Existing Repository').first().json.project_row.repository_url||repo}catch(e){}return[{json:{...s,repository_url:repo,project_row:{...s.project_row,repository_url:repo}}}];",P(7,1)))
+    wf.add_node(http_node("Persist Blueprint Project","POST",cfg.project_rows(),"JSON.stringify({data: [$json.project_row], returnType: 'all'})",P(8,1),cfg.cr_n8n))
+    wf.add_node(code_node("Prepare Blueprint Issue Items","const s=$('Restore Blueprint State').first().json;return s.issue_rows.map(issue=>({json:{...s,issue_row:issue,github_issue_body:issue.body}}));",P(9,1)))
+    wf.add_node(if_node("Create Blueprint Issues?", [{"leftValue":"={{$json.create_github_issues}}","operator":{"type":"boolean","operation":"true","singleValue":True}}], P(10,1)))
+    wf.add_node(github_http_node("Create GitHub Blueprint Issue","POST","https://api.github.com/repos/{{ $json.owner }}/{{ $json.repo }}/issues","JSON.stringify({title: $json.issue_row.title, body: $json.github_issue_body})",P(11,1),cfg.cr_github))
+    wf.add_node(http_node("Persist Blueprint Issue Graph","POST",cfg.issue_rows(),"JSON.stringify({data: $('Restore Blueprint State').first().json.issue_rows, returnType: 'all'})",P(12,1),cfg.cr_n8n))
+    wf.add_node(code_node("Blueprint Bootstrap Result","const s=$('Restore Blueprint State').first().json;return[{json:{status:'ACCEPTED',project:s.project_row,repository_url:s.project_row.repository_url,graph:s.graph,blueprint:s.blueprint,issue_plan:s.issue_rows,github_mutation:s.new_repository||s.create_github_issues,source:'n8n-blueprint-bootstrap'}}];",P(13,1)));wf.add_node(respond_node("Respond Blueprint Bootstrap",P(14,1)))
+    wf.add("Blueprint Webhook","Parse Blueprint Graph");wf.add("Parse Blueprint Graph","Blueprint Valid?");wf.add("Blueprint Valid?","Reject Blueprint",1);wf.add("Blueprint Valid?","Create New Repository?",0);wf.add("Create New Repository?","Create GitHub Repository",0);wf.add("Create New Repository?","Normalize Existing Repository",1);wf.add("Create GitHub Repository","Normalize Created Repository");wf.add("Normalize Created Repository","Persist Blueprint in Repository");wf.add("Persist Blueprint in Repository","Restore Blueprint State");wf.add("Normalize Existing Repository","Persist Blueprint Project");wf.add("Restore Blueprint State","Persist Blueprint Project");wf.add("Persist Blueprint Project","Prepare Blueprint Issue Items");wf.add("Prepare Blueprint Issue Items","Create Blueprint Issues?");wf.add("Create Blueprint Issues?","Create GitHub Blueprint Issue",0);wf.add("Create Blueprint Issues?","Persist Blueprint Issue Graph",1);wf.add("Create GitHub Blueprint Issue","Persist Blueprint Issue Graph");wf.add("Persist Blueprint Issue Graph","Blueprint Bootstrap Result");wf.add("Blueprint Bootstrap Result","Respond Blueprint Bootstrap");return wf
+
+
+def build_08_project_reassessment(cfg):
+    wf=WF("08 AutoDev Project Reassessment");P=lambda x,y:[x*260,y*170] # noqa: E731
+    wf.add_node(webhook_node("Project Reassessment Webhook","autodev/project/reassess","POST",cfg.cr_api,P(0,0)))
+    wf.add_node(http_node("Fetch Project Issues","GET",cfg.issue_rows(),"{}",P(1,0),cfg.cr_n8n,send_body=False))
+    wf.add_node(code_node("Decide Project Continuation",r"""const source=$('Project Reassessment Webhook').first().json,input=source.body||source,raw=$json,issues=Array.isArray(input.issues)?input.issues:(Array.isArray(raw.data)?raw.data:[]),mode=input.project_mode==='AUTO'?'AUTO':'MANUAL',done=new Set(issues.filter(i=>String(i.status||i.morpheus_status||'').toUpperCase()==='DONE').map(i=>String(i.issue_number||i.number||''))),n=issues.map(i=>{const status=String(i.status||i.morpheus_status||'UNKNOWN').toUpperCase(),deps=String(i.depends_on||'').split(',').map(x=>x.trim().replace(/^#/,'')).filter(Boolean),unmet=deps.filter(d=>!done.has(d));return {...i,status:status==='BLOCKED'&&!unmet.length?'READY':status}}),ready=n.filter(i=>i.status==='READY'),blocked=n.filter(i=>i.status==='BLOCKED'),open=n.filter(i=>!['DONE','OBSOLETE','DUPLICATE'].includes(i.status)),coverage=input.blueprint_coverage===true||input.blueprint_coverage==='true';let status=ready.length?'READY':blocked.length?'BLOCKED':open.length?'UNKNOWN':coverage?'PROJECT_DONE':'BLUEPRINT_COVERAGE_REQUIRED';return[{json:{project_id:input.project_id||'',run_id:input.run_id||'',repository_url:input.repository_url||'',mode,status,ready,blocked,blueprint_coverage:coverage,next_issue:mode==='AUTO'&&ready.length?ready[0]:null,action:mode==='AUTO'&&ready.length?'START_NEXT_CANONICAL_RUN':'DISPLAY_CANDIDATES'}}];""",P(2,0)))
+    wf.add_node(if_node("Auto Continue?", [{"leftValue":"={{$json.action}}","rightValue":"=START_NEXT_CANONICAL_RUN","operator":{"type":"string","operation":"equals"}}],P(2,0)))
+    wf.add_node(code_node("Prepare Next Run","const s=$json,i=s.next_issue||{};return[{json:{task:{task_ref:'project:'+s.project_id+':issue:'+String(i.issue_number||i.number||''),repository_ref:s.repository_url||'',task_description:String(i.body||i.title||''),project_id:s.project_id,project_mode:'AUTO',issue_number:i.issue_number||i.number||'', 'x-metadata':{project_id:s.project_id,project_mode:'AUTO'}},backend:'opencode-builder-8001'}}];",P(3,0)));wf.add_node(http_node("Start Next Canonical Run","POST",cfg.webhook+"/webhook/autodev/start","JSON.stringify($json)",P(4,0),cfg.cr_api));wf.add_node(code_node("Auto Continuation Result","return[{json:{status:'ACCEPTED',continuation:'STARTED',reassessment:$('Decide Project Continuation').first().json,result:$json}}];",P(5,0)))
+    wf.add_node(code_node("Manual Continuation Result","return[{json:{status:'ACCEPTED',continuation:'CANDIDATES_PRESENTED',reassessment:$json}}];",P(3,1)));wf.add_node(respond_node("Respond Reassessment",P(6,0)));wf.add("Project Reassessment Webhook","Fetch Project Issues");wf.add("Fetch Project Issues","Decide Project Continuation");wf.add("Decide Project Continuation","Auto Continue?");wf.add("Auto Continue?","Prepare Next Run",0);wf.add("Prepare Next Run","Start Next Canonical Run");wf.add("Start Next Canonical Run","Auto Continuation Result");wf.add("Auto Continue?","Manual Continuation Result",1);wf.add("Auto Continuation Result","Respond Reassessment");wf.add("Manual Continuation Result","Respond Reassessment");return wf
 
 
 JS_VALIDATOR = r"""function validateAutodevContract(payload, schema) {
@@ -2847,6 +3033,10 @@ BUILDERS = {
     "00 AutoDev API Start": build_00,
     "01 AutoDev Orchestrator": build_01,
     "02 AutoDev API Status": build_02,
+    "05 AutoDev Control Gateway": build_05_control_gateway,
+    "06 AutoDev Project Analysis": build_06_project_analysis,
+    "07 AutoDev Blueprint Bootstrap": build_07_blueprint_bootstrap,
+    "08 AutoDev Project Reassessment": build_08_project_reassessment,
     "10 AutoDev Baseline": build_10,
     "20 AutoDev Research Batch": build_20,
     "30 AutoDev Plan": build_30,
