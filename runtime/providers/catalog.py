@@ -48,6 +48,10 @@ def apply_policy(entry, provider, account_class="unknown"):
     entry["zero_cost_verified"] = bool(
         entry.get("zero_cost_verified") is True or explicit_zero or route_zero
     )
+    if explicit_zero or route_zero:
+        entry["free_evidence"] = sorted(
+            set(entry.get("free_evidence") or []) | {"CATALOG_FREE"}
+        )
     entry["account_class"] = account_class
     privacy_approved = os.environ.get(
         "AUTODEV_%s_PRIVACY_APPROVED" % provider.upper(), "false"
@@ -228,6 +232,10 @@ class ProviderCatalog:
                 "actual_provider",
                 "actual_model",
                 "resolved_model",
+                "tool_probe",
+                "vision_probe",
+                "structured_output_score",
+                "structured_output_probe",
             ):
                 if key in previous:
                     entry[key] = previous[key]
@@ -342,10 +350,18 @@ class ProviderCatalog:
                     "route_cost_proven": pricing.get("prompt") in (0, "0", "0.0") and pricing.get("completion") in (0, "0", "0.0"),
                 }
                 apply_policy(entry, provider, "opencode-api-key")
+                if (
+                    entry.get("authenticated") is True
+                    and entry.get("route_cost_proven") is True
+                    and entry.get("cost_class") == "FREE_HARD_STOP"
+                ):
+                    entry["free_evidence"] = sorted(
+                        set(entry.get("free_evidence") or [])
+                        | {"ACCOUNT_FREE_ELIGIBLE"}
+                    )
+                    free_eligibility(entry, require_execution=False)
                 normalize_live_capabilities(entry)
                 self.add_entry(entry)
-            if authenticated:
-                self.refresh(providers=sorted(authenticated), authenticated_providers=authenticated)
             self.authenticated_providers = authenticated
             self.events.append({"event": "OPENCODE_LIVE_REFRESH", **report, "at": now_utc()})
             self.save()

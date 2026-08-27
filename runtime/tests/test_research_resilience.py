@@ -91,9 +91,14 @@ def test_research_recovery_is_bounded_and_preserves_poll_budget(tmp_path):
     assert "?polls={{ $json.polls || 0 }}" in poll["parameters"]["url"]
     assert any(
         node["name"] == "Limit?"
-        and node["parameters"]["conditions"]["conditions"][0]["rightValue"] == 40
+        and node["parameters"]["conditions"]["conditions"][0]["rightValue"] == 240
         for node in workflow["nodes"]
     )
+
+    prep = next(
+        node for node in workflow["nodes"] if node["name"] == "Prep Research Batch"
+    )
+    assert "timeout_s: 600" in prep["parameters"]["jsCode"]
 
     recovery = next(
         node for node in workflow["nodes"] if node["name"] == "Prepare Research Recovery"
@@ -126,3 +131,58 @@ def test_research_transport_exclusions_survive_router_restart(tmp_path):
         RouteRequest(task_class="research", run_id="research-run", task_id="research.docs")
     )
     assert selected["selected_model"] != "a"
+
+
+def test_research_timeout_kills_remote_opencode_attempt():
+    source = (ROOT / "adapter" / "harness_adapter_v2.py").read_text()
+    assert "timeout --kill-after=5s %ss %s run" in source
+    assert "opencode research model attempt timed out" in source
+    assert "        attempt_timeout_s,\n        OPENCODE_BIN," in source
+    assert "do not call tools; return the JSON note immediately" in source
+
+
+def test_parallel_research_workers_use_distinct_artifacts():
+    source = (ROOT / "adapter" / "harness_adapter_v2.py").read_text()
+    assert 'output_name = ".opencode/research-%s.jsonl" % artifact_key' in source
+    assert 'stderr_name = ".opencode/research-%s.stderr" % artifact_key' in source
+    assert "agent_name = \"research-worker-%s\" % artifact_key" in source
+
+
+def test_canonical_research_profile_is_tool_free():
+    source = (ROOT / "adapter" / "harness_adapter_v2.py").read_text()
+    assert "RESEARCH_TOOLS = dict(PLAN_SERIALIZATION_TOOLS)" in source
+    assert 'RESEARCH_PERMS = {key: "deny" for key in PLAN_PERMS}' in source
+    assert '"websearch": False' in source
+    assert '"websearch": "deny"' in source
+
+
+def test_opencode_proof_uses_exact_invocation_when_events_omit_identity(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTODEV_V2_STATE", str(tmp_path / "adapter-state"))
+    sys.path.insert(0, str(ROOT))
+    from adapter import harness_adapter_v2 as adapter
+
+    monkeypatch.setattr(
+        adapter,
+        "pct_stdout",
+        lambda _cmd: '{"type":"text","part":{"text":"{\\"note\\":\\"ok\\"}"}}',
+    )
+    proof = adapter._opencode_proof(
+        "/isolated/workspace", "opencode", "big-pickle", "research.jsonl"
+    )
+    assert proof["actual_provider"] == "opencode"
+    assert proof["actual_model"] == "big-pickle"
+    assert proof["identity_source"] == "SELECTED_INVOCATION"
+
+
+def test_research_promotes_structured_capability_only_after_json_note():
+    source = (ROOT / "adapter" / "harness_adapter_v2.py").read_text()
+    assert "_record_opencode_capability_proof(route_provider, route_model)" in source
+    assert 'entry["structured_output_probe"] = "PASS"' in source
+    assert 'capabilities[capability] = True' in source
+
+
+def test_catalog_refresh_preserves_live_capability_probe_evidence():
+    source = (ROOT / "runtime" / "providers" / "catalog.py").read_text()
+    assert '"tool_probe"' in source
+    assert '"structured_output_score"' in source
+    assert '"structured_output_probe"' in source

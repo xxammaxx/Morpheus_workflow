@@ -717,6 +717,7 @@ def run_job_thread(
     route_decision=None,
 ):
     def worker():
+        nonlocal route_decision
         with _sem:
             rec = JOBS.get(job_id)
             if rec is None or rec["status"] not in ("queued",):
@@ -1316,6 +1317,7 @@ PLAN_TOOLS = {
     # attempt; PLAN_PERMS keeps execution fail-closed.
     "write": True,
     "webfetch": False,
+    "websearch": False,
     "task": False,
     "skill": False,
     "question": False,
@@ -1334,13 +1336,21 @@ PLAN_PERMS = {
     "edit": "deny",
     "write": "deny",
     "webfetch": "deny",
+    "websearch": "deny",
     "task": "deny",
     "skill": "deny",
     "question": "deny",
     "todowrite": "deny",
 }
-RESEARCH_TOOLS = dict(PLAN_TOOLS)
-RESEARCH_PERMS = dict(PLAN_PERMS)
+# Canonical Issue #8 Research is a bounded single-note task. Keep its model
+# dynamically selected, but do not expose repository tools: the task context
+# already carries the exact target and the worker must return structured JSON.
+RESEARCH_TOOLS = dict(PLAN_SERIALIZATION_TOOLS)
+# The canonical Research profile is a serialization-only worker.  OpenCode
+# 1.18 can still expose a tool when its permission is allow, even when the
+# corresponding agent `tools` flag is false; deny every capability here so a
+# model cannot enter a repository-exploration loop.
+RESEARCH_PERMS = {key: "deny" for key in PLAN_PERMS}
 BUILD_TOOLS = {
     "read": True,
     "edit": True,
@@ -1371,10 +1381,21 @@ BUILD_PERMS = {
 }
 
 
-def _opencode_script(ws, agent_name, agent_md, prompt, timeout_s, provider=None, model=None):
+def _opencode_script(
+    ws,
+    agent_name,
+    agent_md,
+    prompt,
+    timeout_s,
+    provider=None,
+    model=None,
+    output_name="build.jsonl",
+    stderr_name="build.stderr",
+):
     if not provider or not model:
         raise RuntimeError("NO_ELIGIBLE_FREE_MODEL")
     assert_runtime_model_allowed(provider, model)
+    attempt_timeout_s = max(1, int(timeout_s or DEFAULT_TIMEOUT_S))
     config = json.dumps({
         "$schema": "https://opencode.ai/config.json",
         "share": "disabled",
@@ -1393,18 +1414,21 @@ def _opencode_script(ws, agent_name, agent_md, prompt, timeout_s, provider=None,
         "cat > .opencode/agents/%s.md << 'EOFAGENT'\n%s\nEOFAGENT\n"
         "export OPENCODE_CONFIG_CONTENT='%s'; "
         "export PATH='/opt/dev-fabric/opencode:/usr/local/bin:/usr/bin:/bin'; "
-        "%s run --agent %s --model '%s/%s' --format json %s "
-        "> build.jsonl 2> build.stderr"
+        "timeout --kill-after=5s %ss %s run --agent %s --model '%s/%s' --format json %s "
+        "> %s 2> %s"
     ) % (
         ws,
         agent_name,
         agent_md,
         config,
+        attempt_timeout_s,
         OPENCODE_BIN,
         agent_name,
         provider,
         model,
         json.dumps(prompt),
+        output_name,
+        stderr_name,
     )
 
 
@@ -1427,9 +1451,9 @@ def _worker_model_ref(payload):
     return "%s/%s" % (provider, model)
 
 
-def _parse_opencode_jsonl(ws):
-    """Return (assistant_text, tool_events) parsed from build.jsonl."""
-    path = os.path.join(ws, "build.jsonl")
+def _parse_opencode_jsonl(ws, output_name="build.jsonl"):
+    """Return (assistant_text, tool_events) parsed from an OpenCode JSONL file."""
+    path = os.path.join(ws, output_name)
     text_parts, tool_events = [], []
     # build.jsonl lives inside the isolated builder CT, not on the adapter
     # host. Read it through the existing pct boundary rather than checking
@@ -1475,9 +1499,9 @@ def _parse_opencode_jsonl(ws):
     return "\n".join(text_parts), tool_events
 
 
-def _opencode_observed_identity(ws):
+def _opencode_observed_identity(ws, output_name="build.jsonl"):
     """Extract provider/model metadata from OpenCode events, without prose."""
-    raw = pct_stdout("cat '%s' 2>/dev/null || true" % os.path.join(ws, "build.jsonl"))
+    raw = pct_stdout("cat '%s' 2>/dev/null || true" % os.path.join(ws, output_name))
     providers, models = set(), set()
     for line in raw.splitlines():
         try:
@@ -1504,15 +1528,26 @@ def _opencode_observed_identity(ws):
     }
 
 
-def _opencode_proof(ws, expected_provider=None, expected_model=None):
-    identity = _opencode_observed_identity(ws)
+def _opencode_proof(ws, expected_provider=None, expected_model=None, output_name="build.jsonl"):
+    identity = _opencode_observed_identity(ws, output_name)
+    identity_source = "EVENT"
     if expected_provider and identity["provider"] and identity["provider"] != expected_provider:
         raise RuntimeError("ACTUAL_PROVIDER_MISMATCH")
     if expected_model and identity["model"] and identity["model"] != expected_model:
         raise RuntimeError("ACTUAL_MODEL_MISMATCH")
     if not identity["provider"] or not identity["model"]:
-        raise RuntimeError("MODEL_IDENTITY_MISSING")
-    raw = pct_stdout("cat '%s' 2>/dev/null || true" % os.path.join(ws, "build.jsonl"))
+        # OpenCode 1.18 JSONL text/step events do not expose provider/model
+        # fields. The invocation is nevertheless exact: the adapter writes a
+        # one-model provider config and passes the same provider/model on the
+        # CLI. Preserve provenance from that bounded invocation instead of
+        # discarding a valid response and triggering a false transport
+        # failover.
+        if expected_provider and expected_model:
+            identity = {"provider": expected_provider, "model": expected_model}
+            identity_source = "SELECTED_INVOCATION"
+        else:
+            raise RuntimeError("MODEL_IDENTITY_MISSING")
+    raw = pct_stdout("cat '%s' 2>/dev/null || true" % os.path.join(ws, output_name))
     usage = {"input_tokens": 0, "output_tokens": 0}
     actual_cost = None
     for line in raw.splitlines():
@@ -1550,6 +1585,7 @@ def _opencode_proof(ws, expected_provider=None, expected_model=None):
         "selected_model": expected_model or identity["model"],
         "actual_provider": identity["provider"],
         "actual_model": identity["model"],
+        "identity_source": identity_source,
         "execution_proof": "PASS",
         "usage": usage,
         "actual_cost": actual_cost,
@@ -1557,6 +1593,25 @@ def _opencode_proof(ws, expected_provider=None, expected_model=None):
         "free_eligible": False,
         "failover": [],
     }
+
+
+def _record_opencode_capability_proof(provider, model, capability="STRUCTURED_OUTPUT_CAPABLE"):
+    """Persist capability evidence observed at the OpenCode boundary."""
+    runtime = _provider_runtime
+    catalog = getattr(runtime, "catalog", None) if runtime is not None else None
+    if catalog is None or not provider or not model:
+        return False
+    for entry in getattr(catalog, "entries", None) or []:
+        if entry.get("provider") != provider or entry.get("model") != model:
+            continue
+        capabilities = dict(entry.get("capabilities") or {})
+        capabilities[capability] = True
+        entry["capabilities"] = capabilities
+        entry["structured_output_score"] = 1.0
+        entry["structured_output_probe"] = "PASS"
+        catalog.save()
+        return True
+    return False
 
 
 def _extract_json(text):
@@ -1873,19 +1928,25 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
     route_provider, route_model = _opencode_worker_identity(payload)
     area = job_type.split(".")[1]
     prompt = (
-        "You are a read-only research worker. Workspace: current directory. "
+        "You are a bounded research worker. The task context is authoritative. "
         "Research the '%s' aspect of this task: %s\n"
-        "You may READ, glob, grep, list files. You must NOT write, edit, run commands "
+        "This is a bounded note task: do not call tools; return the JSON note immediately "
+        "from the task context. "
+        "You must NOT write, edit, run commands "
         "or use the network. "
         "Respond with ONLY a JSON object of this exact shape:\n"
         '{"note": "<max 2500 chars, factual findings about the %s aspect>"}\n'
         "No markdown fences, no extra text."
     ) % (area, payload.get("task_description", ""), area)
+    artifact_key = re.sub(r"[^A-Za-z0-9_-]", "-", job_id)
+    agent_name = "research-worker-%s" % artifact_key
+    output_name = ".opencode/research-%s.jsonl" % artifact_key
+    stderr_name = ".opencode/research-%s.stderr" % artifact_key
     script = _opencode_script(
         ws,
-        "research-worker",
+        agent_name,
         _agent_md(
-            "research-worker",
+            agent_name,
             RESEARCH_TOOLS,
             RESEARCH_PERMS,
             "Read-only research worker",
@@ -1894,12 +1955,20 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
         prompt,
         timeout_s,
         *_opencode_worker_identity(payload),
+        output_name,
+        stderr_name,
     )
-    execution = pct_exec(script, timeout=timeout_s)
+    try:
+        execution = pct_exec(script, timeout=timeout_s)
+    except subprocess.TimeoutExpired as exc:
+        raise ProviderFailure(
+            "opencode research model attempt timed out",
+            retryable=True,
+        ) from exc
     if execution.returncode != 0:
         raise ProviderFailure("opencode execution failure", retryable=True)
-    text, events = _parse_opencode_jsonl(ws)
-    cloud_proof = _opencode_proof(ws, route_provider, route_model)
+    text, events = _parse_opencode_jsonl(ws, output_name)
+    cloud_proof = _opencode_proof(ws, route_provider, route_model, output_name)
     note = text.strip()
     obj = _extract_json(text)
     if isinstance(obj, dict) and isinstance(obj.get("note"), str):
@@ -1928,6 +1997,8 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
             failure_signature="CONTRACT_INVALID",
         )
         return
+    if isinstance(obj, dict) and isinstance(obj.get("note"), str):
+        _record_opencode_capability_proof(route_provider, route_model)
     result["x-metadata"] = {
         "backend": backend,
         "provider": route_provider,
@@ -2305,6 +2376,7 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         return
     result["x-metadata"] = {
         "backend": backend,
+        "build_provenance": provenance_meta,
         "provider": route_provider,
         "model": route_model,
         "model_alias": MORPHEUS_MODEL_ALIAS,
