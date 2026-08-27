@@ -2937,7 +2937,7 @@ class Handler(BaseHTTPRequestHandler):
             catalog = getattr(_provider_runtime, "catalog", None)
             for entry in (getattr(catalog, "entries", None) or []):
                 provider = entry.get("provider")
-                if provider in {"deepseek", "groq"}:
+                if provider in {"deepseek", "groq"} or "deepseek" in str(provider or "").lower() or "deepseek" in str(entry.get("model") or "").lower():
                     continue
                 providers.append(
                     {

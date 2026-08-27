@@ -2748,7 +2748,7 @@ return [{json:{valid:!errors.length,errors,envelope:e,command,role,payload:p||{}
     wf.add_node(respond_node("Respond MCP Test", P(8,3))); wf.add("MCP Test Result", "Respond MCP Test")
 
     wf.add_node(if_node("Is System Test?", [{"leftValue":"={{$json.route}}","rightValue":"=RUN_SYSTEM_TEST","operator":{"type":"string","operation":"equals"}}], P(5,4)))
-    wf.add_node(http_node("Read n8n System Status", "GET", cfg.n8n+"/workflows?limit=1", "{}", P(6,4), cfg.cr_n8n, send_body=False))
+    wf.add_node(http_node("Read n8n System Status", "GET", cfg.n8n+"/api/v1/workflows?limit=1", "{}", P(6,4), cfg.cr_n8n, send_body=False))
     wf.add_node(code_node("System Test Result", "const body=$json.data||$json,ok=Array.isArray(body)||Array.isArray(body.data); return [{json:{status:ok?'OK':'NICHT_OK',module:'n8n',source:'n8n-public-api',details:ok?'workflow API reachable':'workflow API returned unexpected contract'}}];", P(7,4))); wf.add_node(respond_node("Respond System Test", P(8,4)))
     wf.add("Is MCP Test?", "Is System Test?", 1); wf.add("Is System Test?", "Read n8n System Status", 0); wf.add("Read n8n System Status", "System Test Result"); wf.add("System Test Result", "Respond System Test")
 
