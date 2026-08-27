@@ -76,6 +76,17 @@ class ProjectionTests(unittest.TestCase):
         finally:
             (control_tower.table_rows, control_tower.adapter_runtime, control_tower.n8n_health, control_tower.adapter_health, control_tower.adapter_events) = original
 
+    def test_empty_event_sources_are_idle_not_live(self):
+        original = (control_tower.table_rows, control_tower.adapter_events)
+        try:
+            control_tower.table_rows = lambda name: ([], True)
+            control_tower.adapter_events = lambda: ([], True)
+            events, live = control_tower.debugging_events("run-without-events")
+            self.assertEqual(events, [])
+            self.assertFalse(live)
+        finally:
+            control_tower.table_rows, control_tower.adapter_events = original
+
     def test_stale_only_applies_to_active_runs(self):
         reference = control_tower.dt.datetime(2026, 8, 25, tzinfo=control_tower.dt.timezone.utc)
         self.assertFalse(control_tower.is_stale_run({"state": "BUILDING", "updated_at": "2026-08-24T23:55:00Z"}, 1800, reference))

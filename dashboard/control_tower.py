@@ -320,7 +320,10 @@ def debugging_events(run_id=None):
         clean.setdefault("timestamp", clean.get("ts") or clean.get("created_at"))
         events.append(clean)
     events = [redact(e) for e in events if e.get("timestamp")]
-    return sorted(events, key=lambda x: x.get("timestamp") or ""), attempts_ok or events_ok or external_ok
+    # Reachable event sources are not evidence of a live flow.  The caller
+    # must only label the stream LIVE when at least one correlated event was
+    # actually observed for the requested run.
+    return sorted(events, key=lambda x: x.get("timestamp") or ""), bool(events)
 
 
 def projection():
