@@ -240,7 +240,7 @@ def ssh_exec_node(name, command, pos, cred):
     return node(
         name,
         "n8n-nodes-base.ssh",
-        {"operation": "execute", "command": command},
+        {"operation": "execute", "command": command, "authentication": "privateKey"},
         pos,
         1,
         {"sshPrivateKey": cred},
