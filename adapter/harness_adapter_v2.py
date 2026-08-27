@@ -87,6 +87,9 @@ try:
         ProviderFailure,
         RouteRequest,
         is_deepseek_identifier,
+        assert_runtime_model_allowed,
+        probe_eligibility,
+        promotion_eligibility,
     )  # noqa: E402
     from providers.capabilities import classify_task  # noqa: E402
 except ImportError:  # pragma: no cover - legacy deployment without providers
@@ -94,7 +97,16 @@ except ImportError:  # pragma: no cover - legacy deployment without providers
     NoEligibleProvider = RuntimeError
     ProviderFailure = RuntimeError
     RouteRequest = None
-    is_deepseek_identifier = lambda provider, model: False
+    def is_deepseek_identifier(provider, model):
+        return "deepseek" in ("%s/%s" % (provider or "", model or "")).lower()
+
+    def assert_runtime_model_allowed(provider, model):
+        if is_deepseek_identifier(provider, model):
+            raise RuntimeError("DEEPSEEK_RETIRED")
+    def probe_eligibility(_entry):
+        return False
+    def promotion_eligibility(_entry):
+        return False
     classify_task = lambda payload, task_class=None: {"task_class": task_class or "research"}
 
 # HAMH harness registry: loaded from <STATE_DIR>/hamh/registry.json when
@@ -371,6 +383,44 @@ def pct_stdout(cmd, timeout=DEFAULT_TIMEOUT_S):
     return (r.stdout or "").strip()
 
 
+def _mcp_snapshot():
+    """Discover the configured OpenCode MCP set without exposing credentials."""
+    result = pct_exec("/usr/local/bin/opencode mcp list 2>&1", timeout=20)
+    output = (result.stdout or result.stderr or "").strip()
+    if result.returncode != 0:
+        return {"status": "BLOCKIERT_EXTERN", "servers": [], "detail": "MCP discovery unavailable"}
+    if "No MCP servers configured" in output:
+        return {"status": "NICHT_KONFIGURIERT", "servers": [], "detail": "No MCP servers configured"}
+    # OpenCode renders a table. Only retain names; never return command output.
+    servers = []
+    for line in output.splitlines():
+        value = line.strip().strip("|!— ")
+        if not value or value.startswith("MCP Servers") or value.startswith("Add servers"):
+            continue
+        if value in {"T", "|", "-"} or value.lower().startswith("name"):
+            continue
+        name = value.split()[0]
+        if name and name not in {item["name"] for item in servers}:
+            servers.append({"name": name})
+    return {"status": "OK" if servers else "NICHT_KONFIGURIERT", "servers": servers}
+
+
+def _opencode_runtime_snapshot():
+    """Prove the worker runtime independently of any provider health."""
+    result = pct_exec(
+        "export PATH='/opt/dev-fabric/opencode:/usr/local/bin:/usr/bin:/bin'; "
+        "command -v opencode >/dev/null 2>&1 && opencode --version",
+        timeout=15,
+    )
+    output = (result.stdout or result.stderr or "").strip()
+    version = next((line.strip() for line in output.splitlines() if re.search(r"\d+\.\d+\.\d+", line)), "UNKNOWN")
+    return {
+        "ct8001_reachable": result.returncode == 0,
+        "binary_present": result.returncode == 0,
+        "version": version,
+    }
+
+
 def classify_job_failure(job_type, exc):
     """Map runtime failures to failure classes — never 'model incapable' for infra."""
     msg = str(exc)
@@ -496,6 +546,11 @@ def new_job(
         "task_class": task_class,
         "harness_resolution": harness_resolution,
         "input_contract": input_contract,
+        "correlation_id": (payload.get("x-metadata") or {}).get("correlation_id"),
+        "source": "Adapter",
+        "target": "OpenCode" if backend == "opencode-builder-8001" else "Adapter",
+        "contract": input_contract,
+        "validation": "DISPATCH_ACCEPTED",
         "input_fingerprint": fp(payload),
         "output_contract": JOB_TYPES.get(job_type),
         "output_fingerprint": None,
@@ -755,6 +810,10 @@ def run_job_thread(
                                 route_attempt = 2
                                 continue
                             next_route = _select_next_opencode_route(run_id, job_id, job_type, payload)
+                            assert_runtime_model_allowed(
+                                next_route.get("selected_provider"),
+                                next_route.get("selected_model"),
+                            )
                             route_decision = next_route
                             payload["x-metadata"] = {
                                 **(payload.get("x-metadata") or {}),
@@ -1345,6 +1404,7 @@ def _opencode_script(
 ):
     if not provider or not model:
         raise RuntimeError("NO_ELIGIBLE_FREE_MODEL")
+    assert_runtime_model_allowed(provider, model)
     attempt_timeout_s = max(1, int(timeout_s or DEFAULT_TIMEOUT_S))
     config = json.dumps({
         "$schema": "https://opencode.ai/config.json",
@@ -1392,6 +1452,7 @@ def _opencode_worker_identity(payload):
     provider, model = _worker_identity(payload)
     if not provider or not model:
         raise RuntimeError("NO_ELIGIBLE_FREE_MODEL")
+    assert_runtime_model_allowed(provider, model)
     return provider, model
 
 
@@ -1529,6 +1590,20 @@ def _opencode_proof(ws, expected_provider=None, expected_model=None, output_name
                         stack.append(child)
             elif isinstance(value, list):
                 stack.extend(value)
+    catalog = getattr(_provider_runtime, "catalog", None) if _provider_runtime is not None else None
+    route_entry = next(
+        (
+            entry
+            for entry in (getattr(catalog, "entries", None) or [])
+            if entry.get("provider") == expected_provider
+            and entry.get("model") == expected_model
+        ),
+        None,
+    )
+    free_route = bool(
+        route_entry
+        and (probe_eligibility(route_entry) or promotion_eligibility(route_entry))
+    )
     return {
         "selected_provider": expected_provider or identity["provider"],
         "selected_model": expected_model or identity["model"],
@@ -1539,7 +1614,7 @@ def _opencode_proof(ws, expected_provider=None, expected_model=None, output_name
         "usage": usage,
         "actual_cost": actual_cost,
         "cost_observability": "PASS" if actual_cost is not None or any(usage.values()) else "UNAVAILABLE",
-        "free_eligible": False,
+        "free_eligible": free_route,
         "failover": [],
     }
 
@@ -2785,6 +2860,7 @@ def _dispatch(
                 return None, err(code, "no current zero-cost model satisfies task capabilities")
         provider = route_decision.get("selected_provider")
         model = route_decision.get("selected_model")
+        assert_runtime_model_allowed(provider, model)
         metadata["execution_provider"] = provider
         metadata["execution_model"] = model
         metadata["model_alias"] = MORPHEUS_MODEL_ALIAS
@@ -2921,6 +2997,7 @@ def _job_view(rec, with_result=True):
             "harness_id",
             "harness_version",
             "harness_fingerprint",
+            "correlation_id",
             "input_contract",
             "input_fingerprint",
             "output_contract",
@@ -3009,7 +3086,7 @@ class Handler(BaseHTTPRequestHandler):
             catalog = getattr(_provider_runtime, "catalog", None)
             for entry in (getattr(catalog, "entries", None) or []):
                 provider = entry.get("provider")
-                if provider in {"deepseek", "groq"}:
+                if provider in {"deepseek", "groq"} or "deepseek" in str(provider or "").lower() or "deepseek" in str(entry.get("model") or "").lower():
                     continue
                 providers.append(
                     {
@@ -3019,12 +3096,20 @@ class Handler(BaseHTTPRequestHandler):
                         "availability": "AVAILABLE" if entry.get("route_exists") else "UNKNOWN",
                         "cost_class": entry.get("cost_class", "UNKNOWN"),
                         "free_eligible": bool(entry.get("free_eligible")),
+                        "catalog_eligible": bool(entry.get("catalog_eligible", not is_deepseek_identifier(provider, entry.get("model")))),
+                        "router_eligible": bool(entry.get("router_eligible", entry.get("free_eligible"))),
+                        "explicit_request_allowed": bool(entry.get("explicit_request_allowed", not is_deepseek_identifier(provider, entry.get("model")))),
+                        "fallback_allowed": bool(entry.get("fallback_allowed", not is_deepseek_identifier(provider, entry.get("model")))),
+                        "opencode_default": bool(entry.get("opencode_default", not is_deepseek_identifier(provider, entry.get("model")))),
                         "promoted": bool(entry.get("promoted_free_eligible")),
                         "actual_cost_proof": bool(entry.get("actual_cost_proof")),
                         "last_verified_at": entry.get("last_verified_at"),
                         "quarantined": bool(entry.get("quarantined")),
+                        "capabilities": {key: bool(value) for key, value in (entry.get("capabilities") or {}).items() if key in {"TOOL_CAPABLE", "VISION_CAPABLE", "STRUCTURED_OUTPUT_CAPABLE", "BUILD_CAPABLE"}},
                     }
                 )
+            mcp = _mcp_snapshot()
+            opencode = _opencode_runtime_snapshot()
             self._send(
                 200,
                 ok(
@@ -3037,10 +3122,41 @@ class Handler(BaseHTTPRequestHandler):
                         "automatic_paid_agent_escalation": False,
                         "free_pool_size": sum(1 for p in providers if p["free_eligible"]),
                         "providers": providers,
+                        "mcp": mcp,
+                        "mcp_servers": mcp.get("servers", []),
+                        "opencode": opencode,
+                        "ct8001_reachable": opencode["ct8001_reachable"],
+                        "opencode_binary_present": opencode["binary_present"],
+                        "opencode_version": opencode["version"],
+                        "deepseek_policy": {
+                            "catalog_eligible": False,
+                            "router_eligible": False,
+                            "explicit_request_allowed": False,
+                            "fallback_allowed": False,
+                            "opencode_default": False,
+                        },
                         "provider_lease_state": "READ_ONLY_SNAPSHOT",
                     }
                 ),
             )
+            return
+        if path == "/v1/events":
+            # The adapter exposes a bounded projection of its existing
+            # append-only run ledger. It does not create a second event store.
+            try:
+                limit = min(250, max(1, int((query.get("limit") or [250])[0])))
+            except (TypeError, ValueError):
+                limit = 250
+            events = []
+            if os.path.exists(LEDGER_FILE):
+                with open(LEDGER_FILE, encoding="utf-8") as stream:
+                    for line in stream.readlines()[-limit:]:
+                        try:
+                            record = json.loads(line)
+                        except ValueError:
+                            continue
+                        events.append({key: record.get(key) for key in ("timestamp", "ts", "run_id", "job_id", "attempt_id", "job_type", "status", "provider", "model", "failure_signature", "input_contract", "output_contract", "routing_event_id", "worker_id", "mcp_call_id", "correlation_id", "source", "target", "contract", "validation") if record.get(key) is not None})
+            self._send(200, ok({"events": events, "source": "canonical_run_ledger"}))
             return
         if path.startswith("/v1/jobs/"):
             jid = path[len("/v1/jobs/") :]
@@ -3112,6 +3228,19 @@ class Handler(BaseHTTPRequestHandler):
             return
         if body is None:
             self._send(413, err("TOO_LARGE", "body too large"))
+            return
+        if self.path in {"/v1/catalog/refresh", "/v1/credentials/sync"}:
+            catalog = getattr(_provider_runtime, "catalog", None)
+            if catalog is None:
+                self._send(503, err("RUNTIME_UNAVAILABLE", "provider catalog unavailable"))
+                return
+            report = catalog.refresh_live()
+            self._send(200, ok({
+                "action": "CATALOG_REFRESH" if self.path.endswith("refresh") else "CREDENTIAL_SYNC",
+                "status": "OK" if report.get("refresh") == "PASS" else "BLOCKIERT_EXTERN",
+                "catalog_entries": report.get("catalog_entries", 0),
+                "authenticated_providers": sorted(catalog.authenticated_providers),
+            }))
             return
         if self.path == "/v1/jobs":
             rec, e = _dispatch(

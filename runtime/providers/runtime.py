@@ -11,6 +11,7 @@ from .protocol import (
     ProviderRequest,
     RouteRequest,
     new_id,
+    assert_runtime_model_allowed,
 )
 from .router import ProviderRouter
 from .lease import ProviderProbeLease
@@ -41,6 +42,9 @@ class ProviderRuntime:
         return self.router.select(request)
 
     def direct_invoke(self, decision, messages, task_class, timeout, attempt_id):
+        assert_runtime_model_allowed(
+            decision.get("selected_provider"), decision.get("selected_model")
+        )
         adapter = self.catalog.adapters.get(decision.get("selected_provider"))
         if adapter is None:
             raise NoEligibleProvider("NO_ELIGIBLE_FREE_PROVIDER")
@@ -63,6 +67,7 @@ class ProviderRuntime:
             timeout=timeout,
             probe_lease_id=decision.get("probe_lease_id"),
         )
+        assert_runtime_model_allowed(response.actual_provider, response.actual_model)
         updated = self.router.record_execution(
             decision, response, outbound_id, attempt_id
         )
@@ -87,6 +92,7 @@ class ProviderRuntime:
         return ProviderProbeLease().acquire(provider, owner)
 
     def probe_once(self, provider, model, messages, task_class="research", timeout=60, owner="morpheus-maintenance"):
+        assert_runtime_model_allowed(provider, model)
         lease = self.acquire_probe_lease(provider, owner)
         decision = self.router._decision(
             {

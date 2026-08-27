@@ -16,6 +16,7 @@ from .protocol import (
     probe_eligibility,
     promotion_eligibility,
     is_deepseek_identifier,
+    assert_runtime_model_allowed,
     new_id,
     now_utc,
 )
@@ -156,6 +157,7 @@ class ProviderRouter:
         }
 
     def select(self, request):
+        assert_runtime_model_allowed(request.provider, request.model)
         rows = self._candidate_rows(request)
         if not rows:
             raise NoEligibleProvider("NO_ELIGIBLE_FREE_PROVIDER")
@@ -172,6 +174,7 @@ class ProviderRouter:
         return decision
 
     def candidates(self, request):
+        assert_runtime_model_allowed(request.provider, request.model)
         rows = self._candidate_rows(request)
         rows.sort(key=lambda entry: (-entry["_rank_score"], entry.get("provider", ""), entry.get("model", "")))
         return [

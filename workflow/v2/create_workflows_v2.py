@@ -73,6 +73,24 @@ def create_table(name, columns):
     return resp["id"]
 
 
+def ensure_columns(table_id, columns):
+    """Add only missing canonical Data Table columns during schema evolution."""
+    st, resp = api("GET", "/api/v1/data-tables/%s/columns" % table_id)
+    if st != 200:
+        raise SystemExit("list columns failed for %s: %s" % (table_id, resp))
+    existing = {column.get("name") for column in resp if isinstance(column, dict)}
+    for name in columns:
+        if name in existing:
+            continue
+        st, resp = api(
+            "POST",
+            "/api/v1/data-tables/%s/columns" % table_id,
+            {"name": name, "type": "string"},
+        )
+        if st not in (200, 201, 409):
+            raise SystemExit("add column %s failed for %s: %s" % (name, table_id, resp))
+
+
 def create_credential(name, header_name, value):
     st, resp = api("GET", "/api/v1/credentials?limit=250")
     for c in resp.get("data", []):
@@ -90,6 +108,16 @@ def create_credential(name, header_name, value):
     if st in (200, 201):
         return resp["id"], resp["name"]
     raise SystemExit("create credential %s failed: %s" % (name, resp))
+
+
+def find_credential(name):
+    st, resp = api("GET", "/api/v1/credentials?limit=250")
+    if st != 200:
+        raise SystemExit("credential listing failed: %s" % (resp,))
+    for credential in resp.get("data", []):
+        if credential.get("name") == name:
+            return {"id": credential["id"], "name": credential["name"]}
+    raise SystemExit("required managed credential is missing: %s" % name)
 
 
 def main():
@@ -142,7 +170,25 @@ def main():
             "result_ref",
         ],
     )
-    print("TABLES runs=%s attempts=%s" % (runs_id, attempts_id))
+    projects_id = create_table(
+        "autodev_projects",
+        ["project_id", "name", "repository_url", "blueprint_ref", "project_mode",
+         "status", "current_run_id", "current_issue", "created_at", "updated_at",
+         "blueprint_sha256", "blueprint_coverage"],
+    )
+    issues_id = create_table(
+        "autodev_issues",
+        ["project_id", "issue_number", "title", "body", "state", "morpheus_status",
+         "depends_on", "changes_expected", "github_url", "blueprint_section", "updated_at"],
+    )
+    audit_id = create_table(
+        "autodev_audit",
+        ["timestamp", "actor", "role", "command", "target", "project_id", "run_id",
+         "result", "correlation_id"],
+    )
+    ensure_columns(runs_id, ["project_id", "issue_number"])
+    print("TABLES runs=%s attempts=%s projects=%s issues=%s audit=%s" %
+          (runs_id, attempts_id, projects_id, issues_id, audit_id))
 
     cr_n8n_id, cr_n8n_name = create_credential(
         "autodev-n8n-api", "X-N8N-API-KEY", n8n_key
@@ -153,6 +199,8 @@ def main():
     cr_api_id, cr_api_name = create_credential(
         "autodev-api-auth", "X-AutoDev-Token", api_token
     )
+    github_cred = find_credential("GitHub account")
+    runner_ssh_cred = find_credential("dev-runner-ssh")
     print("CREDS n8n=%s harness=%s api=%s" % (cr_n8n_id, cr_harn_id, cr_api_id))
 
     gen = os.path.join(REPO_ROOT, "workflow", "v2", "generate_workflows_v2.py")
@@ -163,11 +211,14 @@ def main():
             "n8n_base": "http://192.168.1.52:5678",
             "adapter_base": "http://192.168.1.136:8081",
             "webhook_base": "http://192.168.1.52:5678",
-            "tables": {"runs": runs_id, "attempts": attempts_id},
+            "tables": {"runs": runs_id, "attempts": attempts_id, "projects": projects_id,
+                        "issues": issues_id, "audit": audit_id},
             "creds": {
                 "n8n_api": {"id": cr_n8n_id, "name": cr_n8n_name},
                 "harness_token": {"id": cr_harn_id, "name": cr_harn_name},
                 "api_auth": {"id": cr_api_id, "name": cr_api_name},
+                "github_api": github_cred,
+                "runner_ssh": runner_ssh_cred,
             },
         }
         if extra:
@@ -220,12 +271,15 @@ def main():
     print("ACTIVATE ORCH", st, resp.get("active"))
 
     # pass 1c: start + status workflows referencing orchestrator
-    api_wfs = upsert_names(["00 AutoDev API Start", "02 AutoDev API Status"],
+    api_wfs = upsert_names(["00 AutoDev API Start", "02 AutoDev API Status",
+                            "05 AutoDev Control Gateway", "06 AutoDev Project Analysis",
+                            "07 AutoDev Blueprint Bootstrap", "08 AutoDev Project Reassessment"],
                            {"workflow_ids": dict(sub_ids, **orch)})
-    st, resp = api("POST", "/api/v1/workflows/%s/activate" % api_wfs["00 AutoDev API Start"])
-    print("ACTIVATE START", st, resp.get("active"))
-    st, resp = api("POST", "/api/v1/workflows/%s/activate" % api_wfs["02 AutoDev API Status"])
-    print("ACTIVATE STATUS", st, resp.get("active"))
+    for name in ("00 AutoDev API Start", "02 AutoDev API Status",
+                 "05 AutoDev Control Gateway", "06 AutoDev Project Analysis",
+                 "07 AutoDev Blueprint Bootstrap", "08 AutoDev Project Reassessment"):
+        st, resp = api("POST", "/api/v1/workflows/%s/activate" % api_wfs[name])
+        print("ACTIVATE", name, st, resp.get("active"))
 
     created = dict(sub_ids, **orch, **api_wfs)
 

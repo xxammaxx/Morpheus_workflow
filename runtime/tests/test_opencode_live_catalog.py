@@ -43,6 +43,24 @@ def test_catalog_parser_accepts_machine_readable_json_lines():
     }
 
 
+def test_catalog_parser_accepts_opencode_verbose_json_blocks():
+    output = "opencode/zen/model-c\n" + json.dumps({
+        "providerID": "zen",
+        "id": "model-c",
+        "cost": {"input": 0, "output": 0},
+        "capabilities": {"toolcall": True},
+    }, indent=2)
+    entries = parse_catalog_output(output)
+    assert entries == [{
+        "provider": "zen",
+        "model": "model-c",
+        "providerID": "zen",
+        "id": "model-c",
+        "cost": {"input": 0, "output": 0},
+        "capabilities": {"toolcall": True},
+    }]
+
+
 def test_human_catalog_rows_do_not_prove_free_status():
     assert parse_catalog_output("zen/model-a  free\n") == []
 

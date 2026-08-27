@@ -1,0 +1,8 @@
+{
+  "$id": "autodev.project-view.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Project projection derived from canonical stores",
+  "type": "object",
+  "required": ["contract", "version", "projects"],
+  "properties": {"contract": {"const": "autodev.project-view.v1"}, "version": {"const": "v1"}, "projects": {"type": "array", "items": {"type": "object", "required": ["project_id", "status", "progress"]}}}
+}

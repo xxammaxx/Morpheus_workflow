@@ -23,7 +23,7 @@ class LocalizationTests(unittest.TestCase):
 
     def test_dashboard_version_is_current(self):
         source = (ROOT / "control_tower.py").read_text()
-        self.assertIn('VERSION = "1.1.2"', source)
+        self.assertIn('VERSION = "1.2.0"', source)
         self.assertNotIn("1.1.0-rc1", source)
         self.assertNotIn("v1.1.0-candidate", source)
 

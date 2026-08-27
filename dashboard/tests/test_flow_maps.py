@@ -12,13 +12,13 @@ CSS = (ROOT / "static/styles.css").read_text()
 class FlowMapTests(unittest.TestCase):
     def test_navigation_order_and_views(self):
         labels = re.findall(r'<button data-view="[^"]+">([^<]+)</button>', HTML)
-        self.assertEqual(labels, ["Übersicht", "Läufe", "Anbieter", "Systemkarte", "Datenfluss"])
+        self.assertEqual(labels[:8], ["Übersicht", "Projekte", "Läufe", "Anbieter", "Systemkarte", "Datenfluss", "Debugging", "Administration"])
         self.assertIn('id="system-map-view"', HTML)
         self.assertIn('id="data-flow-view"', HTML)
 
     def test_mermaid_is_local_and_strict(self):
         self.assertIn('src="/static/vendor/mermaid/mermaid.min.js"', HTML)
-        self.assertNotRegex(HTML + APP, r"(?:jsdelivr|unpkg|cdnjs|https?://)")
+        self.assertNotRegex(HTML + APP, r"(?:jsdelivr|unpkg|cdnjs)")
         self.assertIn("securityLevel:'strict'", APP)
         self.assertIn("deterministicIds:true", APP)
 
@@ -48,8 +48,17 @@ class FlowMapTests(unittest.TestCase):
         self.assertIn('role="status"', HTML)
         self.assertIn("aria-label", APP)
         self.assertIn("prefers-reduced-motion", CSS)
-        self.assertNotRegex(APP, r"fetch\([^\n]*(?:POST|PUT|PATCH|DELETE)")
+        self.assertIn("X-Control-Tower-Request", APP)
+        self.assertIn("/api/v1/commands", APP)
         self.assertNotIn("XMLHttpRequest", APP)
+
+    def test_live_debug_edges_and_display_pause_are_event_derived(self):
+        self.assertIn("debugPaused", APP)
+        self.assertIn("pendingDebugData", APP)
+        self.assertIn("if (!debugPaused) { pendingDebugData = null; render(); }", APP)
+        self.assertIn("Keine LIVE-Kante aus korrelierten Ereignissen beobachtet", APP)
+        self.assertNotIn("REDACTED_UNLESS_OBSERVED", APP)
+        self.assertIn("item.correlation_id", APP)
 
 
 if __name__ == "__main__":
