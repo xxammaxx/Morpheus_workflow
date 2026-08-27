@@ -174,6 +174,41 @@ def test_opencode_proof_uses_exact_invocation_when_events_omit_identity(tmp_path
     assert proof["identity_source"] == "SELECTED_INVOCATION"
 
 
+def test_opencode_proof_preserves_dynamic_free_route_eligibility(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTODEV_V2_STATE", str(tmp_path / "adapter-state"))
+    sys.path.insert(0, str(ROOT))
+    from adapter import harness_adapter_v2 as adapter
+
+    monkeypatch.setattr(
+        adapter,
+        "pct_stdout",
+        lambda _cmd: '{"type":"text","part":{"text":"{\\"note\\":\\"ok\\"}"}}',
+    )
+    entry = {
+        "provider": "openrouter",
+        "model": "cohere/north-mini-code:free",
+        "cost_class": "FREE_HARD_STOP",
+        "input_price": 0,
+        "output_price": 0,
+        "zero_cost_verified": True,
+        "route_cost_proven": True,
+        "automatic_paid_fallback": False,
+        "availability": True,
+        "health": "HEALTHY",
+        "usage_terms_permit": True,
+        "privacy_class": "ALLOWED",
+        "account_class": "verified-free-account",
+        "quota_state": {},
+        "quarantined": False,
+        "probe_attempted": False,
+    }
+    adapter._provider_runtime.catalog.entries = [entry]
+    proof = adapter._opencode_proof(
+        "/isolated/workspace", "openrouter", "cohere/north-mini-code:free", "research.jsonl"
+    )
+    assert proof["free_eligible"] is True
+
+
 def test_research_promotes_structured_capability_only_after_json_note():
     source = (ROOT / "adapter" / "harness_adapter_v2.py").read_text()
     assert "_record_opencode_capability_proof(route_provider, route_model)" in source

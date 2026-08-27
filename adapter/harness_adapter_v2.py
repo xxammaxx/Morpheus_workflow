@@ -88,6 +88,8 @@ try:
         RouteRequest,
         is_deepseek_identifier,
         assert_runtime_model_allowed,
+        probe_eligibility,
+        promotion_eligibility,
     )  # noqa: E402
     from providers.capabilities import classify_task  # noqa: E402
 except ImportError:  # pragma: no cover - legacy deployment without providers
@@ -101,6 +103,10 @@ except ImportError:  # pragma: no cover - legacy deployment without providers
     def assert_runtime_model_allowed(provider, model):
         if is_deepseek_identifier(provider, model):
             raise RuntimeError("DEEPSEEK_RETIRED")
+    def probe_eligibility(_entry):
+        return False
+    def promotion_eligibility(_entry):
+        return False
     classify_task = lambda payload, task_class=None: {"task_class": task_class or "research"}
 
 # HAMH harness registry: loaded from <STATE_DIR>/hamh/registry.json when
@@ -1580,6 +1586,20 @@ def _opencode_proof(ws, expected_provider=None, expected_model=None, output_name
                         stack.append(child)
             elif isinstance(value, list):
                 stack.extend(value)
+    catalog = getattr(_provider_runtime, "catalog", None) if _provider_runtime is not None else None
+    route_entry = next(
+        (
+            entry
+            for entry in (getattr(catalog, "entries", None) or [])
+            if entry.get("provider") == expected_provider
+            and entry.get("model") == expected_model
+        ),
+        None,
+    )
+    free_route = bool(
+        route_entry
+        and (probe_eligibility(route_entry) or promotion_eligibility(route_entry))
+    )
     return {
         "selected_provider": expected_provider or identity["provider"],
         "selected_model": expected_model or identity["model"],
@@ -1590,7 +1610,7 @@ def _opencode_proof(ws, expected_provider=None, expected_model=None, output_name
         "usage": usage,
         "actual_cost": actual_cost,
         "cost_observability": "PASS" if actual_cost is not None or any(usage.values()) else "UNAVAILABLE",
-        "free_eligible": False,
+        "free_eligible": free_route,
         "failover": [],
     }
 
