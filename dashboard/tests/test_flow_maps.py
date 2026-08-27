@@ -55,6 +55,7 @@ class FlowMapTests(unittest.TestCase):
     def test_live_debug_edges_and_display_pause_are_event_derived(self):
         self.assertIn("debugPaused", APP)
         self.assertIn("pendingDebugData", APP)
+        self.assertIn("if (!debugPaused) { pendingDebugData = null; render(); }", APP)
         self.assertIn("Keine LIVE-Kante aus korrelierten Ereignissen beobachtet", APP)
         self.assertNotIn("REDACTED_UNLESS_OBSERVED", APP)
         self.assertIn("item.correlation_id", APP)
