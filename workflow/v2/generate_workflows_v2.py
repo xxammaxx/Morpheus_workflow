@@ -2737,7 +2737,35 @@ return [{json:{valid:!errors.length,errors,envelope:e,command,role,payload:p||{}
 
     wf.add_node(if_node("Is Router Test?", [{"leftValue":"={{$json.route}}","rightValue":"=RUN_ROUTER_TEST","operator":{"type":"string","operation":"equals"}}], P(5,2)))
     wf.add_node(http_node("Read Router Runtime", "GET", cfg.adapter+"/v1/status/runtime", "{}", P(6,2), cfg.cr_harness, send_body=False))
-    wf.add_node(code_node("Router Test Result", "const r=$json.data||$json,providers=Array.isArray(r.providers)?r.providers:[],p=$('Restore Valid Command').first().json.payload||{},name=String(p.test||'Dynamischer Router'),deep=providers.some(x=>/deepseek/i.test(String(x.provider||'')+' '+String(x.model||''))),free=providers.filter(x=>x.free_eligible===true&&x.catalog_eligible!==false&&x.router_eligible!==false),tools=free.filter(x=>x.capabilities&&x.capabilities.TOOL_CAPABLE===true),vision=free.filter(x=>x.capabilities&&x.capabilities.VISION_CAPABLE===true),checks=name==='Free Pool'?{catalog_refreshed:Boolean(r.checked_at),eligible_zero_cost_count:free.length}:name==='DeepSeek Sperre'?{catalog_ineligible:!deep,explicit_request_rejected:true,provider_contact:false}:name==='Tool Routing'?{tool_capable_zero_cost_selected:tools.length>0}:name==='Vision Routing'?{vision_hard_filter:vision.length>0}:name==='Paid Fallback Sperre'?{paid_fallback_unavailable:r.automatic_paid_agent_escalation===false}: {dynamic_free_pool:r.free_first_enabled===true,paid_fallback:r.automatic_paid_agent_escalation===false,deepseek_excluded:!deep},ok=name==='DeepSeek Sperre'?checks.catalog_ineligible&&checks.explicit_request_rejected&&!checks.provider_contact:Object.values(checks).every(x=>x===true||typeof x==='number'&&x>0); return [{json:{status:ok?'OK':'NICHT_OK',module:'router',test:name,source:'adapter',checks,details:{eligible_zero_cost:free.length,tool_capable_zero_cost:tools.length,vision_capable_zero_cost:vision.length}}}];", P(7,2))); wf.add_node(respond_node("Respond Router Test", P(8,2)))
+    router_test_js = r"""const r=$json.data||$json;
+const providers=Array.isArray(r.providers)?r.providers:[];
+const p=$('Restore Valid Command').first().json.payload||{};
+const name=String(p.test||'Dynamischer Router');
+const deep=providers.some(x=>/deepseek/i.test(String(x.provider||'')+' '+String(x.model||'')));
+const free=providers.filter(x=>x.free_eligible===true&&x.catalog_eligible!==false&&x.router_eligible!==false);
+const tools=free.filter(x=>x.capabilities&&x.capabilities.TOOL_CAPABLE===true);
+const vision=free.filter(x=>x.capabilities&&x.capabilities.VISION_CAPABLE===true);
+const structured=free.filter(x=>x.capabilities&&x.capabilities.STRUCTURED_OUTPUT_CAPABLE===true);
+const healthy=providers.filter(x=>x.health==='HEALTHY');
+const checksByTest={
+  'Dynamischer Router':{free_first_enabled:r.free_first_enabled===true,eligible_free_route:free.length>0,paid_fallback_disabled:r.automatic_paid_agent_escalation===false,deepseek_excluded:!deep},
+  'Modellkatalog':{catalog_observed:Boolean(r.checked_at),providers_observed:providers.length>0,deepseek_excluded:!deep},
+  'Free Pool':{catalog_refreshed:Boolean(r.checked_at),eligible_zero_cost_count:free.length},
+  'Credential-Erkennung':{provider_health_observed:healthy.length>0,credential_values_not_exposed:providers.every(x=>!('key' in x)&&!('token' in x)&&!('secret' in x))},
+  'Capability Filter':{capabilities_observed:providers.some(x=>x.capabilities&&typeof x.capabilities==='object'),eligible_pool_bounded:free.length<=providers.length,deepseek_excluded:!deep},
+  'Tool Routing':{tool_capable_zero_cost_selected:tools.length>0,free_route_available:free.length>0},
+  'Vision Routing':{vision_capable_zero_cost_selected:vision.length>0,free_route_available:free.length>0},
+  'Structured Output':{structured_output_zero_cost_available:structured.length>0,free_route_available:free.length>0},
+  'Transport Failover':{free_route_available:free.length>0,lease_state_observed:Boolean(r.provider_lease_state),paid_fallback_disabled:r.automatic_paid_agent_escalation===false},
+  'Semantic Failover':{free_route_available:free.length>0,lease_state_observed:Boolean(r.provider_lease_state),deepseek_excluded:!deep},
+  'Run Blacklist':{quarantined_routes_excluded:free.every(x=>x.quarantined!==true),free_route_available:free.length>0},
+  'Paid Fallback Sperre':{paid_fallback_unavailable:r.automatic_paid_agent_escalation===false,free_first_enabled:r.free_first_enabled===true},
+  'DeepSeek Sperre':{catalog_ineligible:!deep,explicit_request_rejected:true,provider_contact:false},
+};
+const checks=checksByTest[name]||checksByTest['Dynamischer Router'];
+const ok=name==='DeepSeek Sperre'?checks.catalog_ineligible&&checks.explicit_request_rejected&&!checks.provider_contact:Object.values(checks).every(x=>x===true||typeof x==='number'&&x>0);
+return [{json:{status:ok?'OK':'NICHT_OK',module:'router',test:name,source:'adapter',checks,details:{diagnostic:name,provider_count:providers.length,healthy_provider_count:healthy.length,eligible_zero_cost:free.length,tool_capable_zero_cost:tools.length,vision_capable_zero_cost:vision.length,structured_output_zero_cost:structured.length,lease_state_observed:Boolean(r.provider_lease_state)}}}];"""
+    wf.add_node(code_node("Router Test Result", router_test_js, P(7,2))); wf.add_node(respond_node("Respond Router Test", P(8,2)))
     wf.add("Is Issue Start?", "Is Router Test?", 1); wf.add("Is Router Test?", "Read Router Runtime", 0); wf.add("Read Router Runtime", "Router Test Result"); wf.add("Router Test Result", "Respond Router Test")
 
     wf.add_node(if_node("Is MCP Test?", [{"leftValue":"={{$json.route}}","rightValue":"=RUN_MCP_TEST","operator":{"type":"string","operation":"equals"}}], P(5,3)))

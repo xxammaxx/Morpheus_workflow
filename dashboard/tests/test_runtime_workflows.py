@@ -50,8 +50,16 @@ class RuntimeWorkflowTests(unittest.TestCase):
         self.assertIn("Prepare Canonical Run Action", {node["name"] for node in gateway["nodes"]})
         router_test = next(node for node in gateway["nodes"] if node["name"] == "Router Test Result")
         self.assertIn("first().json.payload", router_test["parameters"]["jsCode"])
-        self.assertIn("name==='Free Pool'", router_test["parameters"]["jsCode"])
+        router_js = router_test["parameters"]["jsCode"]
+        self.assertIn("'Free Pool':", router_js)
         self.assertIn("!checks.provider_contact", router_test["parameters"]["jsCode"])
+        for diagnostic in (
+            "Dynamischer Router", "Modellkatalog", "Free Pool", "Credential-Erkennung",
+            "Capability Filter", "Tool Routing", "Vision Routing", "Structured Output",
+            "Transport Failover", "Semantic Failover", "Run Blacklist",
+            "Paid Fallback Sperre", "DeepSeek Sperre",
+        ):
+            self.assertIn("'%s':" % diagnostic, router_js)
 
     def test_done_path_calls_n8n_reassessment(self):
         workflows = self._generate()
