@@ -43,6 +43,8 @@ class RuntimeWorkflowTests(unittest.TestCase):
         self.assertEqual(webhook["parameters"]["path"], "autodev/control")
         self.assertEqual(webhook["parameters"]["authentication"], "headerAuth")
         self.assertIn("COMMAND_NOT_ALLOWED", next(node for node in gateway["nodes"] if node["name"] == "Validate Control Command")["parameters"]["jsCode"])
+        self.assertIn("autodev/project/reassess", json.dumps(gateway))
+        self.assertIn("COMMAND_NOT_IMPLEMENTED", json.dumps(gateway))
 
     def test_done_path_calls_n8n_reassessment(self):
         workflows = self._generate()
@@ -56,6 +58,12 @@ class RuntimeWorkflowTests(unittest.TestCase):
         self.assertNotIn("execute shell", gateway.lower())
         self.assertNotIn("exec arbitrary", gateway.lower())
         self.assertIn("/usr/local/bin/opencode mcp list", gateway)
+
+    def test_blueprint_dry_run_never_writes_github(self):
+        workflows = self._generate()
+        blueprint = json.dumps(workflows["07 AutoDev Blueprint Bootstrap"])
+        self.assertIn("p.dry_run!==true", blueprint)
+        self.assertIn("blueprint_write", blueprint)
 
 
 if __name__ == "__main__":
