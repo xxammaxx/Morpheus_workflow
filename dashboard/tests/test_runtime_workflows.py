@@ -45,6 +45,8 @@ class RuntimeWorkflowTests(unittest.TestCase):
         self.assertIn("COMMAND_NOT_ALLOWED", next(node for node in gateway["nodes"] if node["name"] == "Validate Control Command")["parameters"]["jsCode"])
         self.assertIn("autodev/project/reassess", json.dumps(gateway))
         self.assertIn("COMMAND_NOT_IMPLEMENTED", json.dumps(gateway))
+        self.assertIn("overall", json.dumps(gateway))
+        self.assertIn("modules", json.dumps(gateway))
 
     def test_done_path_calls_n8n_reassessment(self):
         workflows = self._generate()
