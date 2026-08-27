@@ -2735,13 +2735,13 @@ return [{json:{valid:!errors.length,errors,envelope:e,command,role,payload:p||{}
 
     wf.add_node(if_node("Is Router Test?", [{"leftValue":"={{$json.route}}","rightValue":"=RUN_ROUTER_TEST","operator":{"type":"string","operation":"equals"}}], P(5,2)))
     wf.add_node(http_node("Read Router Runtime", "GET", cfg.adapter+"/v1/status/runtime", "{}", P(6,2), cfg.cr_harness, send_body=False))
-    wf.add_node(code_node("Router Test Result", "return [{json:{status:'OK',module:'router',source:'adapter',runtime:$json}}];", P(7,2))); wf.add_node(respond_node("Respond Router Test", P(8,2)))
+    wf.add_node(code_node("Router Test Result", "const r=$json.data||$json,providers=Array.isArray(r.providers)?r.providers:[],ok=r.free_first_enabled===true&&r.automatic_paid_agent_escalation===false&&!providers.some(p=>/deepseek/i.test(String(p.provider||'')+' '+String(p.model||''))); return [{json:{status:ok?'OK':'NICHT_OK',module:'router',source:'adapter',checks:{dynamic_free_pool:r.free_first_enabled===true,paid_fallback:r.automatic_paid_agent_escalation===false,deepseek_excluded:!providers.some(p=>/deepseek/i.test(String(p.provider||'')+' '+String(p.model||'')))},runtime:r}}];", P(7,2))); wf.add_node(respond_node("Respond Router Test", P(8,2)))
     wf.add("Is Issue Start?", "Is Router Test?", 1); wf.add("Is Router Test?", "Read Router Runtime", 0); wf.add("Read Router Runtime", "Router Test Result"); wf.add("Router Test Result", "Respond Router Test")
 
     wf.add_node(if_node("Is MCP Test?", [{"leftValue":"={{$json.route}}","rightValue":"=RUN_MCP_TEST","operator":{"type":"string","operation":"equals"}}], P(5,3)))
     if cfg.cr_ssh:
-        wf.add_node(ssh_exec_node("Discover MCP Tools", "/root/.opencode/bin/opencode mcp list --json 2>&1 | head -c 12000", P(6,3), cfg.cr_ssh))
-        wf.add_node(code_node("MCP Test Result", "const o=String($json.stdout||$json.data||''); return [{json:{status:o?'OK':'NICHT_OK',module:'mcp',failed_stage:o?null:'TOOL_DISCOVERY',safe_error_message:o?null:'No MCP discovery output',output:o.slice(0,12000)}}];", P(7,3)))
+        wf.add_node(ssh_exec_node("Discover MCP Tools", "/usr/local/bin/opencode mcp list 2>&1", P(6,3), cfg.cr_ssh))
+        wf.add_node(code_node("MCP Test Result", "const o=String($json.stdout||$json.data||''),failed=/permission denied|command not found|error/i.test(o),configured=!/No MCP servers configured/i.test(o); return [{json:{status:o&&!failed&&configured?'OK':'NICHT_OK',module:'mcp',failed_stage:o?(!configured?'NO_CONFIGURED_SERVER':failed?'DISCOVERY_ERROR':null):'TOOL_DISCOVERY',safe_error_message:o?null:'No MCP discovery output',output:o.slice(0,12000)}}];", P(7,3)))
         wf.add("Is Router Test?", "Is MCP Test?", 1); wf.add("Is MCP Test?", "Discover MCP Tools", 0); wf.add("Discover MCP Tools", "MCP Test Result")
     else:
         wf.add_node(code_node("MCP Test Result", "return [{json:{status:'NICHT_OK',module:'mcp',failed_stage:'CONFIGURATION',safe_error_message:'Runner SSH credential unavailable'}}];", P(7,3))); wf.add("Is Router Test?", "Is MCP Test?", 1); wf.add("Is MCP Test?", "MCP Test Result", 0)
@@ -2749,7 +2749,7 @@ return [{json:{valid:!errors.length,errors,envelope:e,command,role,payload:p||{}
 
     wf.add_node(if_node("Is System Test?", [{"leftValue":"={{$json.route}}","rightValue":"=RUN_SYSTEM_TEST","operator":{"type":"string","operation":"equals"}}], P(5,4)))
     wf.add_node(http_node("Read n8n System Status", "GET", cfg.n8n+"/workflows?limit=1", "{}", P(6,4), cfg.cr_n8n, send_body=False))
-    wf.add_node(code_node("System Test Result", "const ok=Array.isArray($json.data)||Array.isArray($json); return [{json:{status:ok?'OK':'NICHT_OK',module:'n8n',source:'n8n-public-api'}}];", P(7,4))); wf.add_node(respond_node("Respond System Test", P(8,4)))
+    wf.add_node(code_node("System Test Result", "const body=$json.data||$json,ok=Array.isArray(body)||Array.isArray(body.data); return [{json:{status:ok?'OK':'NICHT_OK',module:'n8n',source:'n8n-public-api',details:ok?'workflow API reachable':'workflow API returned unexpected contract'}}];", P(7,4))); wf.add_node(respond_node("Respond System Test", P(8,4)))
     wf.add("Is MCP Test?", "Is System Test?", 1); wf.add("Is System Test?", "Read n8n System Status", 0); wf.add("Read n8n System Status", "System Test Result"); wf.add("System Test Result", "Respond System Test")
 
     wf.add_node(if_node("Is Repo Analysis?", [{"leftValue":"={{$json.route}}","rightValue":"=START_REPO_ANALYSIS","operator":{"type":"string","operation":"equals"}}], P(5,5)))

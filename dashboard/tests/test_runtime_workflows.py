@@ -55,7 +55,7 @@ class RuntimeWorkflowTests(unittest.TestCase):
         gateway = json.dumps(workflows["05 AutoDev Control Gateway"])
         self.assertNotIn("execute shell", gateway.lower())
         self.assertNotIn("exec arbitrary", gateway.lower())
-        self.assertIn("/root/.opencode/bin/opencode mcp list --json", gateway)
+        self.assertIn("/usr/local/bin/opencode mcp list", gateway)
 
 
 if __name__ == "__main__":
