@@ -194,7 +194,7 @@ def project_projection(project_rows: list[dict], issue_rows: list[dict], run_row
         if not issues:
             issues = [{"status": "RUNNING" if any(str(r.get("state", "")).upper() in {"RUNNING", "ACTIVE", "BUILDING", "PLANNING"} for r in value["runs"]) else "UNKNOWN"}]
         statuses = [classify_issue(issue) for issue in issues]
-        current = next((r for r in sorted(value["runs"], key=lambda r: r.get("updated_at", ""), reverse=True) if str(r.get("state", "")).upper() not in {"DONE", "COMPLETED"}), None)
+        current = next((r for r in sorted(value["runs"], key=lambda r: r.get("updated_at") or "", reverse=True) if str(r.get("state", "")).upper() not in {"DONE", "COMPLETED"}), None)
         result.append({"project_id": project_id, "name": project.get("name") or project.get("project_name") or project_id,
                        "repository": project.get("repository_url") or project.get("repository_ref") or project_id,
                        "blueprint": project.get("blueprint_ref") or project.get("blueprint") or None,
