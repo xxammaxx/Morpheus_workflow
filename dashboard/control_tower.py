@@ -428,6 +428,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlparse(self.path).path
         if path == "/healthz":
             return self.send_json(200, {"status": "ok", "version": VERSION, "uptime_seconds": round(time.monotonic() - STARTED, 1)})
+        if path == "/favicon.ico":
+            self.send_response(204); self.headers_out(); self.send_header("Content-Length", "0"); self.end_headers(); return
         if path.startswith("/static/") or path == "/":
             if path == "/": path = "/static/index.html"
             target = (ROOT / path.lstrip("/")).resolve()
