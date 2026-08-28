@@ -23,6 +23,7 @@ DEFAULT_CREDENTIAL_ENV = {
     "groq": "GROQ_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
 }
+LOCAL_PROVIDERS = {"ollama", "lmstudio"}
 
 def apply_policy(entry, provider, account_class="unknown"):
     if is_deepseek_identifier(provider, entry.get("model")):
@@ -253,7 +254,11 @@ class ProviderCatalog:
         for provider in list(providers or self.adapters):
             if provider == "deepseek":
                 continue
-            if self.auth_inventory_known and provider not in self.authenticated_providers:
+            if (
+                self.auth_inventory_known
+                and provider not in self.authenticated_providers
+                and provider not in LOCAL_PROVIDERS
+            ):
                 continue
             adapter = self.adapters.get(provider)
             if adapter is None or (adapter.credential_env and not adapter.credential):
@@ -273,7 +278,11 @@ class ProviderCatalog:
                 entry["credential_valid"] = (
                     True if not adapter.credential_env else bool(adapter.credential)
                 )
-                entry["authenticated"] = not self.auth_inventory_known or provider in self.authenticated_providers
+                entry["authenticated"] = (
+                    not self.auth_inventory_known
+                    or provider in self.authenticated_providers
+                    or provider in LOCAL_PROVIDERS
+                )
                 capability = self.capability_registry.get(provider, entry.get("model"))
                 if capability:
                     entry["capabilities"] = capability.get("capabilities", {})
@@ -312,7 +321,10 @@ class ProviderCatalog:
             authenticated = authenticated_api_key_providers(load_auth_file(auth_path))
         self.auth_inventory_known = True
         for entry in self.entries:
-            entry["authenticated"] = bool(auth_path and entry.get("provider") in authenticated)
+            entry["authenticated"] = bool(
+                entry.get("provider") in LOCAL_PROVIDERS
+                or (auth_path and entry.get("provider") in authenticated)
+            )
             free_eligibility(entry)
         report = {"refresh": "FAILED", "catalog_entries": 0}
         try:
@@ -328,7 +340,11 @@ class ProviderCatalog:
                 provider = raw.get("provider")
                 if provider not in self.adapters or is_deepseek_identifier(provider, raw.get("model")):
                     continue
-                if self.auth_inventory_known and provider not in authenticated:
+                if (
+                    self.auth_inventory_known
+                    and provider not in authenticated
+                    and provider not in LOCAL_PROVIDERS
+                ):
                     continue
                 model = raw.get("model")
                 endpoint = self.adapters[provider].base_url
@@ -340,7 +356,7 @@ class ProviderCatalog:
                     "availability": True,
                     "health": "HEALTHY",
                     "account_class": "opencode-api-key",
-                    "authenticated": provider in authenticated,
+                    "authenticated": provider in authenticated or provider in LOCAL_PROVIDERS,
                     "provider_metadata": {"raw_model_metadata": raw},
                     "input_price": pricing.get("prompt"),
                     "output_price": pricing.get("completion"),
