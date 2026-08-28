@@ -35,6 +35,11 @@ TASK_CAPABILITIES = {
 }
 ROUTING_FAILURE_CLASSES = {"TRANSPORT", "SEMANTIC", "HARNESS"}
 
+# Provider identifiers and physical model identifiers are different domains.
+# Model IDs come from a trusted provider/OpenCode catalog, but still need a
+# bounded lexical check before they cross process and shell boundaries.
+MODEL_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9._/@:-]{1,128}\Z")
+
 
 def now_utc():
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
@@ -314,6 +319,20 @@ def promotion_eligibility(entry, decision=None):
 
 def safe_id(value):
     return bool(re.match(r"^[A-Za-z0-9._/-]{1,128}$", str(value or "")))
+
+
+def is_valid_model_identifier(value):
+    """Validate the lexical shape of a catalog model ID.
+
+    Catalog membership remains the authorization check.  This function only
+    permits the identifier forms used by current provider catalogs and
+    rejects controls, whitespace, and shell metacharacters before dispatch.
+    """
+    if not isinstance(value, str) or not value or len(value) > 128:
+        return False
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        return False
+    return MODEL_IDENTIFIER_RE.fullmatch(value) is not None
 
 
 def is_deepseek_identifier(provider, model):

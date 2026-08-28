@@ -67,11 +67,9 @@ class ProviderRouter:
             entry = copy.deepcopy(original)
             normalize_live_capabilities(entry)
             identity = "%s/%s" % (entry.get("provider"), entry.get("model"))
-            if (
-                request.model
-                and request.provider == entry.get("provider")
-                and entry.get("model") != request.model
-            ):
+            if request.model and entry.get("model") != request.model:
+                continue
+            if request.provider and request.provider != entry.get("provider"):
                 continue
             if is_deepseek_identifier(entry.get("provider"), entry.get("model")):
                 continue
@@ -112,6 +110,18 @@ class ProviderRouter:
             entry["_rank_score"] = self._rank_score(entry, request, state)
             rows.append(entry)
         return rows
+
+    def _ensure_requested_model_in_catalog(self, request):
+        """Keep an explicit physical model request exact and fail closed."""
+        if not request.model:
+            return
+        if any(
+            entry.get("model") == request.model
+            and (not request.provider or entry.get("provider") == request.provider)
+            for entry in self.catalog.model_entries()
+        ):
+            return
+        raise NoEligibleProvider("MODEL_NOT_IN_CATALOG")
 
     @staticmethod
     def _rank_score(entry, request, state):
@@ -158,6 +168,7 @@ class ProviderRouter:
 
     def select(self, request):
         assert_runtime_model_allowed(request.provider, request.model)
+        self._ensure_requested_model_in_catalog(request)
         rows = self._candidate_rows(request)
         if not rows:
             raise NoEligibleProvider("NO_ELIGIBLE_FREE_PROVIDER")
@@ -175,6 +186,7 @@ class ProviderRouter:
 
     def candidates(self, request):
         assert_runtime_model_allowed(request.provider, request.model)
+        self._ensure_requested_model_in_catalog(request)
         rows = self._candidate_rows(request)
         rows.sort(key=lambda entry: (-entry["_rank_score"], entry.get("provider", ""), entry.get("model", "")))
         return [
