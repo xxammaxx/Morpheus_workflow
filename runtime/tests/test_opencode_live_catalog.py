@@ -144,7 +144,6 @@ def test_live_refresh_reconciles_local_adapter_when_opencode_omits_provider(tmp_
                 "llama-3.2-1b-instruct@q4_k_m",
                 self.base_url,
                 availability=True,
-                health="HEALTHY",
                 capabilities={"RESEARCH_CAPABLE": True},
             )]
 
@@ -170,6 +169,7 @@ def test_live_refresh_reconciles_local_adapter_when_opencode_omits_provider(tmp_
     assert entry["provider"] == "lmstudio"
     assert entry["model"] == "llama-3.2-1b-instruct@q4_k_m"
     assert entry["authenticated"] is True
+    assert entry["health"] == "HEALTHY"
     assert entry["zero_cost_verified"] is True
     assert entry["route_cost_proven"] is True
     assert probe_eligibility(entry) is True

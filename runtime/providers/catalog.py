@@ -269,6 +269,10 @@ class ProviderCatalog:
             except Exception:
                 discovered = []
             for entry in discovered:
+                if provider in LOCAL_PROVIDERS:
+                    # A successful authoritative local model discovery is
+                    # also a live health check for that local endpoint.
+                    entry["health"] = "HEALTHY"
                 apply_policy(
                     entry,
                     provider,
