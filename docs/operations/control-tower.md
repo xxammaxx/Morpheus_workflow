@@ -23,7 +23,7 @@ Repository oder im Browser gespeichert. Die sichtbare Oberfläche ist Deutsch.
 Die Datenquellen sind die öffentlichen n8n-Data-Tables `autodev_runs`,
 `autodev_attempts` und optional `autodev_projects`, `autodev_issues`,
 `autodev_events`, die n8n-Workflow-/Ausführungssicht und authentifizierte
-Adapter-GET-Endpunkte. Der Browser aktualisiert alle fünf Sekunden, solange
+Adapter-GET-Endpunkte. Der Browser aktualisiert einmal pro Sekunde, solange
 der Tab sichtbar ist. Reads sind Projektionen; mutierende Aktionen laufen
 über `POST /api/v1/commands` und werden ausschließlich an den allow-list-
 basierten n8n-Webhook weitergeleitet. Es gibt keinen lokalen Run-State- oder
@@ -39,7 +39,7 @@ UI-Nachführung und niemals den Run.
 
 `GET /api/v1/telemetry/runtime` ist eine authentifizierte, read-only Projektion
 des Contracts `autodev.runtime-telemetry.v1`. Die Übersicht nutzt dieselbe
-Projektion und pollt sie höchstens im bestehenden 5-Sekunden-Lifecycle; der
+Projektion und pollt sie im bestehenden 1-Sekunden-Lifecycle; der
 Backend-Cache coalesced Samples für mindestens zwei Sekunden. Es gibt keine
 persistente Metrics-Datenbank. Kurze Sparklines stammen aus einem begrenzten
 In-Memory-Ring; längere Containerverläufe werden, falls verfügbar, aus

@@ -25,6 +25,15 @@ CONTRACT = "autodev.runtime-telemetry.v1"
 SAMPLE_CACHE_SECONDS = max(2.0, float(os.environ.get("RUNTIME_TELEMETRY_CACHE_SECONDS", "3")))
 STALE_AFTER_SECONDS = max(SAMPLE_CACHE_SECONDS * 2, float(os.environ.get("RUNTIME_TELEMETRY_STALE_SECONDS", "10")))
 HISTORY_LIMIT = 30
+EXECUTION_EVIDENCE_MAX_AGE_SECONDS = max(STALE_AFTER_SECONDS, 15.0)
+ACTIVE_EXECUTION_STATES = frozenset({"running", "in_progress", "started", "active"})
+FINISHED_EXECUTION_STATES = frozenset({"completed", "complete", "finished", "failed", "interrupted", "cancelled", "canceled"})
+EXECUTION_START_EVENTS = frozenset({"MODEL_EXECUTION_STARTED", "EXECUTION_STARTED", "MODEL_ATTEMPT_STARTED"})
+EXECUTION_FINISH_EVENTS = frozenset({"MODEL_EXECUTION_FINISHED", "EXECUTION_FINISHED", "MODEL_ATTEMPT_FINISHED"})
+# nvidia-smi may return either the executable basename or its full path.  Keep
+# this an explicit allowlist: GPU process presence is evidence only after the
+# same-run execution context has already been established.
+LMSTUDIO_GPU_PROCESS_BASENAMES = frozenset({"lmstudio", "llama-server"})
 NVIDIA_GPU_FIELDS = (
     "index", "uuid", "name", "driver_version", "memory.total", "utilization.gpu",
     "utilization.memory", "memory.used", "temperature.gpu", "power.draw",
@@ -114,6 +123,153 @@ def _load_json_env(name, default):
         return default
 
 
+def _text(value):
+    return str(value).strip() if value is not None else ""
+
+
+def _parse_event_time(value):
+    if not value:
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(_text(value).replace("Z", "+00:00"))
+        return parsed.replace(tzinfo=dt.timezone.utc) if parsed.tzinfo is None else parsed.astimezone(dt.timezone.utc)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _event_time(event):
+    return _parse_event_time(event.get("timestamp") or event.get("ts") or event.get("created_at") or event.get("started_at") or event.get("ended_at"))
+
+
+def _event_stage(event):
+    return _text(event.get("stage") or event.get("job_type") or event.get("current_job") or event.get("job"))
+
+
+def _identity_tuple(record, prefix=""):
+    provider = _text(record.get(prefix + "provider"))
+    model = _text(record.get(prefix + "model"))
+    return (provider, model) if provider and model else None
+
+
+def _record_identity(record):
+    """Return one atomic provider/model tuple and its evidence strength."""
+    for strength, source, prefix in (
+        (4, "actual_event", "actual_"),
+        (3, "selected_event", "selected_"),
+        (2, "execution_event", ""),
+    ):
+        identity = _identity_tuple(record, prefix)
+        if identity:
+            return {"provider": identity[0], "model": identity[1], "strength": strength, "source": source, "record": record}
+    return None
+
+
+def _run_identity(run):
+    for strength, source, prefix in (
+        (1, "canonical_run_actual", "actual_"),
+        (1, "canonical_run_selected", "selected_"),
+    ):
+        identity = _identity_tuple(run, prefix)
+        if identity:
+            return {"provider": identity[0], "model": identity[1], "strength": strength, "source": source, "record": run}
+    provider = _text(run.get("actual_provider") or run.get("selected_provider") or run.get("provider"))
+    model = _text(run.get("resolved_model") or run.get("actual_model") or run.get("selected_model") or run.get("model"))
+    if provider and model:
+        return {"provider": provider, "model": model, "strength": 1, "source": "canonical_run", "record": run}
+    return None
+
+
+def _event_is_lifecycle(event):
+    name = _text(event.get("event") or event.get("type")).upper()
+    status = _text(event.get("status")).lower()
+    return name in EXECUTION_START_EVENTS or name in EXECUTION_FINISH_EVENTS or status in ACTIVE_EXECUTION_STATES or status in FINISHED_EXECUTION_STATES
+
+
+def _event_is_active(event):
+    name = _text(event.get("event") or event.get("type")).upper()
+    status = _text(event.get("status")).lower()
+    return name in EXECUTION_START_EVENTS or status in ACTIVE_EXECUTION_STATES
+
+
+def _event_is_finished(event):
+    name = _text(event.get("event") or event.get("type")).upper()
+    status = _text(event.get("status")).lower()
+    return name in EXECUTION_FINISH_EVENTS or status in FINISHED_EXECUTION_STATES
+
+
+def _fresh_event(event, reference, max_age_seconds):
+    timestamp = _event_time(event)
+    if timestamp is None or timestamp > reference:
+        return False
+    return (reference - timestamp).total_seconds() <= max_age_seconds
+
+
+def resolve_execution_context(run, events, reference=None):
+    """Project one read-only execution context from same-run evidence.
+
+    Events are hard-bound to the active run and, when supplied by the
+    canonical run, to its attempt and stage.  Provider/model is always taken
+    as an atomic tuple from one record; this helper never combines fields from
+    separate events.
+    """
+    run = run if isinstance(run, dict) else {}
+    run_id = _text(run.get("run_id"))
+    reference = reference or dt.datetime.now(dt.timezone.utc)
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=dt.timezone.utc)
+    reference = reference.astimezone(dt.timezone.utc)
+    run_attempt = _text(run.get("attempt_id"))
+    run_stage = _event_stage(run)
+    correlated = []
+    for raw in events if isinstance(events, list) else []:
+        if not isinstance(raw, dict) or not run_id or _text(raw.get("run_id")) != run_id:
+            continue
+        event_attempt = _text(raw.get("attempt_id"))
+        event_stage = _event_stage(raw)
+        if run_attempt and event_attempt and event_attempt != run_attempt:
+            continue
+        if run_stage and event_stage and event_stage != run_stage:
+            continue
+        correlated.append(raw)
+    correlated.sort(key=lambda item: _event_time(item) or dt.datetime.min.replace(tzinfo=dt.timezone.utc))
+    lifecycle = [event for event in correlated if _event_is_lifecycle(event)]
+    latest_lifecycle = lifecycle[-1] if lifecycle else None
+    fresh_latest = bool(latest_lifecycle and _fresh_event(latest_lifecycle, reference, EXECUTION_EVIDENCE_MAX_AGE_SECONDS))
+    execution_active = bool(latest_lifecycle and _event_is_active(latest_lifecycle) and fresh_latest)
+
+    identity_records = []
+    for event in correlated:
+        identity = _record_identity(event)
+        if identity:
+            event_time = _event_time(event)
+            identity_records.append((identity["strength"], event_time or dt.datetime.min.replace(tzinfo=dt.timezone.utc), identity))
+    identity = max(identity_records, key=lambda item: (item[0], item[1]))[2] if identity_records else _run_identity(run)
+    provider = identity["provider"] if identity else None
+    model = identity["model"] if identity else None
+    matched_attempt = bool(run_attempt and any(_text(event.get("attempt_id")) == run_attempt for event in correlated if _text(event.get("attempt_id"))))
+    matched_stage = bool(run_stage and any(_event_stage(event) == run_stage for event in correlated if _event_stage(event)))
+    has_model = bool(provider and model)
+    return {
+        "run_id": run_id or None,
+        "attempt_id": _text(latest_lifecycle.get("attempt_id") if latest_lifecycle else run.get("attempt_id")) or None,
+        "stage": _event_stage(latest_lifecycle) if latest_lifecycle and _event_stage(latest_lifecycle) else (run_stage or None),
+        "selected_provider": _text(identity["record"].get("selected_provider")) or None if identity else None,
+        "selected_model": _text(identity["record"].get("selected_model")) or None if identity else None,
+        "actual_provider": _text(identity["record"].get("actual_provider")) or None if identity else None,
+        "actual_model": _text(identity["record"].get("actual_model")) or None if identity else None,
+        "provider": provider,
+        "model": model,
+        "execution_status": "ACTIVE" if execution_active else "IDLE",
+        "started_at": latest_lifecycle.get("started_at") if latest_lifecycle else None,
+        "ended_at": latest_lifecycle.get("ended_at") if latest_lifecycle else None,
+        "source": identity["source"] if identity else "none",
+        "confidence": "INFERRED" if execution_active and has_model else "HISTORICAL" if has_model and lifecycle else "NOT_CORRELATED",
+        "run_correlation": "PASS" if correlated else "NOT_PROVEN",
+        "attempt_correlation": "PASS" if matched_attempt else "NOT_PROVEN",
+        "stage_correlation": "PASS" if matched_stage else "NOT_PROVEN",
+        "model_correlation": "PASS" if has_model and correlated else "NOT_PROVEN",
+        "temporal_correlation": "PASS" if fresh_latest else "NOT_PROVEN",
+    }
 class _HTTPError(Exception):
     def __init__(self, status=0):
         super().__init__(str(status))
@@ -454,7 +610,7 @@ def _approved_stats(run):
     return found
 
 
-def lmstudio_telemetry(run, events):
+def lmstudio_telemetry(run, events, execution_context=None):
     sampled_at = utc_now()
     base, token, allowed = _lm_config()
     if not base:
@@ -473,28 +629,36 @@ def lmstudio_telemetry(run, events):
         return envelope("LMSTUDIO_API", sampled_at, code, host=parsed.hostname, port=parsed.port, model=None, server_status=code, inference_status="IDLE", stats={}, models=[])
     if model_path in {"AUTH_FAILED", "UNREACHABLE"}:
         return envelope("LMSTUDIO_API", sampled_at, model_path, host=parsed.hostname, port=parsed.port, model=None, server_status=model_path, inference_status="IDLE", stats={}, models=[])
-    provider = str((run or {}).get("actual_provider") or "").lower()
-    active = str((run or {}).get("state") or "").upper() in {"ACCEPTED", "BASELINING", "RESEARCHING", "PLANNING", "BUILDING", "VERIFYING", "REVIEWING", "DECIDING", "RUNNING", "ACTIVE"}
-    observed_lm = provider in {"lmstudio", "local_lmstudio"} and active
+    context = execution_context or resolve_execution_context(run or {}, events or [])
+    provider = _text(context.get("provider")).lower()
+    observed_lm = provider in {"lmstudio", "local_lmstudio"} and context.get("execution_status") == "ACTIVE"
     stats = _approved_stats(run)
-    model = (run or {}).get("actual_model") or (run or {}).get("resolved_model") if observed_lm else None
-    return envelope("LMSTUDIO_API", sampled_at, "LIVE", host=parsed.hostname, port=parsed.port, server_status="ONLINE", inference_status="GENERATING" if observed_lm else "IDLE", model=model, models=models, model_endpoint=model_path, stats=stats, stats_source=stats.get("stats_source", "NOT_AVAILABLE"), correlation={"project_id": run.get("project_id") if observed_lm else None, "run_id": run.get("run_id") if observed_lm else None, "attempt_id": run.get("attempt_id") if observed_lm else None, "stage": run.get("current_job") if observed_lm else None, "provider": provider if observed_lm else None})
+    model = context.get("model") if provider in {"lmstudio", "local_lmstudio"} else None
+    correlation = dict(context)
+    correlation["project_id"] = run.get("project_id") if observed_lm else None
+    correlation["provider"] = provider if provider in {"lmstudio", "local_lmstudio"} else None
+    return envelope("LMSTUDIO_API", sampled_at, "LIVE", host=parsed.hostname, port=parsed.port, server_status="ONLINE", inference_status="GENERATING" if observed_lm else "IDLE", model=model, models=models, model_endpoint=model_path, stats=stats, stats_source=stats.get("stats_source", "NOT_AVAILABLE"), execution_status=context.get("execution_status"), correlation=correlation)
 
 
 def _build(run, events):
+    context = resolve_execution_context(run or {}, events or [])
     gpu = gpu_telemetry()
-    lmstudio = lmstudio_telemetry(run or {}, events)
-    process_names = [str(item.get("process_name") or "").lower() for device in gpu.get("gpus", []) for item in device.get("processes", [])]
-    correlated_process = any("lmstudio" in name or "llm" in name for name in process_names)
+    lmstudio = lmstudio_telemetry(run or {}, events, context)
+    lmstudio.setdefault("correlation", dict(context))
+    process_names = [os.path.basename(_text(item.get("process_name")).rstrip("/\\")).lower() for device in gpu.get("gpus", []) for item in device.get("processes", [])]
+    recognized_process = any(name in LMSTUDIO_GPU_PROCESS_BASENAMES for name in process_names)
+    correlated_process = gpu.get("status") == "LIVE" and recognized_process
     if lmstudio.get("inference_status") == "GENERATING":
-        gpu["inference_correlation"] = "HIGH" if correlated_process else "NOT_CORRELATED"
+        gpu["inference_correlation"] = "HIGH" if correlated_process else "INFERRED" if gpu.get("status") == "LIVE" else "NOT_CORRELATED"
         lmstudio["gpu_offload"] = "PROVEN" if correlated_process else "NOT_PROVEN"
+        lmstudio["correlation"]["confidence"] = gpu["inference_correlation"]
     else:
         gpu["inference_correlation"] = "NOT_CORRELATED"
         lmstudio["gpu_offload"] = "NOT_APPLICABLE"
+        lmstudio["correlation"]["confidence"] = "NOT_CORRELATED"
     return {
         "contract": CONTRACT, "version": "v1", "sampled_at": utc_now(), "source": "CONTROL_TOWER_READ_ONLY",
-        "age_ms": 0, "freshness": "LIVE", "run": {"project_id": run.get("project_id") if run else None, "run_id": run.get("run_id") if run else None, "attempt_id": run.get("attempt_id") if run else None, "stage": run.get("current_job") if run else None, "provider": (run or {}).get("actual_provider") or (run or {}).get("selected_provider") if run else None, "model": (run or {}).get("actual_model") or (run or {}).get("resolved_model") if run else None},
+        "age_ms": 0, "freshness": "LIVE", "run": {"project_id": run.get("project_id") if run else None, "run_id": context.get("run_id"), "attempt_id": context.get("attempt_id"), "stage": context.get("stage"), "provider": context.get("provider"), "model": context.get("model"), "execution_status": context.get("execution_status"), "confidence": context.get("confidence")},
         "proxmox": proxmox_telemetry(run or {}), "gpus": gpu.get("gpus", []), "gpu_telemetry": gpu, "lmstudio": lmstudio,
         "architecture": {"n8n_sole_control_plane": True, "second_sor": False, "runtime_dashboard_writes": 0, "no_private_cot_storage": True},
     }
@@ -506,12 +670,14 @@ class TelemetryCache:
         self._sampled_monotonic = 0.0
         self._value = None
         self._run_id = None
+        self._input_key = None
 
     def get(self, run, events):
         current = time.monotonic()
         run_id = (run or {}).get("run_id")
+        input_key = json.dumps({"run": run or {}, "events": events or []}, sort_keys=True, default=str, separators=(",", ":"))
         with self._lock:
-            if self._value is not None and self._run_id == run_id and current - self._sampled_monotonic < SAMPLE_CACHE_SECONDS:
+            if self._value is not None and self._run_id == run_id and self._input_key == input_key and current - self._sampled_monotonic < SAMPLE_CACHE_SECONDS:
                 value = json.loads(json.dumps(self._value))
                 age = int((current - self._sampled_monotonic) * 1000)
                 value["age_ms"] = age
@@ -525,6 +691,7 @@ class TelemetryCache:
             value = _build(run, events)
             self._value = value
             self._run_id = run_id
+            self._input_key = input_key
             self._sampled_monotonic = current
             return json.loads(json.dumps(value))
 
