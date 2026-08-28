@@ -355,6 +355,8 @@ def _run_fixed(command):
     if result.returncode != 0:
         if "not found" in error.lower() or "no such file" in error.lower():
             return None, "NVIDIA_SMI_NOT_INSTALLED"
+        if "host key verification failed" in error.lower() or "permission denied" in error.lower() or "could not resolve hostname" in error.lower():
+            return None, "GPU_HOST_UNREACHABLE"
         if "driver" in error.lower() or "failed" in error.lower():
             return None, "NVIDIA_DRIVER_UNAVAILABLE"
         return None, "GPU_HOST_UNREACHABLE"
