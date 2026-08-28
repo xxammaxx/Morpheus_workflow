@@ -12,6 +12,8 @@ from providers.opencode import (  # noqa: E402
     parse_catalog_output,
 )
 from providers.capabilities import normalize_live_capabilities  # noqa: E402
+from providers.catalog import ProviderCatalog  # noqa: E402
+from providers.protocol import probe_eligibility  # noqa: E402
 
 
 def test_auth_kinds_are_distinguished_without_exposing_values():
@@ -88,3 +90,43 @@ def test_live_opencode_capabilities_are_conservative_and_machine_readable():
     assert entry["capabilities"]["LONG_CONTEXT_CAPABLE"] is True
     assert entry["capabilities"]["RESEARCH_CAPABLE"] is True
     assert entry["capabilities"]["BUILD_CAPABLE"] is True
+
+
+def test_local_provider_is_not_blocked_by_api_key_auth_inventory(tmp_path, monkeypatch):
+    auth_file = tmp_path / "auth.json"
+    auth_file.write_text(json.dumps({"openrouter": {"type": "api", "key": "fixture"}}))
+
+    class LocalAdapter:
+        base_url = "http://192.168.1.50:1234/v1"
+        credential_env = ""
+
+    monkeypatch.setattr(
+        "providers.catalog.refresh_catalog",
+        lambda *args, **kwargs: {
+            "entries": [{
+                "provider": "lmstudio",
+                "model": "llama-3.2-1b-instruct@q4_k_m",
+                "pricing": {"prompt": 0, "completion": 0},
+                "capabilities": {"RESEARCH_CAPABLE": True},
+            }],
+        },
+    )
+    monkeypatch.setenv(
+        "AUTODEV_LOCAL_ZERO_COST_TRUSTED_ENDPOINTS",
+        "http://192.168.1.50:1234/v1",
+    )
+
+    catalog = ProviderCatalog(
+        path=str(tmp_path / "catalog.json"),
+        adapters={"lmstudio": LocalAdapter()},
+    )
+    report = catalog.refresh_live(auth_file=str(auth_file), opencode_bin="unused")
+
+    assert report == {"refresh": "PASS", "catalog_entries": 1}
+    entry = catalog.entries[0]
+    assert entry["provider"] == "lmstudio"
+    assert entry["model"] == "llama-3.2-1b-instruct@q4_k_m"
+    assert entry["authenticated"] is True
+    assert entry["cost_class"] in {"LOCAL_ZERO_COST", "FREE_HARD_STOP"}
+    assert entry["capabilities"]["RESEARCH_CAPABLE"] is True
+    assert probe_eligibility(entry) is True
