@@ -1411,6 +1411,21 @@ def _opencode_script(
         raise RuntimeError("NO_ELIGIBLE_FREE_MODEL")
     assert_runtime_model_allowed(provider, model)
     attempt_timeout_s = max(1, int(timeout_s or DEFAULT_TIMEOUT_S))
+    model_config = {}
+    if provider == "lmstudio":
+        raw_endpoint = os.environ.get("LMSTUDIO_BASE_URL", "").strip().rstrip("/")
+        endpoint = raw_endpoint if raw_endpoint.endswith("/v1") else raw_endpoint + "/v1"
+        parsed_endpoint = urllib.parse.urlparse(endpoint)
+        if (
+            parsed_endpoint.scheme not in ("http", "https")
+            or not parsed_endpoint.hostname
+            or any(char in endpoint for char in ("\x00", "\r", "\n", "'"))
+        ):
+            raise RuntimeError("LMSTUDIO_ENDPOINT_INVALID")
+        model_config = {
+            "npm": "@ai-sdk/openai-compatible",
+            "options": {"baseURL": endpoint},
+        }
     config = json.dumps({
         "$schema": "https://opencode.ai/config.json",
         "share": "disabled",
@@ -1418,7 +1433,7 @@ def _opencode_script(
         "provider": {
             provider: {
                 "models": {
-                    model: {}
+                    model: model_config
                 }
             }
         }
