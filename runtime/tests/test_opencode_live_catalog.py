@@ -128,5 +128,6 @@ def test_local_provider_is_not_blocked_by_api_key_auth_inventory(tmp_path, monke
     assert entry["model"] == "llama-3.2-1b-instruct@q4_k_m"
     assert entry["authenticated"] is True
     assert entry["cost_class"] in {"LOCAL_ZERO_COST", "FREE_HARD_STOP"}
+    assert entry["zero_cost_verified"] is True
     assert entry["capabilities"]["RESEARCH_CAPABLE"] is True
     assert probe_eligibility(entry) is True
