@@ -20,6 +20,7 @@ from control_center import (ADMIN_COMMANDS, COMMAND_PATHS, OPERATOR_COMMANDS,
                             correlation_id,
                             project_projection, redact, role_for_token,
                             validate_command)
+from telemetry import runtime_telemetry
 
 VERSION = "1.2.0"
 ACTIVE_RUN_STATES = frozenset({"ACCEPTED", "BASELINING", "RESEARCHING", "PLANNING", "BUILDING", "VERIFYING", "REVIEWING", "DECIDING", "RUNNING", "ACTIVE"})
@@ -199,7 +200,7 @@ def list_items(payload):
 def sanitize_run(row):
     if not isinstance(row, dict):
         return {}
-    allowed = ("run_id", "project_id", "issue_number", "state", "current_job", "decision", "reason_code", "created_at", "updated_at", "started_at", "ended_at", "job_id", "attempt_id", "job", "status", "result_ref", "task_ref", "repository_ref", "attempt_count", "failure_signature", "strategy_delta", "selected_provider", "selected_model", "resolved_model", "actual_provider", "actual_model", "cost_class", "actual_cost", "free_eligible", "fallback_chain", "paid_escalation", "harness_id", "harness_fingerprint", "input_contract", "output_contract", "payload", "source", "target", "worker_id", "mcp_call_id", "routing_event_id", "correlation_id", "contract", "validation")
+    allowed = ("run_id", "project_id", "issue_number", "state", "current_job", "decision", "reason_code", "created_at", "updated_at", "started_at", "ended_at", "job_id", "attempt_id", "job", "status", "result_ref", "task_ref", "repository_ref", "attempt_count", "failure_signature", "strategy_delta", "selected_provider", "selected_model", "resolved_model", "actual_provider", "actual_model", "cost_class", "actual_cost", "free_eligible", "fallback_chain", "paid_escalation", "harness_id", "harness_fingerprint", "input_contract", "output_contract", "payload", "source", "target", "worker_id", "mcp_call_id", "routing_event_id", "correlation_id", "contract", "validation", "backend", "runtime_backend", "runtime_guest_id", "runtime_guest", "runtime_guests", "usage")
     return {key: row.get(key) for key in allowed if key in row}
 
 
@@ -326,6 +327,13 @@ def debugging_events(run_id=None):
     return sorted(events, key=lambda x: x.get("timestamp") or ""), bool(events)
 
 
+def telemetry_projection():
+    runs, _ = table_rows("runs")
+    active = choose_active_run([sanitize_run(x) for x in runs])
+    events, _ = debugging_events(active.get("run_id") if active else None)
+    return runtime_telemetry(active or {}, events)
+
+
 def projection():
     runs, runs_ok = table_rows("runs")
     attempts, attempts_ok = table_rows("attempts")
@@ -353,6 +361,7 @@ def projection():
     project_rows = project_projection(projects, issues, clean_runs)
     active = choose_active_run(clean_runs)
     debug, debug_ok = debugging_events(active.get("run_id") if active else None)
+    telemetry = runtime_telemetry(active or {}, debug)
     pool_health = provider_pool_status(len(pool))
     pool_module = {"status": pool_health, "diagnostic_status": "OK" if pool_health == "HEALTHY" else "NICHT_OK", "role": "REQUIRED", "checked_at": now(), "freshness_seconds": 0}
     event_module = safe_status(debug_ok)
@@ -366,7 +375,7 @@ def projection():
     optional_missing = []
     if mcp_module["status"] == "NICHT_KONFIGURIERT": optional_missing.append("MCP")
     if lmstudio_module["status"] == "NICHT_KONFIGURIERT": optional_missing.append("LM Studio")
-    return {"contract": "autodev.control-tower-overview.v1", "version": "v1", "generated_at": now(), "freshness": {"checked_at": now(), "freshness_seconds": 0}, "system_health": modules, "system_health_summary": {"status": "OK" if mandatory_ok else "NICHT_OK", "diagnostic_status": "OK" if mandatory_ok else "NICHT_OK", "mandatory_ok": mandatory_ok, "ok": sum(value.get("status") in {"HEALTHY", "OK"} for value in modules.values()), "total": len(modules), "optional_not_configured": len(optional_missing)}, "free_pool": {"size": len(pool), "providers": pool}, "run_counts": run_counts, "recent_runs": recent, "projects": project_rows, "active_run": active, "debugging": {"current_run_id": active.get("run_id") if active else None, "stage": active.get("current_job") if active else None, "events": debug, "source": "LIVE" if debug_ok else "IDLE"}, "alerts": alerts, "optional_components_not_configured": optional_missing, "release": {"dashboard_version": VERSION, "core_v1_release": "v1.0.0", "morpheus_release": "v1.1.2", "dashboard_release": VERSION, "v1_release": "v1.0.0", "n8n_autodev_workflows": health_n8n.get("workflow_count", 0), "free_first_active": bool(runtime.get("free_first_enabled")), "paid_escalation": bool(runtime.get("automatic_paid_agent_escalation")), "deepseek": "INELIGIBLE"}, "sources": {"n8n": "LIVE" if runs_ok and health_n8n["status"] == "HEALTHY" else "UNAVAILABLE", "adapter": "LIVE" if runtime_ok else "UNAVAILABLE", "projects": "LIVE" if projects_ok or issues_ok else "DERIVED"}}
+    return {"contract": "autodev.control-tower-overview.v1", "version": "v1", "generated_at": now(), "freshness": {"checked_at": now(), "freshness_seconds": 0}, "system_health": modules, "system_health_summary": {"status": "OK" if mandatory_ok else "NICHT_OK", "diagnostic_status": "OK" if mandatory_ok else "NICHT_OK", "mandatory_ok": mandatory_ok, "ok": sum(value.get("status") in {"HEALTHY", "OK"} for value in modules.values()), "total": len(modules), "optional_not_configured": len(optional_missing)}, "free_pool": {"size": len(pool), "providers": pool}, "run_counts": run_counts, "recent_runs": recent, "projects": project_rows, "active_run": active, "debugging": {"current_run_id": active.get("run_id") if active else None, "stage": active.get("current_job") if active else None, "events": debug, "source": "LIVE" if debug_ok else "IDLE"}, "telemetry": telemetry, "alerts": alerts, "optional_components_not_configured": optional_missing, "release": {"dashboard_version": VERSION, "core_v1_release": "v1.0.0", "morpheus_release": "v1.1.2", "dashboard_release": VERSION, "v1_release": "v1.0.0", "n8n_autodev_workflows": health_n8n.get("workflow_count", 0), "free_first_active": bool(runtime.get("free_first_enabled")), "paid_escalation": bool(runtime.get("automatic_paid_agent_escalation")), "deepseek": "INELIGIBLE"}, "sources": {"n8n": "LIVE" if runs_ok and health_n8n["status"] == "HEALTHY" else "UNAVAILABLE", "adapter": "LIVE" if runtime_ok else "UNAVAILABLE", "projects": "LIVE" if projects_ok or issues_ok else "DERIVED"}}
 
 
 def choose_active_run(runs):
@@ -438,6 +447,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authorized(): return self.send_json(401, {"error": "unauthorized"})
         if self.command != "GET": return self.send_json(405, {"error": "method not allowed"})
         if path == "/api/v1/overview": return self.send_json(200, projection())
+        if path == "/api/v1/telemetry/runtime": return self.send_json(200, telemetry_projection())
         if path == "/api/v1/session": return self.send_json(200, {"role": self.role(), "read_only": self.role() == "VIEWER", "commands": sorted(OPERATOR_COMMANDS if self.role() == "OPERATOR" else ADMIN_COMMANDS | OPERATOR_COMMANDS) if self.role() in READ_ROLES else []})
         if path == "/api/v1/projects":
             return self.send_json(200, {"contract": "autodev.project-view.v1", "version": "v1", "projects": projection()["projects"]})

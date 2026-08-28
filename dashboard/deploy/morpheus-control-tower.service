@@ -27,6 +27,7 @@ LoadCredential=viewer_token:/var/lib/morpheus-control-tower/viewer-token
 LoadCredential=operator_token:/var/lib/morpheus-control-tower/viewer-token
 LoadCredential=admin_token:/var/lib/morpheus-control-tower/admin-token
 LoadCredential=command_token:/var/lib/autodev-harness-v2/api-token
+LoadCredential=proxmox_api_token_secret:/var/lib/morpheus-control-tower/proxmox-api-token.secret
 Environment=CONTROL_TOWER_BIND=192.168.1.136
 Environment=CONTROL_TOWER_PORT=8092
 Environment=MORPHEUS_N8N_BASE=http://192.168.1.52:5678/api/v1
@@ -35,6 +36,17 @@ Environment=MORPHEUS_RUNS_TABLE=P3Eyck556Y76TC4p
 Environment=MORPHEUS_ATTEMPTS_TABLE=5ArfenIk1qhsigL6
 Environment=MORPHEUS_PROJECTS_TABLE=wXyOTedoIvi06IBT
 Environment=MORPHEUS_ISSUES_TABLE=otzUNm6nyNmovzce
+Environment=PROXMOX_API_BASE=https://pve:8006/api2/json
+Environment=PROXMOX_NODE=pve
+Environment=PROXMOX_ALLOWED_HOSTS=pve
+Environment=PROXMOX_API_TOKEN_ID=morpheus-telemetry@pam!control-tower
+Environment=PROXMOX_CA_FILE=/var/lib/morpheus-control-tower/proxmox-root-ca.pem
+Environment=MORPHEUS_RUNTIME_GUESTS="{\"opencode-builder-8001\":[{\"node\":\"pve\",\"vmid\":8001,\"type\":\"lxc\",\"name\":\"OpenCode\"}]}"
+Environment=NVIDIA_GPU_HOST=192.168.1.50
+Environment=NVIDIA_GPU_ALLOWED_HOSTS=192.168.1.50
+Environment=NVIDIA_GPU_SSH_USER=xxammaxx
+Environment=LMSTUDIO_BASE_URL=http://192.168.1.50:1234
+Environment=LMSTUDIO_ALLOWED_HOSTS=192.168.1.50
 
 [Install]
 WantedBy=multi-user.target

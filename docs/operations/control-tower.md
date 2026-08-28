@@ -35,6 +35,31 @@ Aktionen ausführen; globale Routing-, Credential-, Service- und Release-
 Aktionen erfordern Admin. `Anzeige pausieren` im Debugging stoppt nur die
 UI-Nachführung und niemals den Run.
 
+## Runtime-Telemetrie
+
+`GET /api/v1/telemetry/runtime` ist eine authentifizierte, read-only Projektion
+des Contracts `autodev.runtime-telemetry.v1`. Die Übersicht nutzt dieselbe
+Projektion und pollt sie höchstens im bestehenden 5-Sekunden-Lifecycle; der
+Backend-Cache coalesced Samples für mindestens zwei Sekunden. Es gibt keine
+persistente Metrics-Datenbank. Kurze Sparklines stammen aus einem begrenzten
+In-Memory-Ring; längere Containerverläufe werden, falls verfügbar, aus
+Proxmox-RRD gelesen.
+
+Proxmox wird ausschließlich über `status/current` und optional `rrddata`
+abgefragt. Der Gast wird aus kanonischen Run-Metadaten und der serverseitigen
+`MORPHEUS_RUNTIME_GUESTS`-Allowlist aufgelöst. GPU-Werte kommen ausschließlich
+aus einer festen `nvidia-smi --query-*`-Feldliste. LM Studio ist optional und
+wird nur über `GET /api/v1/models` beziehungsweise die kompatible Model-API
+beobachtet; es wird keine Testinferenz erzeugt. GPU-Auslastung allein gilt
+nicht als LM-Studio-Inferenz. Fehlende oder nicht unterstützte Werte bleiben
+`null` und werden als `Nicht verfügbar` dargestellt.
+
+Die Credentials `proxmox_api_token_secret` und ein optionales
+`lmstudio_api_token` bleiben serverseitig und werden nie in Response, Logs,
+Payload-Inspector oder Browser gespeichert. Proxmox benötigt eine explizite
+CA-Datei (`PROXMOX_CA_FILE`) oder eine gleichwertige strikte Zertifikatspolitik;
+TLS-Prüfung wird nicht deaktiviert.
+
 Für neue Arbeit stehen bestehendes Issue, Repository-Analyse, Blueprint und
 Neues Projekt aus Blueprint zur Verfügung. Blueprint-Intent wird strukturiert
 validiert; die kanonische n8n-Continuation muss ihn dauerhaft im Repository
