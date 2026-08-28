@@ -62,6 +62,26 @@ def test_opencode_script_uses_selected_dynamic_route():
     assert "OLLAMA" not in script
 
 
+def test_lmstudio_opencode_script_uses_trusted_openai_compatible_endpoint(monkeypatch):
+    monkeypatch.setenv("LMSTUDIO_BASE_URL", "http://192.168.1.50:1234")
+    script = adapter._opencode_script(
+        "/tmp/autodev-v2-lmstudio-test", "research-worker", "model: lmstudio",
+        "Return JSON only", 30, "lmstudio", "llama-3.2-1b-instruct@q4_k_m",
+    )
+    assert "@ai-sdk/openai-compatible" in script
+    assert "http://192.168.1.50:1234/v1" in script
+    assert "lmstudio/llama-3.2-1b-instruct@q4_k_m" in script
+
+
+def test_lmstudio_opencode_script_rejects_unsafe_endpoint(monkeypatch):
+    monkeypatch.setenv("LMSTUDIO_BASE_URL", "http://127.0.0.1:1234'$(touch /tmp/pwned)")
+    with pytest.raises(RuntimeError, match="LMSTUDIO_ENDPOINT_INVALID"):
+        adapter._opencode_script(
+            "/tmp/autodev-v2-lmstudio-test", "research-worker", "model: lmstudio",
+            "Return JSON only", 30, "lmstudio", "llama-3.2-1b-instruct@q4_k_m",
+        )
+
+
 def test_explicit_task_scope_has_deterministic_plan_fallback():
     task = "Use only these exact repository-relative files: dashboard/control_tower.py, dashboard/static/index.html, dashboard/tests/test_control_tower_projection.py. Translate the complete visible UI."
     plan = adapter._explicit_scoped_plan({"task_description": task}, "run-test", "a" * 40)
