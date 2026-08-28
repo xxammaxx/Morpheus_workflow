@@ -379,6 +379,13 @@ class ProviderCatalog:
                     free_eligibility(entry, require_execution=False)
                 normalize_live_capabilities(entry)
                 self.add_entry(entry)
+            # OpenCode's global catalog may omit local providers even when
+            # the configured local adapter exposes a current authoritative
+            # model list. Reconcile those providers separately.
+            self.refresh(
+                providers=LOCAL_PROVIDERS,
+                authenticated_providers=authenticated,
+            )
             self.authenticated_providers = authenticated
             self.events.append({"event": "OPENCODE_LIVE_REFRESH", **report, "at": now_utc()})
             self.save()
