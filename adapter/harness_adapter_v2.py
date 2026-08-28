@@ -2429,7 +2429,7 @@ def job_verify(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
     test_sys = payload.get("test_system") or "pytest"
     if test_sys == "pytest":
         r = pct_exec(
-            "cd '%s' && PYTHONPATH=src python3 -m pytest -q tests 2>&1 | tail -20" % ws,
+            "set -o pipefail; cd '%s' && PYTHONPATH=src python3 -m pytest -q tests 2>&1 | tail -20" % ws,
             timeout=timeout_s,
         )
         passed = r.returncode == 0
@@ -2443,7 +2443,7 @@ def job_verify(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
             }
         )
     else:
-        r = pct_exec("cd '%s' && node --test 2>&1 | tail -20" % ws, timeout=timeout_s)
+        r = pct_exec("set -o pipefail; cd '%s' && node --test 2>&1 | tail -20" % ws, timeout=timeout_s)
         passed = r.returncode == 0
         checks.append(
             {
@@ -2455,7 +2455,7 @@ def job_verify(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         )
     # build/compile
     rb = pct_exec(
-        "cd '%s' && python3 -m compileall -q src tests 2>&1 | head -5" % ws,
+        "set -o pipefail; cd '%s' && python3 -m compileall -q src tests 2>&1 | head -5" % ws,
         timeout=timeout_s,
     )
     checks.append(
