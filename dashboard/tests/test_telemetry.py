@@ -88,6 +88,11 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(result["gpus"][0]["fan"]["status"], "NOT_SUPPORTED")
         self.assertEqual(result["gpus"][0]["processes"][0]["pid"], 123)
 
+    def test_nvidia_host_key_failure_is_unreachable_not_driver_failure(self):
+        with patch.object(telemetry.subprocess, "run", return_value=type("Result", (), {"returncode": 255, "stdout": "", "stderr": "Host key verification failed."})()):
+            result = telemetry._run_fixed(["ssh", "xxammaxx@192.168.1.50", "nvidia-smi"])
+        self.assertEqual(result[1], "GPU_HOST_UNREACHABLE")
+
     def test_lmstudio_requires_actual_morpheus_provider_and_redacts_reasoning(self):
         os.environ.update({"LMSTUDIO_BASE_URL": "http://lmstudio:1234", "LMSTUDIO_ALLOWED_HOSTS": "lmstudio"})
         with patch.object(telemetry, "_lm_models", return_value=([{"id": "qwen", "loaded": True}], "/api/v1/models")):
