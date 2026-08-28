@@ -88,6 +88,7 @@ try:
         RouteRequest,
         is_deepseek_identifier,
         assert_runtime_model_allowed,
+        is_valid_model_identifier,
         probe_eligibility,
         promotion_eligibility,
     )  # noqa: E402
@@ -103,6 +104,10 @@ except ImportError:  # pragma: no cover - legacy deployment without providers
     def assert_runtime_model_allowed(provider, model):
         if is_deepseek_identifier(provider, model):
             raise RuntimeError("DEEPSEEK_RETIRED")
+    def is_valid_model_identifier(value):
+        return isinstance(value, str) and bool(re.fullmatch(r"[A-Za-z0-9._/@:-]{1,128}", value)) and not any(
+            ord(char) < 32 or ord(char) == 127 for char in value
+        )
     def probe_eligibility(_entry):
         return False
     def promotion_eligibility(_entry):
@@ -2781,11 +2786,16 @@ def _dispatch(
         )
     # HAMH identity fields (optional, backwards compatible). Backend routing
     # is NOT touched by these — they only select the harness profile.
-    if provider is not None and not HAMH_ID_RE.match(provider):
+    if provider is not None and (
+        not isinstance(provider, str) or HAMH_ID_RE.fullmatch(provider) is None
+    ):
         return None, err("BAD_PROVIDER", "invalid provider %r" % provider)
-    if model is not None and not HAMH_ID_RE.match(model):
+    if model is not None and not is_valid_model_identifier(model):
         return None, err("BAD_MODEL", "invalid model %r" % model)
-    if model_revision is not None and not HAMH_ID_RE.match(model_revision):
+    if model_revision is not None and (
+        not isinstance(model_revision, str)
+        or HAMH_ID_RE.fullmatch(model_revision) is None
+    ):
         return None, err("BAD_MODEL_REVISION", "invalid model_revision")
     if task_class is not None and task_class not in HAMH_TASK_CLASSES:
         return None, err("BAD_TASK_CLASS", "unknown task_class %r" % task_class)
@@ -2857,6 +2867,14 @@ def _dispatch(
                 route_decision = _provider_runtime.select(request)
             except NoEligibleProvider:
                 code = "NO_ELIGIBLE_FREE_VISION_MODEL" if task_profile.get("requires_vision") else "NO_ELIGIBLE_FREE_MODEL"
+                if provider and model and not task_profile.get("requires_vision"):
+                    try:
+                        _provider_runtime.router._ensure_requested_model_in_catalog(
+                            RouteRequest(provider=provider, model=model)
+                        )
+                    except NoEligibleProvider as exc:
+                        if str(exc) == "MODEL_NOT_IN_CATALOG":
+                            code = "MODEL_NOT_IN_CATALOG"
                 return None, err(code, "no current zero-cost model satisfies task capabilities")
         provider = route_decision.get("selected_provider")
         model = route_decision.get("selected_model")
