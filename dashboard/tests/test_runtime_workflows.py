@@ -61,6 +61,36 @@ class RuntimeWorkflowTests(unittest.TestCase):
         ):
             self.assertIn("'%s':" % diagnostic, router_js)
 
+    def test_abort_looks_up_then_updates_existing_run_and_keeps_response_carrier(self):
+        gateway = self._generate()["05 AutoDev Control Gateway"]
+        names = {node["name"] for node in gateway["nodes"]}
+        self.assertTrue({
+            "Prepare Canonical Run Action", "Fetch Canonical Run",
+            "Check Canonical Run", "Canonical Run Found?",
+            "Prepare Canonical Run Update", "Persist Canonical Run Action",
+            "Canonical Run Action Result", "Respond Run Not Found",
+        }.issubset(names))
+        persist = next(node for node in gateway["nodes"] if node["name"] == "Persist Canonical Run Action")
+        self.assertEqual(persist["parameters"]["method"], "PATCH")
+        self.assertTrue(persist["alwaysOutputData"])
+        fetch = next(node for node in gateway["nodes"] if node["name"] == "Fetch Canonical Run")
+        self.assertTrue(fetch["alwaysOutputData"])
+        self.assertNotIn("/upsert", persist["parameters"]["url"])
+        self.assertIn("RUN_NOT_FOUND", json.dumps(gateway))
+        self.assertIn("correlation_id", next(node for node in gateway["nodes"] if node["name"] == "Canonical Run Action Result")["parameters"]["jsCode"])
+
+    def test_orchestrator_state_updates_cannot_resurrect_aborted_run(self):
+        orchestrator = self._generate()["01 AutoDev Orchestrator"]
+        updates = [node for node in orchestrator["nodes"] if node["name"].endswith(" State Update")]
+        self.assertGreaterEqual(len(updates), 3)
+        for node in updates:
+            self.assertEqual(node["parameters"]["method"], "PATCH")
+            self.assertTrue(node["alwaysOutputData"])
+            prep = next(n for n in orchestrator["nodes"] if n["name"] == node["name"].replace(" Update", " Prep"))
+            restore = next(n for n in orchestrator["nodes"] if n["name"] == node["name"].replace(" Update", " Restore"))
+            self.assertIn("value: 'ABORTED'", prep["parameters"]["jsCode"])
+            self.assertIn("return []", restore["parameters"]["jsCode"])
+
     def test_done_path_calls_n8n_reassessment(self):
         workflows = self._generate()
         orchestrator = workflows["01 AutoDev Orchestrator"]

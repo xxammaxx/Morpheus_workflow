@@ -358,20 +358,30 @@ def state_update_nodes(wf, cfg, name_prefix, state, current_job, extra_fields, p
         "row.run_id = s.issue.run_id;\nrow.state = '%s';\nrow.current_job = '%s';\n%s\n"
         "row.updated_at = new Date().toISOString();\n"
         "return [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', "
-        "value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "value: s.issue.run_id}, {columnName: 'state', condition: 'neq', "
+        "value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
         % (state, current_job, extra_fields)
     )
     c = code_node(name_prefix + " Prep", js, pos)
     h = http_node(
         name_prefix + " Update",
-        "POST",
-        cfg.rows(cfg.runs) + "/upsert",
+        "PATCH",
+        cfg.rows(cfg.runs) + "/update",
         "JSON.stringify($json)",
         (pos[0] + 1, pos[1]),
         cfg.cr_n8n,
     )
+    # PATCH returns an empty array when the terminal ABORTED row wins the
+    # race. Keep one input item so the restore node can observe that result;
+    # it then emits no item and stops the stale orchestrator branch.
+    h["alwaysOutputData"] = True
     r = code_node(
         name_prefix + " Restore",
+        "const result = $json;\n"
+        "const persisted = Array.isArray(result) ? result.length > 0 : "
+        "result === true || (result && typeof result === 'object' && "
+        "Object.keys(result).length > 0);\n"
+        "if (!persisted) return [];\n"
         "const s = $('%s Prep').first().json.state || {};\nreturn [{json: s}];"
         % name_prefix,
         (pos[0] + 2, pos[1]),
@@ -2711,6 +2721,7 @@ if(adm.has(command)&&role!=='ADMIN')errors.push('ROLE_FORBIDDEN');
 if(!/^[A-Za-z0-9_.:-]{3,96}$/.test(String(e.correlation_id||'')))errors.push('CORRELATION_ID_INVALID');
 if(!e.target||typeof e.target!=='object'||Array.isArray(e.target))errors.push('TARGET_INVALID');
 if(!p||typeof p!=='object'||Array.isArray(p))errors.push('PAYLOAD_INVALID');
+if(['PAUSE_RUN','RESUME_RUN','ABORT_RUN','RETRY_STAGE','RETRY_RUN','EXCLUDE_MODEL_FOR_RUN','EXCLUDE_PROVIDER_FOR_RUN','APPROVE_HUMAN_GATE'].includes(command)&&!/^run-[A-Za-z0-9_-]{6,60}$/.test(String(p&&p.run_id||'')))errors.push('RUN_ID_INVALID');
 const repo=String(p&&p.repository_url||''); let parts=[];
 if(repo){const match=repo.match(/^https:\/\/github\.com\/([^/]+)\/([^/?#]+)$/);if(!match)errors.push('REPOSITORY_URL_INVALID');else parts=[match[1],match[2]]}
 if(['START_ISSUE','START_REPO_ANALYSIS'].includes(command)&&!repo)errors.push('REPOSITORY_REQUIRED');
@@ -2819,14 +2830,24 @@ return [{json:{status:ok?'OK':'NICHT_OK',module:'router',test:name,source:'adapt
     wf.add_node(http_node("Reassess Project", "POST", cfg.webhook+"/webhook/autodev/project/reassess", "JSON.stringify($('Restore Valid Command').first().json.envelope.payload)", P(6,7), cfg.cr_api))
     wf.add_node(code_node("Project Resume Result", "const v=$('Restore Valid Command').first().json;return[{json:{status:$json.status||'ACCEPTED',command:v.command,correlation_id:v.envelope.correlation_id,result:$json,source:'n8n-project-reassessment'}}];", P(7,7)))
     wf.add_node(respond_node("Respond Project Resume", P(8,7)))
-    wf.add_node(if_node("Is Canonical Run Action?", [{"leftValue":"={{['PAUSE_RUN','ABORT_RUN','RETRY_STAGE','RETRY_RUN','EXCLUDE_MODEL_FOR_RUN','EXCLUDE_PROVIDER_FOR_RUN','APPROVE_HUMAN_GATE'].includes($json.route)}}","rightValue":"=true","operator":{"type":"boolean","operation":"equals"}}], P(5,8)))
-    wf.add_node(code_node("Prepare Canonical Run Action", "const v=$('Restore Valid Command').first().json,p=v.payload||{},states={PAUSE_RUN:'PAUSED',ABORT_RUN:'ABORTED',APPROVE_HUMAN_GATE:'HUMAN_GATE_APPROVED'},row={run_id:p.run_id,state:states[v.command]||'RETRY_REQUESTED',current_job:p.stage||p.current_job||undefined,updated_at:new Date().toISOString(),correlation_id:v.envelope.correlation_id,last_action:v.command};if(v.command==='EXCLUDE_MODEL_FOR_RUN')row.excluded_model=p.model;if(v.command==='EXCLUDE_PROVIDER_FOR_RUN')row.excluded_provider=p.provider;return[{json:{run_update:{filter:{filters:[{columnName:'run_id',condition:'eq',value:p.run_id}]},data:row,returnData:true},command:v.command,correlation_id:v.envelope.correlation_id}}];", P(6,8)))
-    wf.add_node(http_node("Persist Canonical Run Action", "POST", cfg.rows(cfg.runs)+"/upsert", "JSON.stringify($json.run_update)", P(7,8), cfg.cr_n8n))
-    wf.add_node(code_node("Canonical Run Action Result", "const v=$('Prepare Canonical Run Action').first().json;return[{json:{status:'ACCEPTED',module:'run-control',command:v.command,correlation_id:v.correlation_id,result:$json,source:'n8n-control-gateway'}}];", P(8,8)))
-    wf.add_node(respond_node("Respond Canonical Run Action", P(9,8)))
+    wf.add_node(if_node("Is Canonical Run Action?", [{"leftValue":"={{['PAUSE_RUN','RESUME_RUN','ABORT_RUN','RETRY_STAGE','RETRY_RUN','EXCLUDE_MODEL_FOR_RUN','EXCLUDE_PROVIDER_FOR_RUN','APPROVE_HUMAN_GATE'].includes($json.route)}}","rightValue":"=true","operator":{"type":"boolean","operation":"equals"}}], P(5,8)))
+    wf.add_node(code_node("Prepare Canonical Run Action", "const v=$('Restore Valid Command').first().json,p=v.payload||{},runId=String(p.run_id||''),filter={type:'and',filters:[{columnName:'run_id',condition:'eq',value:runId}]};return[{json:{command:v.command,correlation_id:v.envelope.correlation_id,run_id:runId,payload:p,filter,requested_at:new Date().toISOString()}}];", P(6,8)))
+    wf.add_node(http_node("Fetch Canonical Run", "GET", cfg.rows(cfg.runs), "{}", P(7,8), cfg.cr_n8n, send_body=False, params_extra={"url": cfg.rows(cfg.runs), "sendQuery": True, "queryParameters": {"parameters": [{"name": "filter", "value": "={{ JSON.stringify($json.filter) }}"}]}}))
+    wf.nodes[-1]["alwaysOutputData"] = True
+    wf.add_node(code_node("Check Canonical Run", "const p=$('Prepare Canonical Run Action').first().json,rows=Array.isArray($json.data)?$json.data:[];return[{json:{...p,run_found:rows.length>0,existing_run:rows[0]||null}}];", P(8,8)))
+    wf.add_node(bool_if("Canonical Run Found?", "$json.run_found", P(9,8)))
+    wf.add_node(respond_node("Respond Run Not Found", P(10,7), "={{ JSON.stringify({status: 'error', code: 'RUN_NOT_FOUND', command: $json.command, run_id: $json.run_id, correlation_id: $json.correlation_id}) }}"))
+    wf.add_node(code_node("Prepare Canonical Run Update", "const p=$json,existing=p.existing_run||{},states={PAUSE_RUN:'PAUSED',ABORT_RUN:'ABORTED',APPROVE_HUMAN_GATE:'HUMAN_GATE_APPROVED'},row={run_id:p.run_id,state:states[p.command]||'RETRY_REQUESTED',current_job:p.stage||p.current_job||existing.current_job||undefined,updated_at:new Date().toISOString(),correlation_id:p.correlation_id,last_action:p.command};if(p.command==='EXCLUDE_MODEL_FOR_RUN')row.excluded_model=(p.payload||{}).model;if(p.command==='EXCLUDE_PROVIDER_FOR_RUN')row.excluded_provider=(p.payload||{}).provider;return[{json:{...p,run_update:{filter:p.filter,data:row,returnData:true}}}];", P(10,8)))
+    wf.add_node(http_node("Persist Canonical Run Action", "PATCH", cfg.rows(cfg.runs)+"/update", "JSON.stringify($json.run_update)", P(11,8), cfg.cr_n8n))
+    # The n8n HTTP node can emit zero items for a successful empty response.
+    # Always retain a carrier item so the canonical response is deterministic.
+    persist_action = wf.nodes[-1]
+    persist_action["alwaysOutputData"] = True
+    wf.add_node(code_node("Canonical Run Action Result", "const p=$('Prepare Canonical Run Update').first().json,result=$json,persisted=Array.isArray(result)?result.length>0:result===true||(result&&typeof result==='object'&&Object.keys(result).length>0);return[{json:{status:persisted?'ACCEPTED':'error',code:persisted?undefined:'RUN_UPDATE_NOT_PERSISTED',module:'run-control',command:p.command,correlation_id:p.correlation_id,run_id:p.run_id,result,source:'n8n-control-gateway'}}];", P(12,8)))
+    wf.add_node(respond_node("Respond Canonical Run Action", P(13,8)))
     wf.add_node(code_node("Canonical Admin Action", "const v=$('Restore Valid Command').first().json;return[{json:{status:'ACCEPTED',module:'admin',command:v.command,correlation_id:v.envelope.correlation_id,canonical_action:'n8n-control-gateway',source:'n8n-control-gateway'}}];", P(6,9)))
     wf.add_node(respond_node("Respond Canonical Admin Action", P(7,9)))
-    wf.add("Is Blueprint Start?", "Is Project Resume?", 1); wf.add("Is Project Resume?", "Reassess Project", 0); wf.add("Reassess Project", "Project Resume Result"); wf.add("Project Resume Result", "Respond Project Resume"); wf.add("Is Project Resume?", "Is Canonical Run Action?", 1); wf.add("Is Canonical Run Action?", "Prepare Canonical Run Action", 0); wf.add("Prepare Canonical Run Action", "Persist Canonical Run Action"); wf.add("Persist Canonical Run Action", "Canonical Run Action Result"); wf.add("Canonical Run Action Result", "Respond Canonical Run Action"); wf.add("Is Canonical Run Action?", "Canonical Admin Action", 1); wf.add("Canonical Admin Action", "Respond Canonical Admin Action")
+    wf.add("Is Blueprint Start?", "Is Project Resume?", 1); wf.add("Is Project Resume?", "Reassess Project", 0); wf.add("Reassess Project", "Project Resume Result"); wf.add("Project Resume Result", "Respond Project Resume"); wf.add("Is Project Resume?", "Is Canonical Run Action?", 1); wf.add("Is Canonical Run Action?", "Prepare Canonical Run Action", 0); wf.add("Prepare Canonical Run Action", "Fetch Canonical Run"); wf.add("Fetch Canonical Run", "Check Canonical Run"); wf.add("Check Canonical Run", "Canonical Run Found?"); wf.add("Canonical Run Found?", "Respond Run Not Found", 1); wf.add("Canonical Run Found?", "Prepare Canonical Run Update", 0); wf.add("Prepare Canonical Run Update", "Persist Canonical Run Action"); wf.add("Persist Canonical Run Action", "Canonical Run Action Result"); wf.add("Canonical Run Action Result", "Respond Canonical Run Action"); wf.add("Is Canonical Run Action?", "Canonical Admin Action", 1); wf.add("Canonical Admin Action", "Respond Canonical Admin Action")
     wf.add("Is Repo Analysis?", "Is Blueprint Start?", 1)
     return wf
 
