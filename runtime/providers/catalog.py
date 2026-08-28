@@ -92,6 +92,7 @@ def apply_policy(entry, provider, account_class="unknown"):
             "account_class": "local",
             "account_class_evidence": "PASS",
             "cost_class": "LOCAL_ZERO_COST",
+            "zero_cost_verified": True,
             "input_price": 0,
             "output_price": 0,
             "privacy_class": "ALLOWED",
