@@ -13,7 +13,7 @@ from providers.opencode import (  # noqa: E402
 )
 from providers.capabilities import normalize_live_capabilities  # noqa: E402
 from providers.catalog import ProviderCatalog  # noqa: E402
-from providers.protocol import probe_eligibility  # noqa: E402
+from providers.protocol import normalized_entry, probe_eligibility  # noqa: E402
 
 
 def test_auth_kinds_are_distinguished_without_exposing_values():
@@ -130,4 +130,46 @@ def test_local_provider_is_not_blocked_by_api_key_auth_inventory(tmp_path, monke
     assert entry["cost_class"] in {"LOCAL_ZERO_COST", "FREE_HARD_STOP"}
     assert entry["zero_cost_verified"] is True
     assert entry["capabilities"]["RESEARCH_CAPABLE"] is True
+    assert probe_eligibility(entry) is True
+
+
+def test_live_refresh_reconciles_local_adapter_when_opencode_omits_provider(tmp_path, monkeypatch):
+    class LocalAdapter:
+        base_url = "http://192.168.1.50:1234/v1"
+        credential_env = ""
+
+        def discover_models(self):
+            return [normalized_entry(
+                "lmstudio",
+                "llama-3.2-1b-instruct@q4_k_m",
+                self.base_url,
+                availability=True,
+                health="HEALTHY",
+                capabilities={"RESEARCH_CAPABLE": True},
+            )]
+
+    monkeypatch.setattr(
+        "providers.catalog.refresh_catalog",
+        lambda *args, **kwargs: {"entries": []},
+    )
+    monkeypatch.setenv(
+        "AUTODEV_LOCAL_ZERO_COST_TRUSTED_ENDPOINTS",
+        "http://192.168.1.50:1234/v1",
+    )
+    auth_file = tmp_path / "auth.json"
+    auth_file.write_text(json.dumps({"openrouter": {"type": "api", "key": "fixture"}}))
+
+    catalog = ProviderCatalog(
+        path=str(tmp_path / "catalog.json"),
+        adapters={"lmstudio": LocalAdapter()},
+    )
+    report = catalog.refresh_live(auth_file=str(auth_file), opencode_bin="unused")
+
+    assert report == {"refresh": "PASS", "catalog_entries": 0}
+    entry = catalog.entries[0]
+    assert entry["provider"] == "lmstudio"
+    assert entry["model"] == "llama-3.2-1b-instruct@q4_k_m"
+    assert entry["authenticated"] is True
+    assert entry["zero_cost_verified"] is True
+    assert entry["route_cost_proven"] is True
     assert probe_eligibility(entry) is True
