@@ -22,6 +22,23 @@ class ControlBoundarySecurityTests(unittest.TestCase):
         self.assertIn("dashboard", source)
         self.assertIn("cannot modify dashboard paths", source)
 
+    def test_telemetry_has_no_browser_or_arbitrary_infrastructure_boundary(self):
+        source = (Path(__file__).parents[1] / "telemetry.py").read_text()
+        self.assertIn('method="GET"', source)
+        self.assertIn('NVIDIA_QUERY', source)
+        self.assertIn('"StrictHostKeyChecking=yes"', source)
+        self.assertNotIn("shell=True", source)
+        self.assertNotIn("verify=False", source)
+        self.assertNotIn("curl -k", source)
+        self.assertNotIn("self.path", source)
+
+    def test_telemetry_secrets_and_reasoning_are_not_projected(self):
+        source = (Path(__file__).parents[1] / "telemetry.py").read_text()
+        self.assertIn("PROXMOX_API_TOKEN_SECRET", source)
+        self.assertIn("LMSTUDIO_API_TOKEN", source)
+        self.assertIn('"reasoning_content"', source)
+        self.assertNotIn("reasoning_text", source)
+
 
 if __name__ == "__main__":
     unittest.main()

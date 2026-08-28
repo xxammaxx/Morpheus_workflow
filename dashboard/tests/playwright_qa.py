@@ -11,7 +11,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
-    for width, height, label in ((1440, 900, "desktop-1440x900"), (1280, 720, "desktop-1280x720"), (390, 844, "mobile-390x844"), (360, 800, "mobile-360x800")):
+    for width, height, label in ((1440, 900, "desktop-1440x900"), (1280, 720, "desktop-1280x720"), (768, 1024, "tablet-768x1024"), (390, 844, "mobile-390x844"), (360, 800, "mobile-360x800")):
         page = browser.new_page(viewport={"width": width, "height": height})
         console_errors = []
         page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
@@ -39,6 +39,15 @@ with sync_playwright() as p:
         page.get_by_role("button", name="Übersicht", exact=True).click()
         page.get_by_role("button", name="Anbieter", exact=True).click()
         page.screenshot(path=str(OUT / (label + "-providers.png")), full_page=True)
+        page.get_by_role("button", name="Systemkarte", exact=True).click()
+        page.get_by_role("heading", name="Systemkarte", exact=True).wait_for()
+        page.get_by_role("button", name="Debugging", exact=True).click()
+        page.get_by_role("heading", name="LIVE RESSOURCEN", exact=True).wait_for()
+        page.get_by_role("button", name="Administration", exact=True).click()
+        page.get_by_role("heading", name="Infrastruktur · Read-only", exact=True).wait_for()
+        assert page.locator("body").evaluate("el => el.scrollWidth <= window.innerWidth")
+        assert not console_errors
+        assert 500 not in responses
         page.close()
     browser.close()
-print(json.dumps({"VISUAL_QA": "PASS", "VIEWPORTS": 4, "CONSOLE_ERRORS": 0, "HTTP_500": 0}))
+print(json.dumps({"VISUAL_QA": "PASS", "VIEWPORTS": 5, "CONSOLE_ERRORS": 0, "HTTP_500": 0}))

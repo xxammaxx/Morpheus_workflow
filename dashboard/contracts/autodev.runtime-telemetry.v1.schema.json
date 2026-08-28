@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autodev.runtime-telemetry.v1",
+  "title": "Morpheus Runtime Telemetry",
+  "type": "object",
+  "required": ["contract", "version", "sampled_at", "source", "age_ms", "freshness", "run", "proxmox", "gpus", "lmstudio", "architecture"],
+  "properties": {
+    "contract": {"const": "autodev.runtime-telemetry.v1"},
+    "version": {"const": "v1"},
+    "sampled_at": {"type": "string"},
+    "source": {"const": "CONTROL_TOWER_READ_ONLY"},
+    "age_ms": {"type": ["integer", "null"], "minimum": 0},
+    "freshness": {"enum": ["LIVE", "STALE", "UNAVAILABLE", "NOT_CONFIGURED"]},
+    "run": {"type": "object", "additionalProperties": true},
+    "proxmox": {"type": "object", "additionalProperties": true},
+    "gpus": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
+    "lmstudio": {"type": "object", "additionalProperties": true},
+    "architecture": {"type": "object", "required": ["n8n_sole_control_plane", "second_sor", "runtime_dashboard_writes", "no_private_cot_storage"], "additionalProperties": false, "properties": {"n8n_sole_control_plane": {"const": true}, "second_sor": {"const": false}, "runtime_dashboard_writes": {"const": 0}, "no_private_cot_storage": {"const": true}}}
+  },
+  "additionalProperties": true
+}
