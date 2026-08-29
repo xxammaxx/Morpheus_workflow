@@ -145,6 +145,15 @@ def _event_stage(event):
     return _text(event.get("stage") or event.get("job_type") or event.get("current_job") or event.get("job"))
 
 
+def _stages_correlate(left, right):
+    """Match a canonical stage with one of its execution sub-stages."""
+    left = _text(left)
+    right = _text(right)
+    if not left or not right:
+        return False
+    return left == right or left.startswith(right + ".") or right.startswith(left + ".")
+
+
 def _identity_tuple(record, prefix=""):
     provider = _text(record.get(prefix + "provider"))
     model = _text(record.get(prefix + "model"))
@@ -228,7 +237,7 @@ def resolve_execution_context(run, events, reference=None):
         event_stage = _event_stage(raw)
         if run_attempt and event_attempt and event_attempt != run_attempt:
             continue
-        if run_stage and event_stage and event_stage != run_stage:
+        if run_stage and event_stage and not _stages_correlate(run_stage, event_stage):
             continue
         correlated.append(raw)
     correlated.sort(key=lambda item: _event_time(item) or dt.datetime.min.replace(tzinfo=dt.timezone.utc))
@@ -246,8 +255,11 @@ def resolve_execution_context(run, events, reference=None):
     identity = max(identity_records, key=lambda item: (item[0], item[1]))[2] if identity_records else _run_identity(run)
     provider = identity["provider"] if identity else None
     model = identity["model"] if identity else None
-    matched_attempt = bool(run_attempt and any(_text(event.get("attempt_id")) == run_attempt for event in correlated if _text(event.get("attempt_id"))))
-    matched_stage = bool(run_stage and any(_event_stage(event) == run_stage for event in correlated if _event_stage(event)))
+    matched_stage = bool(run_stage and any(_stages_correlate(run_stage, _event_stage(event)) for event in correlated if _event_stage(event)))
+    matched_attempt = bool(
+        (run_attempt and any(_text(event.get("attempt_id")) == run_attempt for event in correlated if _text(event.get("attempt_id"))))
+        or (not run_attempt and latest_lifecycle and _text(latest_lifecycle.get("attempt_id")))
+    )
     has_model = bool(provider and model)
     return {
         "run_id": run_id or None,

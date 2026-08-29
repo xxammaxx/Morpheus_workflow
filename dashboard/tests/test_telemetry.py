@@ -120,6 +120,17 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(context["attempt_correlation"], "PASS")
         self.assertEqual(context["stage_correlation"], "PASS")
 
+    def test_execution_context_matches_canonical_stage_to_execution_substage(self):
+        reference = telemetry.dt.datetime(2026, 8, 29, 12, 0, tzinfo=telemetry.dt.timezone.utc)
+        context = telemetry.resolve_execution_context(
+            {"run_id": "run-1", "current_job": "research"},
+            [{"event": "MODEL_EXECUTION_STARTED", "timestamp": "2026-08-29T11:59:59Z", "run_id": "run-1", "attempt_id": "run-1:research.code:1", "job_type": "research.code", "provider": "lmstudio", "model": "qwen", "status": "running"}],
+            reference,
+        )
+        self.assertEqual(context["execution_status"], "ACTIVE")
+        self.assertEqual(context["attempt_correlation"], "PASS")
+        self.assertEqual(context["stage_correlation"], "PASS")
+
     def test_execution_context_hard_bounds_events_to_run_id(self):
         reference = telemetry.dt.datetime(2026, 8, 29, 12, 0, tzinfo=telemetry.dt.timezone.utc)
         context = telemetry.resolve_execution_context(
