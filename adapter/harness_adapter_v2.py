@@ -637,58 +637,64 @@ def finalize_job(
         rec["strategy_delta"] = strategy_delta
     _log_line(
         {
-            k: v
-            for k, v in rec.items()
-            if k
-            in (
-                "ts",
-                "run_id",
-                "job_id",
-                "job_type",
-                "attempt_id",
-                "status",
-                "backend",
-                "provider",
-                "model",
-                "model_alias",
-                "harness_provider",
-                "harness_model",
-                "route_provider",
-                "route_model",
-                "route_endpoint",
-                "route_account_class",
-                "selected_provider",
-                "selected_model",
-                "routing_event_id",
-                "selection_reason",
-                "required_capabilities",
-                "task_capability_profile",
-                "actual_provider",
-                "actual_model",
-                "resolved_model",
-                "usage",
-                "actual_cost",
-                "free_eligible",
-                "execution_proof",
-                "failover",
-                "model_revision",
-                "task_class",
-                "harness_id",
-                "harness_version",
-                "harness_fingerprint",
-                "input_contract",
-                "input_fingerprint",
-                "output_contract",
-                "output_fingerprint",
-                "started_at",
-                "ended_at",
-                "duration_ms",
-                "failure_class",
-                "failure_signature",
-                "strategy_delta",
-                "result_ref",
-                "error",
-            )
+            "event": "MODEL_EXECUTION_FINISHED",
+            "timestamp": rec.get("ended_at"),
+            **{
+                k: v
+                for k, v in rec.items()
+                if k
+                in (
+                    "ts",
+                    "run_id",
+                    "job_id",
+                    "job_type",
+                    "attempt_id",
+                    "status",
+                    "backend",
+                    "provider",
+                    "model",
+                    "model_alias",
+                    "harness_provider",
+                    "harness_model",
+                    "route_provider",
+                    "route_model",
+                    "route_endpoint",
+                    "route_account_class",
+                    "selected_provider",
+                    "selected_model",
+                    "routing_event_id",
+                    "selection_reason",
+                    "required_capabilities",
+                    "task_capability_profile",
+                    "actual_provider",
+                    "actual_model",
+                    "resolved_model",
+                    "usage",
+                    "actual_cost",
+                    "free_eligible",
+                    "execution_proof",
+                    "failover",
+                    "model_revision",
+                    "task_class",
+                    "harness_id",
+                    "harness_version",
+                    "harness_fingerprint",
+                    "input_contract",
+                    "input_fingerprint",
+                    "output_contract",
+                    "output_fingerprint",
+                    "started_at",
+                    "ended_at",
+                    "duration_ms",
+                    "failure_class",
+                    "failure_signature",
+                    "strategy_delta",
+                    "result_ref",
+                    "error",
+                    "source",
+                    "target",
+                )
+            }
         }
     )
     deliver_callback(job_id)
@@ -739,7 +745,25 @@ def run_job_thread(
                 return
             rec["status"] = "running"
             rec["started_at"] = _now()
-            _log_line({"job_id": job_id, "status": "running", "ts": rec["started_at"]})
+            _log_line({
+                "event": "MODEL_EXECUTION_STARTED",
+                "timestamp": rec["started_at"],
+                "ts": rec["started_at"],
+                "run_id": run_id,
+                "job_id": job_id,
+                "job_type": job_type,
+                "attempt_id": attempt_id,
+                "status": "running",
+                "provider": rec.get("provider"),
+                "model": rec.get("model"),
+                "selected_provider": rec.get("selected_provider"),
+                "selected_model": rec.get("selected_model"),
+                "routing_event_id": rec.get("routing_event_id"),
+                "source": rec.get("source"),
+                "target": rec.get("target"),
+                "contract": rec.get("input_contract"),
+                "correlation_id": rec.get("correlation_id"),
+            })
             start_mono = time.monotonic()
             try:
                 if backend == "embedded":
@@ -3188,7 +3212,7 @@ class Handler(BaseHTTPRequestHandler):
                             record = json.loads(line)
                         except ValueError:
                             continue
-                        events.append({key: record.get(key) for key in ("timestamp", "ts", "run_id", "job_id", "attempt_id", "job_type", "status", "provider", "model", "failure_signature", "input_contract", "output_contract", "routing_event_id", "worker_id", "mcp_call_id", "correlation_id", "source", "target", "contract", "validation") if record.get(key) is not None})
+                        events.append({key: record.get(key) for key in ("event", "timestamp", "ts", "started_at", "ended_at", "run_id", "job_id", "attempt_id", "job_type", "status", "provider", "model", "selected_provider", "selected_model", "actual_provider", "actual_model", "resolved_model", "failure_signature", "input_contract", "output_contract", "routing_event_id", "worker_id", "mcp_call_id", "correlation_id", "source", "target", "contract", "validation") if record.get(key) is not None})
             self._send(200, ok({"events": events, "source": "canonical_run_ledger"}))
             return
         if path.startswith("/v1/jobs/"):

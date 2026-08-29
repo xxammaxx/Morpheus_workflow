@@ -96,12 +96,64 @@ class TelemetryTests(unittest.TestCase):
     def test_lmstudio_requires_actual_morpheus_provider_and_redacts_reasoning(self):
         os.environ.update({"LMSTUDIO_BASE_URL": "http://lmstudio:1234", "LMSTUDIO_ALLOWED_HOSTS": "lmstudio"})
         with patch.object(telemetry, "_lm_models", return_value=([{"id": "qwen", "loaded": True}], "/api/v1/models")):
-            generating = telemetry.lmstudio_telemetry({"run_id": "run-1", "state": "BUILDING", "actual_provider": "lmstudio", "actual_model": "qwen", "reasoning_content": "private"}, [])
+            generating = telemetry.lmstudio_telemetry(
+                {"run_id": "run-1", "state": "BUILDING", "reasoning_content": "private"},
+                [{"event": "MODEL_EXECUTION_STARTED", "timestamp": telemetry.utc_now(), "run_id": "run-1", "provider": "lmstudio", "model": "qwen"}],
+            )
             idle = telemetry.lmstudio_telemetry({"run_id": "run-2", "state": "BUILDING", "selected_provider": "lmstudio"}, [])
         self.assertEqual(generating["inference_status"], "GENERATING")
         self.assertEqual(generating["model"], "qwen")
         self.assertEqual(idle["inference_status"], "IDLE")
         self.assertNotIn("reasoning_content", json.dumps(generating))
+
+    def test_execution_context_projects_correlated_event_identity_without_run_identity(self):
+        reference = telemetry.dt.datetime(2026, 8, 29, 12, 0, tzinfo=telemetry.dt.timezone.utc)
+        context = telemetry.resolve_execution_context(
+            {"run_id": "run-1", "attempt_id": "attempt-1", "current_job": "research.code"},
+            [{"event": "MODEL_EXECUTION_STARTED", "timestamp": "2026-08-29T11:59:59Z", "run_id": "run-1", "attempt_id": "attempt-1", "job_type": "research.code", "provider": "lmstudio", "model": "llama-3.2-1b-instruct@q4_k_m", "status": "running"}],
+            reference,
+        )
+        self.assertEqual(context["provider"], "lmstudio")
+        self.assertEqual(context["model"], "llama-3.2-1b-instruct@q4_k_m")
+        self.assertEqual(context["execution_status"], "ACTIVE")
+        self.assertEqual(context["run_correlation"], "PASS")
+        self.assertEqual(context["attempt_correlation"], "PASS")
+        self.assertEqual(context["stage_correlation"], "PASS")
+
+    def test_execution_context_hard_bounds_events_to_run_id(self):
+        reference = telemetry.dt.datetime(2026, 8, 29, 12, 0, tzinfo=telemetry.dt.timezone.utc)
+        context = telemetry.resolve_execution_context(
+            {"run_id": "run-X", "attempt_id": "attempt-X", "current_job": "research.code"},
+            [{"event": "MODEL_EXECUTION_STARTED", "timestamp": "2026-08-29T11:59:59Z", "run_id": "run-Y", "attempt_id": "attempt-X", "job_type": "research.code", "provider": "lmstudio", "model": "wrong"}],
+            reference,
+        )
+        self.assertIsNone(context["provider"])
+        self.assertEqual(context["execution_status"], "IDLE")
+        self.assertEqual(context["run_correlation"], "NOT_PROVEN")
+
+    def test_completed_or_old_execution_identity_is_historical_not_generating(self):
+        reference = telemetry.dt.datetime(2026, 8, 29, 12, 0, tzinfo=telemetry.dt.timezone.utc)
+        old = telemetry.resolve_execution_context(
+            {"run_id": "run-1"},
+            [{"event": "MODEL_EXECUTION_FINISHED", "timestamp": "2026-08-29T11:00:00Z", "run_id": "run-1", "provider": "lmstudio", "model": "qwen", "status": "completed"}],
+            reference,
+        )
+        self.assertEqual(old["provider"], "lmstudio")
+        self.assertEqual(old["execution_status"], "IDLE")
+        self.assertEqual(old["confidence"], "HISTORICAL")
+        self.assertEqual(old["temporal_correlation"], "NOT_PROVEN")
+
+    def test_finished_execution_returns_idle_and_does_not_use_stale_started_event(self):
+        reference = telemetry.dt.datetime(2026, 8, 29, 12, 0, tzinfo=telemetry.dt.timezone.utc)
+        context = telemetry.resolve_execution_context(
+            {"run_id": "run-1", "attempt_id": "attempt-1"},
+            [
+                {"event": "MODEL_EXECUTION_STARTED", "timestamp": "2026-08-29T11:59:30Z", "run_id": "run-1", "attempt_id": "attempt-1", "provider": "lmstudio", "model": "qwen", "status": "running"},
+                {"event": "MODEL_EXECUTION_FINISHED", "timestamp": "2026-08-29T11:59:45Z", "run_id": "run-1", "attempt_id": "attempt-1", "provider": "lmstudio", "model": "qwen", "status": "completed"},
+            ],
+            reference,
+        )
+        self.assertEqual(context["execution_status"], "IDLE")
 
     def test_lmstudio_unreachable_is_optional_and_truthful(self):
         os.environ.update({"LMSTUDIO_BASE_URL": "http://lmstudio:1234", "LMSTUDIO_ALLOWED_HOSTS": "lmstudio"})
@@ -119,12 +171,45 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(result["gpu_telemetry"]["inference_correlation"], "NOT_CORRELATED")
 
     def test_correlated_lmstudio_process_proves_gpu_offload_only_for_active_run(self):
-        gpu = {"status": "LIVE", "gpus": [{"processes": [{"process_name": "lmstudio", "memory_used": {"value": 100}}]}]}
+        gpu = {"status": "LIVE", "gpus": [{"processes": [{"process_name": "/home/user/.lmstudio/llama-server", "memory_used": {"value": 100}}]}]}
         lm = {"status": "LIVE", "inference_status": "GENERATING"}
         with patch.object(telemetry, "gpu_telemetry", return_value=gpu), patch.object(telemetry, "lmstudio_telemetry", return_value=lm):
             result = telemetry._build({"run_id": "run-1", "state": "BUILDING", "actual_provider": "lmstudio"}, [])
         self.assertEqual(result["lmstudio"]["gpu_offload"], "PROVEN")
         self.assertEqual(result["gpu_telemetry"]["inference_correlation"], "HIGH")
+
+    def test_build_projects_event_identity_and_live_stage_to_control_tower(self):
+        os.environ.update({"LMSTUDIO_BASE_URL": "http://lmstudio:1234", "LMSTUDIO_ALLOWED_HOSTS": "lmstudio"})
+        event = {"event": "MODEL_EXECUTION_STARTED", "timestamp": telemetry.utc_now(), "run_id": "run-1", "attempt_id": "attempt-1", "job_type": "research.code", "status": "running", "provider": "lmstudio", "model": "llama-3.2-1b-instruct@q4_k_m"}
+        gpu = {"status": "LIVE", "gpus": [{"processes": [{"process_name": "llama-server", "memory_used": {"value": 100}}]}]}
+        with patch.object(telemetry, "_lm_models", return_value=([{"id": "llama-3.2-1b-instruct@q4_k_m", "loaded": True}], "/api/v1/models")), patch.object(telemetry, "gpu_telemetry", return_value=gpu), patch.object(telemetry, "proxmox_telemetry", return_value={}):
+            result = telemetry._build({"run_id": "run-1", "attempt_id": "attempt-1", "current_job": "research.code", "state": "RESEARCHING"}, [event])
+        self.assertEqual(result["run"]["stage"], "research.code")
+        self.assertEqual(result["lmstudio"]["model"], "llama-3.2-1b-instruct@q4_k_m")
+        self.assertEqual(result["lmstudio"]["inference_status"], "GENERATING")
+        self.assertEqual(result["lmstudio"]["gpu_offload"], "PROVEN")
+        self.assertEqual(result["lmstudio"]["correlation"]["confidence"], "HIGH")
+
+    def test_llama_server_without_correlated_execution_is_not_correlated(self):
+        gpu = {"status": "LIVE", "gpus": [{"processes": [{"process_name": "llama-server", "memory_used": {"value": 100}}]}]}
+        with patch.object(telemetry, "gpu_telemetry", return_value=gpu), patch.object(telemetry, "lmstudio_telemetry", return_value={"status": "LIVE", "inference_status": "IDLE"}):
+            result = telemetry._build({"run_id": "run-1", "state": "BUILDING"}, [])
+        self.assertEqual(result["gpu_telemetry"]["inference_correlation"], "NOT_CORRELATED")
+
+    def test_gpu_utilization_alone_does_not_correlate_inference(self):
+        gpu = {"status": "LIVE", "gpus": [{"utilization": {"gpu": {"value": 99}}, "processes": []}]}
+        with patch.object(telemetry, "gpu_telemetry", return_value=gpu), patch.object(telemetry, "lmstudio_telemetry", return_value={"status": "LIVE", "inference_status": "IDLE"}):
+            result = telemetry._build({"run_id": "run-1", "state": "BUILDING"}, [])
+        self.assertEqual(result["gpu_telemetry"]["inference_correlation"], "NOT_CORRELATED")
+
+    def test_another_provider_keeps_lmstudio_idle(self):
+        os.environ.update({"LMSTUDIO_BASE_URL": "http://lmstudio:1234", "LMSTUDIO_ALLOWED_HOSTS": "lmstudio"})
+        event = {"event": "MODEL_EXECUTION_STARTED", "timestamp": telemetry.utc_now(), "run_id": "run-1", "provider": "openrouter", "model": "free-model", "status": "running"}
+        with patch.object(telemetry, "_lm_models", return_value=([{"id": "qwen", "loaded": True}], "/api/v1/models")):
+            result = telemetry.lmstudio_telemetry({"run_id": "run-1", "state": "RESEARCHING"}, [event])
+        self.assertEqual(result["server_status"], "ONLINE")
+        self.assertEqual(result["inference_status"], "IDLE")
+        self.assertIsNone(result["model"])
 
     def test_cache_is_bounded_and_reuses_same_run(self):
         cache = telemetry.TelemetryCache()
@@ -133,6 +218,16 @@ class TelemetryTests(unittest.TestCase):
             cache.get({"run_id": "run-1"}, [])
             cache.get({"run_id": "run-1"}, [])
         self.assertEqual(build.call_count, 1)
+
+    def test_cache_refreshes_when_execution_evidence_changes_within_same_run(self):
+        cache = telemetry.TelemetryCache()
+        run = {"run_id": "run-1"}
+        started = [{"event": "MODEL_EXECUTION_STARTED", "timestamp": "2026-08-29T10:00:00Z", "run_id": "run-1", "status": "running"}]
+        finished = [{"event": "MODEL_EXECUTION_FINISHED", "timestamp": "2026-08-29T10:00:01Z", "run_id": "run-1", "status": "completed"}]
+        with patch.object(telemetry, "_build", return_value={"sampled_at": "2026-08-29T10:00:00Z"}) as build:
+            cache.get(run, started)
+            cache.get(run, finished)
+        self.assertEqual(build.call_count, 2)
 
     def test_contract_is_versioned(self):
         contract = json.loads((Path(__file__).parents[1] / "contracts/autodev.runtime-telemetry.v1.schema.json").read_text())
