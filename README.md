@@ -1,4 +1,22 @@
-# AutoDev Harness – Graph Orchestrator v1 — Abschlussbericht
+# Morpheus — current closure state
+
+Stand: 2026-08-30. The proven `Morpheus → OpenCode → LM Studio → GPU`
+correlation workstream is closed and frozen at
+`GREEN_MORPHEUS_RUN_LMSTUDIO_GPU_CORRELATION_PROVEN`.
+
+The current repository tree is release-candidate quality at
+`origin/main=db0f9d000cf096e4d02e6ed2e915f03e612e1a81`. The latest immutable
+tag is `v1.1.2`; the semantically derived next candidate is `v1.2.0` because
+the post-`v1.1.2` changes add project-centric Control Center behavior,
+telemetry, and operator command contracts. No tag or GitHub Release has been
+created by this closure audit.
+
+The canonical closure evidence is
+[`docs/reports/morpheus-project-closure.md`](docs/reports/morpheus-project-closure.md).
+Historical V1/V2 reports below remain provenance records and are not current
+release claims.
+
+## Historical closure records
 
 ## Morpheus V1 closure
 

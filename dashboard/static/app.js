@@ -11,7 +11,7 @@
   const severityLabels = { CRITICAL:'Kritisch', HIGH:'Hoch', WARNING:'Warnung', INFO:'Information' };
   const eventLabels = { ATTEMPT_STARTED:'Versuch gestartet', ATTEMPT_FINISHED:'Versuch beendet', JOB_COMPLETED:'Schritt abgeschlossen', JOB_FAILED:'Schritt fehlgeschlagen' };
   const reasonLabels = { INTAKE_OK:'Aufgabe angenommen', START_BASELINE:'Baseline gestartet', BASELINE_OK:'Baseline erfolgreich', RESEARCH_OK:'Recherche erfolgreich', START_PLAN:'Planung gestartet', PLAN_MISSING:'Plan fehlt', BUILD_FAILED:'Build fehlgeschlagen', VERIFY_FAILED:'Verifikation fehlgeschlagen' };
-  const alertLabels = { FREE_POOL_BELOW_MIN:'Weniger als zwei kostenlose Anbieter sind verfügbar.', PAID_ESCALATION_ENABLED:'Automatische kostenpflichtige Eskalation ist aktiviert.', N8N_UNAVAILABLE:'n8n ist nicht verfügbar.', ADAPTER_UNAVAILABLE:'Der Harness-Adapter ist nicht verfügbar.', STALE_ACTIVE_RUN:'Ein aktiver Lauf wurde seit längerer Zeit nicht aktualisiert.' };
+  const alertLabels = { FREE_POOL_BELOW_MIN:'Keine geeignete kostenlose Route ist verfügbar.', PAID_ESCALATION_ENABLED:'Automatische kostenpflichtige Eskalation ist aktiviert.', N8N_UNAVAILABLE:'n8n ist nicht verfügbar.', ADAPTER_UNAVAILABLE:'Der Harness-Adapter ist nicht verfügbar.', STALE_ACTIVE_RUN:'Ein aktiver Lauf wurde seit längerer Zeit nicht aktualisiert.' };
   const activeStates = new Set(['ACCEPTED','BASELINING','RESEARCHING','PLANNING','PLAN_BLOCKED','BUILDING','VERIFYING','REVIEWING','DECIDING','RUNNING','ACTIVE']);
   const terminalStates = new Set(['DONE','COMPLETED','FAILED','BLOCKED','SPLIT_REQUIRED']);
   let debugPaused = false;

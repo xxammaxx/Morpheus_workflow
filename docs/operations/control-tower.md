@@ -3,7 +3,9 @@
 URL: `http://192.168.1.136:8092/` (8090 ist durch den bestehenden Resolver belegt)
 
 Technischer Dienst: `morpheus-control-tower.service`, Benutzer `morpheus-ct`.
-Release: `1.2.0` (Core `v1.0.0`, Morpheus `v1.1.2`, Leitstand `v1.2.0`).
+Build: `1.2.0` (closure candidate). Latest tagged Morpheus release: `v1.1.2`.
+Proposed next release: `v1.2.0`; no tag or GitHub Release is created by the
+closure process.
 
 ```sh
 systemctl status morpheus-control-tower
@@ -72,8 +74,10 @@ Aktive Zustände sind `ACCEPTED`, `BASELINING`, `RESEARCHING`, `PLANNING`,
 Die 24-Stunden-Zähler verwenden UTC und bevorzugen `ended_at`, danach
 `updated_at`; fehlende oder ungültige Zeitstempel werden nicht gezählt.
 Ein aktiver Lauf wird standardmäßig nach `CONTROL_TOWER_STALE_RUN_SECONDS`
-(1800 Sekunden) als veraltet gemeldet. Der kostenlose Anbieter-Pool ist erst
-ab zwei geeigneten Anbietern gesund.
+(1800 Sekunden) als veraltet gemeldet. Der kostenlose Anbieter-Pool ist
+gesund, sobald mindestens eine geeignete, belegte Zero-Cost-Route verfügbar
+ist; zusätzliche Anbieter verbessern die Ausfallsicherheit, sind aber keine
+Health-Voraussetzung.
 
 Rollback: Dienst stoppen und den vorherigen Build unter
 `/opt/morpheus-control-tower` wiederherstellen. Für ein Upgrade den geprüften
