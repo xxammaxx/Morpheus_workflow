@@ -7,6 +7,21 @@ Kurzreferenz für Betrieb und Test des AutoDev-Harness-v2-Control-Plane.
 | Komponente | Ort | Hinweise |
 |---|---|---|
 | n8n Control Plane | http://192.168.1.52:5678 | 12 Workflows `00`–`90` (alle aktiv) |
+
+### Canonical run schema migration
+
+The setup script keeps `autodev_runs` additive and converges both fresh and
+existing installations on the run-row contract. To perform only this safe
+schema operation, run:
+
+```sh
+python3 workflow/v2/create_workflows_v2.py <repo_root> <export_dir> --schema-only
+```
+
+The mode authenticates with the existing protected n8n API key, creates or
+finds `autodev_runs`, adds only missing string columns, verifies the resulting
+schema, and exits. It does not create credentials, deploy workflows, or touch
+run rows.
 | Harness Adapter v2 | http://192.168.1.136:8081 | systemd `autodev-harness-v2` auf pve |
 | Adapter State | `/var/lib/autodev-harness-v2/` | Token (0600), Ledger `logs/runs.jsonl`, Workspaces |
 | Builder CT 8001 | ghiw-bld-e3r6-canary-001-8001 | OpenCode 1.18.22, local Ollama formatter (LM-Studio remains an available worker route) |

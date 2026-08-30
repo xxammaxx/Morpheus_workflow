@@ -33,6 +33,35 @@ EXPORT_DIR = (
     else os.path.join(REPO_ROOT, "n8n", "workflows", "autodev")
 )
 
+# Canonical run-row contract.  Keep this list additive: setup uses it for
+# fresh tables and for upgrades, while workflow generation is the consumer
+# that writes these fields.
+RUN_TABLE_REQUIRED_COLUMNS = [
+    "run_id",
+    "state",
+    "task_ref",
+    "repository_ref",
+    "current_job",
+    "decision",
+    "reason_code",
+    "created_at",
+    "updated_at",
+    "result_ref",
+    "trace_id",
+    "backend",
+    "project_id",
+    "issue_number",
+    "correlation_id",
+    "source_run_id",
+    "continuation_reason",
+    "requested_action",
+    "created_via",
+    "requested_by",
+    "last_action",
+    "excluded_model",
+    "excluded_provider",
+]
+
 
 def api(method, path, body=None):
     with open(API_KEY_PATH) as f:
@@ -91,6 +120,20 @@ def ensure_columns(table_id, columns):
             raise SystemExit("add column %s failed for %s: %s" % (name, table_id, resp))
 
 
+def migrate_runs_schema():
+    """Create/find autodev_runs and converge it additively to the contract."""
+    runs_id = create_table("autodev_runs", RUN_TABLE_REQUIRED_COLUMNS)
+    ensure_columns(runs_id, RUN_TABLE_REQUIRED_COLUMNS)
+    st, resp = api("GET", "/api/v1/data-tables/%s/columns" % runs_id)
+    if st != 200:
+        raise SystemExit("verify columns failed for %s: %s" % (runs_id, resp))
+    actual = {column.get("name") for column in resp if isinstance(column, dict)}
+    missing = [name for name in RUN_TABLE_REQUIRED_COLUMNS if name not in actual]
+    if missing:
+        raise SystemExit("run schema remains incomplete: %s" % ", ".join(missing))
+    return runs_id, [column.get("name") for column in resp if isinstance(column, dict)]
+
+
 def create_credential(name, header_name, value):
     st, resp = api("GET", "/api/v1/credentials?limit=250")
     for c in resp.get("data", []):
@@ -121,6 +164,13 @@ def find_credential(name):
 
 
 def main():
+    schema_only = "--schema-only" in sys.argv
+    if schema_only:
+        sys.argv.remove("--schema-only")
+        runs_id, columns = migrate_runs_schema()
+        print("SCHEMA_ONLY runs=%s columns=%s" % (runs_id, ",".join(columns)))
+        return
+
     os.makedirs(EXPORT_DIR, exist_ok=True)
     with open(API_KEY_PATH) as f:
         n8n_key = f.read().strip()
@@ -133,23 +183,7 @@ def main():
     with open(API_TOKEN_PATH) as f:
         api_token = f.read().strip()
 
-    runs_id = create_table(
-        "autodev_runs",
-        [
-            "run_id",
-            "state",
-            "task_ref",
-            "repository_ref",
-            "current_job",
-            "decision",
-            "reason_code",
-            "created_at",
-            "updated_at",
-            "result_ref",
-            "trace_id",
-            "backend",
-        ],
-    )
+    runs_id, _ = migrate_runs_schema()
     attempts_id = create_table(
         "autodev_attempts",
         [
@@ -186,7 +220,6 @@ def main():
         ["timestamp", "actor", "role", "command", "target", "project_id", "run_id",
          "result", "correlation_id"],
     )
-    ensure_columns(runs_id, ["project_id", "issue_number"])
     print("TABLES runs=%s attempts=%s projects=%s issues=%s audit=%s" %
           (runs_id, attempts_id, projects_id, issues_id, audit_id))
 
