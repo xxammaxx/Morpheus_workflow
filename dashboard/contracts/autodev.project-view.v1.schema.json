@@ -4,5 +4,5 @@
   "title": "Project projection derived from canonical stores",
   "type": "object",
   "required": ["contract", "version", "projects"],
-  "properties": {"contract": {"const": "autodev.project-view.v1"}, "version": {"const": "v1"}, "projects": {"type": "array", "items": {"type": "object", "required": ["project_id", "status", "progress"]}}}
+  "properties": {"contract": {"const": "autodev.project-view.v1"}, "version": {"const": "v1"}, "projects": {"type": "array", "items": {"type": "object", "required": ["project_id", "status", "progress", "latest_run_id", "continuation_allowed", "run_history"], "properties": {"project_id": {"type": "string"}, "status": {"type": "string"}, "latest_run_id": {"type": ["string", "null"]}, "continuation_allowed": {"type": "boolean"}, "run_history": {"type": "array"}, "issues": {"type": "array"}}}}}
 }

@@ -43,6 +43,17 @@ ROUTER_TESTS = frozenset({
 SECRET_KEYS = re.compile(r"(?:authorization|cookie|token|secret|password|api[_-]?key|private[_-]?key|ssh[_-]?key|credential|reasoning|chain.?of.?thought)", re.I)
 REASONING_KEYS = {"reasoning_content", "reasoning", "chain_of_thought", "chain-of-thought", "thoughts"}
 TARGET_KEYS = frozenset({"run_id", "project_id", "issue_number"})
+CONTINUATION_FIELDS = frozenset({
+    "project_id", "source_run_id", "run_id", "issue_number",
+    "continuation_reason", "requested_action",
+})
+CONTINUATION_TERMINAL_STATES = frozenset({
+    "DONE", "COMPLETED", "ABORTED", "BLOCKED", "FAILED", "PAUSED", "PLAN_BLOCKED",
+})
+ACTIVE_RUN_STATES = frozenset({
+    "ACCEPTED", "BASELINING", "RESEARCHING", "PLANNING", "BUILDING",
+    "VERIFYING", "REVIEWING", "DECIDING", "RUNNING", "ACTIVE",
+})
 
 
 def utc_now() -> str:
@@ -114,6 +125,21 @@ def validate_target(target: object) -> dict:
     return target
 
 
+def _validate_identifier(value: object, name: str, pattern: str = r"[A-Za-z0-9_.:#-]{1,96}") -> str:
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        raise ValueError(f"{name} is required")
+    result = str(value)
+    if not re.fullmatch(pattern, result):
+        raise ValueError(f"{name} is invalid")
+    return result
+
+
+def _validate_bounded_text(value: object, name: str, maximum: int = 240) -> str:
+    if not isinstance(value, str) or not value.strip() or len(value) > maximum or any(ord(char) < 32 and char not in "\t" for char in value):
+        raise ValueError(f"{name} must be a short bounded instruction")
+    return value.strip()
+
+
 def validate_command(command: object, payload: object, role: str) -> tuple[str, dict]:
     if role not in COMMAND_ROLES:
         raise PermissionError("role is not allowed to issue commands")
@@ -128,8 +154,23 @@ def validate_command(command: object, payload: object, role: str) -> tuple[str, 
     for key in payload:
         if not isinstance(key, str) or key.startswith("__") or len(key) > 64:
             raise ValueError("invalid payload key")
+    if command == "RESUME_RUN":
+        unknown = set(payload) - CONTINUATION_FIELDS
+        if unknown:
+            raise ValueError("continuation payload field is not allowed")
+        payload["project_id"] = _validate_identifier(payload.get("project_id"), "project_id")
+        payload["source_run_id"] = _validate_identifier(
+            payload.get("source_run_id") or payload.get("run_id"),
+            "source_run_id",
+            r"run-[A-Za-z0-9_-]{1,60}",
+        )
+        if payload.get("issue_number") is not None:
+            payload["issue_number"] = _validate_identifier(payload["issue_number"], "issue_number")
+        payload["continuation_reason"] = _validate_bounded_text(payload.get("continuation_reason"), "continuation_reason")
+        payload["requested_action"] = _validate_bounded_text(payload.get("requested_action"), "requested_action")
+        payload.pop("run_id", None)
     if command in {
-        "PAUSE_RUN", "RESUME_RUN", "ABORT_RUN", "RETRY_STAGE", "RETRY_RUN",
+        "PAUSE_RUN", "ABORT_RUN", "RETRY_STAGE", "RETRY_RUN",
         "EXCLUDE_MODEL_FOR_RUN", "EXCLUDE_PROVIDER_FOR_RUN", "APPROVE_HUMAN_GATE",
     } and not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", str(payload.get("run_id", ""))):
         raise ValueError("run_id is required")
@@ -239,13 +280,42 @@ def project_projection(project_rows: list[dict], issue_rows: list[dict], run_row
         if not issues:
             issues = [{"status": "RUNNING" if any(str(r.get("state", "")).upper() in {"RUNNING", "ACTIVE", "BUILDING", "PLANNING"} for r in value["runs"]) else "UNKNOWN"}]
         statuses = [classify_issue(issue) for issue in issues]
-        current = next((r for r in sorted(value["runs"], key=lambda r: r.get("updated_at") or "", reverse=True) if str(r.get("state", "")).upper() not in {"DONE", "COMPLETED"}), None)
+        def run_key(run):
+            timestamp = run.get("updated_at") or run.get("ended_at") or run.get("created_at")
+            try:
+                parsed = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+                return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+            except (TypeError, ValueError, OverflowError):
+                return datetime.min.replace(tzinfo=timezone.utc)
+
+        runs = sorted(value["runs"], key=run_key, reverse=True)
+        latest = runs[0] if runs else None
+        active_runs = [r for r in runs if str(r.get("state", "")).upper() in ACTIVE_RUN_STATES]
+        active = active_runs[0] if active_runs else None
+        latest_state = str((latest or {}).get("state", "UNKNOWN")).upper()
+        continuation_allowed = bool(latest and not active and latest_state in CONTINUATION_TERMINAL_STATES)
+        history = [{key: r.get(key) for key in (
+            "run_id", "project_id", "issue_number", "state", "current_job", "decision",
+            "reason_code", "created_at", "updated_at", "ended_at", "source_run_id",
+            "created_via", "continuation_reason", "requested_action", "requested_by",
+            "correlation_id",
+        ) if key in r} for r in runs]
+        last_outcome = (latest or {}).get("reason_code") or (latest or {}).get("decision") or latest_state
         result.append({"project_id": project_id, "name": project.get("name") or project.get("project_name") or project_id,
                        "repository": project.get("repository_url") or project.get("repository_ref") or project_id,
                        "blueprint": project.get("blueprint_ref") or project.get("blueprint") or None,
-                       "status": "BLOCKED" if "BLOCKED" in statuses else "RUNNING" if "RUNNING" in statuses else "DONE" if statuses and all(s == "DONE" for s in statuses) else "READY",
-                       "current_issue": (current or {}).get("issue_number") or (current or {}).get("task_ref"),
-                       "current_run": (current or {}).get("run_id"), "progress": {"done": statuses.count("DONE"), "total": len(statuses)},
+                       "status": "RUNNING" if active else "BLOCKED" if "BLOCKED" in statuses else "DONE" if statuses and all(s == "DONE" for s in statuses) else "READY",
+                       "current_issue": (active or latest or {}).get("issue_number") or (active or latest or {}).get("task_ref"),
+                       "current_run": (active or latest or {}).get("run_id"),
+                       "latest_run_id": (latest or {}).get("run_id"),
+                       "active_run_id": (active or {}).get("run_id"),
+                       "active_run_conflict": bool(active_runs),
+                       "is_active": bool(active),
+                       "continuation_allowed": continuation_allowed,
+                       "continuation_blocked_reason": "PROJECT_ACTIVE_RUN_CONFLICT" if active else ("CONTINUATION_NOT_ALLOWED" if not continuation_allowed else None),
+                       "last_outcome": last_outcome,
+                       "run_history": history,
+                       "progress": {"done": statuses.count("DONE"), "total": len(statuses)},
                        "issue_counts": {key: statuses.count(key) for key in ("READY", "RUNNING", "BLOCKED", "DONE", "REVIEW", "UNKNOWN")},
                        "issues": [redact({**issue, "morpheus_status": classify_issue(issue)}) for issue in issues]})
     return sorted(result, key=lambda x: x["name"])
@@ -261,3 +331,28 @@ def reassessment(issues: list[dict], blueprint: dict | None = None, mode: str = 
     return {"status": status, "mode": mode if mode in {"AUTO", "MANUAL"} else "MANUAL", "ready": ready,
             "blocked": blocked, "next_issue": ready[0] if mode == "AUTO" and ready else None,
             "blueprint_coverage": coverage, "issues": classified}
+
+
+def continuation_policy(project: dict | None, runs: list[dict], issues: list[dict], request: dict) -> dict:
+    """Pure, read-only mirror of the n8n continuation eligibility contract."""
+    project_id = str(request.get("project_id", ""))
+    source_run_id = str(request.get("source_run_id") or request.get("run_id") or "")
+    correlation = str(request.get("correlation_id", ""))
+    if not project or str(project.get("project_id", "")) != project_id:
+        return {"allowed": False, "code": "PROJECT_NOT_FOUND"}
+    duplicate = next((run for run in runs if str(run.get("correlation_id", "")) == correlation and run.get("created_via") == "CONTROL_TOWER_CONTINUATION"), None)
+    if duplicate:
+        return {"allowed": False, "code": "DUPLICATE_REQUEST", "existing_run_id": duplicate.get("run_id")}
+    active = next((run for run in runs if str(run.get("state", "")).upper() in ACTIVE_RUN_STATES), None)
+    if active:
+        return {"allowed": False, "code": "PROJECT_ACTIVE_RUN_CONFLICT", "active_run_id": active.get("run_id")}
+    source = next((run for run in runs if str(run.get("run_id", "")) == source_run_id), None)
+    if not source or str(source.get("project_id", "")) != project_id or str(source.get("state", "")).upper() not in CONTINUATION_TERMINAL_STATES:
+        return {"allowed": False, "code": "CONTINUATION_NOT_ALLOWED"}
+    issue_number = request.get("issue_number")
+    selected_issue = None
+    if issue_number is not None and str(issue_number) != "":
+        selected_issue = next((issue for issue in issues if str(issue.get("issue_number") or issue.get("number") or "") == str(issue_number)), None)
+        if not selected_issue or classify_issue(selected_issue) in {"OBSOLETE", "DUPLICATE"}:
+            return {"allowed": False, "code": "ISSUE_NOT_FOUND"}
+    return {"allowed": True, "code": None, "source_run": source, "issue": selected_issue}

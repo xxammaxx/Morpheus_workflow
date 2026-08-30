@@ -1,20 +1,43 @@
-# Morpheus — current closure state
+# Morpheus — current project state
 
 Stand: 2026-08-30. The proven `Morpheus → OpenCode → LM Studio → GPU`
-correlation workstream is closed and frozen at
+correlation workstream is historical and remains frozen at
 `GREEN_MORPHEUS_RUN_LMSTUDIO_GPU_CORRELATION_PROVEN`.
 
-The current repository tree is release-candidate quality at
-`origin/main=db0f9d000cf096e4d02e6ed2e915f03e612e1a81`. The latest immutable
-tag is `v1.1.2`; the semantically derived next candidate is `v1.2.0` because
-the post-`v1.1.2` changes add project-centric Control Center behavior,
-telemetry, and operator command contracts. No tag or GitHub Release has been
-created by this closure audit.
+The published baseline is immutable `v1.2.0` at
+`origin/main=3dd891fd7f75d548d4c133c84801699b6ee108a0`. This branch contains
+post-release canonical project continuation work; no new tag or release is
+created by this task.
 
 The canonical closure evidence is
 [`docs/reports/morpheus-project-closure.md`](docs/reports/morpheus-project-closure.md).
 Historical V1/V2 reports below remain provenance records and are not current
 release claims.
+
+## Post-v1.2.0 canonical project continuation
+
+An operator can continue an existing project with the reusable `RESUME_RUN`
+command. The Control Tower submits bounded continuation intent to the
+authenticated n8n Control Gateway. Workflow `08 AutoDev Project Reassessment`
+reads the canonical project, issue, and run tables, rejects active-run
+conflicts and invalid references, then starts one new run through the normal
+`00 → 01` pipeline. The new run retains `project_id`, `source_run_id`, issue
+context, `correlation_id`, and `created_via=CONTROL_TOWER_CONTINUATION`; old
+runs remain historical rows. Continuation identity is the bounded tuple
+`(project_id, source_run_id, correlation_id)`; n8n derives the grammar-valid
+run ID from its SHA-256 digest and refuses any attempted reassignment of an
+existing run ID to different canonical provenance.
+
+```mermaid
+flowchart LR
+  CT[Control Tower] --> GW[n8n Control Gateway]
+  GW --> RA[08 Project Reassessment]
+  RA --> DT[(n8n Data Tables)]
+  RA --> START[00 Start → 01 Orchestrator]
+  P[Project] --> R1[Run 1]
+  P --> R2[Run 2]
+  P --> RN[Run N]
+```
 
 ## Historical closure records
 

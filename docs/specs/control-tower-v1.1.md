@@ -25,6 +25,14 @@ bodies, prompts, cookies, authorization headers, or infrastructure secrets.
 Operator commands are forwarded only after BFF allow-list and role checks;
 the BFF does not select providers or own run state.
 
+Project continuation reuses `RESUME_RUN`. The project projection exposes the
+latest run, complete historical run list, source-run provenance, linked issue
+context, last outcome, active-run conflict state, and whether continuation is
+currently allowed. A valid operator action is forwarded to the n8n
+reassessment workflow, which reads canonical Data Tables and starts a new run
+through the ordinary start/orchestrator path. The Control Tower never writes
+project or run rows directly. Viewer sessions render no mutation action.
+
 Acceptance gates: live n8n and Adapter sources, canonical workflows,
 dynamic free-first routing with optional local providers, truthful degraded
 mode, viewer-auth tests, read-only telemetry, desktop/mobile responsive and
