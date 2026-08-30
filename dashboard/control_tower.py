@@ -385,7 +385,7 @@ def command_result_status(upstream_status: int, result: dict) -> int:
     code = str(result.get("code", "")) if isinstance(result, dict) else ""
     if code in {"PROJECT_NOT_FOUND", "ISSUE_NOT_FOUND", "RUN_NOT_FOUND"}:
         return 404
-    if code in {"PROJECT_ACTIVE_RUN_CONFLICT", "DUPLICATE_REQUEST", "CONTINUATION_NOT_ALLOWED"}:
+    if code in {"PROJECT_ACTIVE_RUN_CONFLICT", "DUPLICATE_REQUEST", "CONTINUATION_NOT_ALLOWED", "RUN_ID_OWNERSHIP_CONFLICT"}:
         return 409
     if code in {"INVALID_TARGET", "COMMAND_NOT_ALLOWED", "ROLE_FORBIDDEN"}:
         return 403 if code == "ROLE_FORBIDDEN" else 400

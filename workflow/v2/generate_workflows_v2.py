@@ -24,6 +24,60 @@ REPO_ROOT = os.path.join(BASE_DIR, "..", "..")
 SCHEMA_DIR = os.path.join(REPO_ROOT, "runtime", "contracts", "schemas")
 
 
+# This is deliberately self-contained ES2020. n8n Code nodes do not need (or
+# load) a Node crypto module for continuation identity. Its inputs are already
+# restricted to ASCII identifiers by the control gateway, so charCodeAt is a
+# stable byte representation here. 48 hex characters keep the full run id
+# below the canonical `run-[A-Za-z0-9_-]{1,60}` limit.
+CONTINUATION_RUN_ID_JS = r"""function canonicalContinuationRunId(projectId, sourceRunId, correlationId) {
+  const text = JSON.stringify([String(projectId), String(sourceRunId), String(correlationId)]);
+  const k = [1116352408,1899447441,3049323471,3921009573,961987163,1508970993,2453635748,2870763221,3624381080,310598401,607225278,1426881987,1925078388,2162078206,2614888103,3248222580,3835390401,4022224774,264347078,604807628,770255983,1249150122,1555081692,1996064986,2554220882,2821834349,2952996808,3210313671,3336571891,3584528711,113926993,338241895,666307205,773529912,1294757372,1396182291,1695183700,1986661051,2177026350,2456956037,2730485921,2820302411,3259730800,3345764771,3516065817,3600352804,4094571909,275423344,430227734,506948616,659060556,883997877,958139571,1322822218,1537002063,1747873779,1955562222,2024104815,2227730452,2361852424,2428436474,2756734187,3204031479,3329325298];
+  const bytes = Array.from(text, char => char.charCodeAt(0));
+  const bitLength = bytes.length * 8;
+  bytes.push(128);
+  while ((bytes.length % 64) !== 56) bytes.push(0);
+  for (let i = 7; i >= 0; i -= 1) bytes.push(Math.floor(bitLength / (2 ** (i * 8))) & 255);
+  let h0 = 1779033703, h1 = 3144134277, h2 = 1013904242, h3 = 2773480762;
+  let h4 = 1359893119, h5 = 2600822924, h6 = 528734635, h7 = 1541459225;
+  for (let offset = 0; offset < bytes.length; offset += 64) {
+    const w = new Array(64);
+    for (let i = 0; i < 16; i += 1) w[i] = ((bytes[offset + i * 4] << 24) | (bytes[offset + i * 4 + 1] << 16) | (bytes[offset + i * 4 + 2] << 8) | bytes[offset + i * 4 + 3]) >>> 0;
+    for (let i = 16; i < 64; i += 1) {
+      const a = w[i - 15], b = w[i - 2];
+      const s0 = ((a >>> 7) | (a << 25)) ^ ((a >>> 18) | (a << 14)) ^ (a >>> 3);
+      const s1 = ((b >>> 17) | (b << 15)) ^ ((b >>> 19) | (b << 13)) ^ (b >>> 10);
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+    }
+    let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+    for (let i = 0; i < 64; i += 1) {
+      const s1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+      const choice = (e & f) ^ (~e & g);
+      const temp1 = (h + s1 + choice + k[i] + w[i]) >>> 0;
+      const s0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+      const majority = (a & b) ^ (a & c) ^ (b & c);
+      const temp2 = (s0 + majority) >>> 0;
+      h = g; g = f; f = e; e = (d + temp1) >>> 0; d = c; c = b; b = a; a = (temp1 + temp2) >>> 0;
+    }
+    h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0; h3 = (h3 + d) >>> 0;
+    h4 = (h4 + e) >>> 0; h5 = (h5 + f) >>> 0; h6 = (h6 + g) >>> 0; h7 = (h7 + h) >>> 0;
+  }
+  const digest = [h0, h1, h2, h3, h4, h5, h6, h7].map(value => value.toString(16).padStart(8, '0')).join('');
+  return 'run-cont-' + digest.slice(0, 48);
+}"""
+
+RUN_OWNERSHIP_GUARD_JS = r"""function requestedRunOwnership(proposed, existing) {
+  const isContinuation = proposed.created_via === 'CONTROL_TOWER_CONTINUATION';
+  const exactContinuationReplay = Boolean(existing) && isContinuation &&
+    String(existing.project_id || '') === String(proposed.project_id || '') &&
+    String(existing.source_run_id || '') === String(proposed.source_run_id || '') &&
+    String(existing.correlation_id || '') === String(proposed.correlation_id || '') &&
+    String(existing.created_via || '') === 'CONTROL_TOWER_CONTINUATION';
+  const ownershipConflict = Boolean(existing) && !exactContinuationReplay;
+  return {ownership_ok: !ownershipConflict, continuation_replay: exactContinuationReplay,
+    ownership_code: ownershipConflict ? 'RUN_ID_OWNERSHIP_CONFLICT' : ''};
+}"""
+
+
 def embed_schema(name):
     with open(os.path.join(SCHEMA_DIR, name + ".schema.json")) as f:
         return json.dumps(json.load(f), sort_keys=True)
@@ -669,11 +723,41 @@ return [{json: {intake: {issue: s.issue, fixture: s.fixture, backend: s.backend,
     )
     wf.add_node(
         http_node(
+            "Fetch Requested Run",
+            "GET",
+            cfg.rows(cfg.runs),
+            "{}",
+            P(3, 1),
+            cfg.cr_n8n,
+            send_body=False,
+            params_extra={
+                "url": cfg.rows(cfg.runs), "sendQuery": True,
+                "queryParameters": {"parameters": [{"name": "filter", "value": "={{ JSON.stringify({filters:[{columnName:'run_id',condition:'eq',value:$('Prepare Run Row').first().json.data[0].run_id}]}) }}"}]},
+            },
+        )
+    )
+    wf.nodes[-1]["alwaysOutputData"] = True
+    wf.add_node(
+        code_node(
+            "Guard Requested Run Ownership",
+            RUN_OWNERSHIP_GUARD_JS + """
+const carrier=$('Prepare Run Row').first().json,proposed=(carrier.data||[])[0]||{},raw=$json;
+const rows=Array.isArray(raw.data)?raw.data:[],existing=rows[0]||null;
+return[{json:{...carrier,existing_run:existing,...requestedRunOwnership(proposed,existing)}}];""",
+            P(4, 1),
+        )
+    )
+    wf.add_node(bool_if("Requested Run Ownership Allowed?", "$json.ownership_ok === true", P(5, 1)))
+    wf.add_node(respond_node("Respond Run ID Ownership Conflict", P(6, 2), "={{ JSON.stringify({status:'error',code:$json.ownership_code||'RUN_ID_OWNERSHIP_CONFLICT',run_id:(($json.data||[])[0]||{}).run_id,project_id:(($json.data||[])[0]||{}).project_id}) }}"))
+    wf.add_node(bool_if("Continuation Intake Replay?", "$json.continuation_replay === true", P(6, 1)))
+    wf.add_node(respond_node("Respond Existing Continuation", P(7, 2), "={{ JSON.stringify({run_id:($json.existing_run||{}).run_id,status:'ACCEPTED',replay:true,status_url:'" + cfg.webhook + "/webhook/autodev/status?run_id=' + ($json.existing_run||{}).run_id}) }}"))
+    wf.add_node(
+        http_node(
             "Insert Run Row",
             "POST",
             cfg.rows(cfg.runs) + "/upsert",
             "JSON.stringify({filter:{filters:[{columnName:'run_id',condition:'eq',value:$json.data[0].run_id}]},data:$json.data[0],returnData:true})",
-            P(3, 1),
+            P(7, 1),
             cfg.cr_n8n,
         )
     )
@@ -718,7 +802,13 @@ return [{json: Object.assign({}, intake, {run_row: row,
             P(4, 0),
         )
     )
-    wf.add("Prepare Run Row", "Insert Run Row")
+    wf.add("Prepare Run Row", "Fetch Requested Run")
+    wf.add("Fetch Requested Run", "Guard Requested Run Ownership")
+    wf.add("Guard Requested Run Ownership", "Requested Run Ownership Allowed?")
+    wf.add("Requested Run Ownership Allowed?", "Respond Run ID Ownership Conflict", 1)
+    wf.add("Requested Run Ownership Allowed?", "Continuation Intake Replay?", 0)
+    wf.add("Continuation Intake Replay?", "Respond Existing Continuation", 0)
+    wf.add("Continuation Intake Replay?", "Insert Run Row", 1)
     wf.add("Insert Run Row", "Restore Intake Carrier")
     wf.add("Restore Intake Carrier", "Pass Intake")
     wf.add("Pass Intake", "Respond 202")
@@ -3025,7 +3115,16 @@ def build_08_project_reassessment_canonical(cfg):
     wf = WF("08 AutoDev Project Reassessment")
     P = lambda x, y: [x * 260, y * 170]  # noqa: E731
     wf.add_node(webhook_node("Project Reassessment Webhook", "autodev/project/reassess", "POST", cfg.cr_api, P(0, 0)))
-    normalize = "const source=$json.body||$json,input=source.body||source,sourceRunId=String(input.source_run_id||input.run_id||''),correlation=String(input.correlation_id||'auto-'+sourceRunId);return[{json:{project_id:String(input.project_id||''),source_run_id:sourceRunId,issue_number:input.issue_number===undefined?'':String(input.issue_number),continuation_reason:String(input.continuation_reason||''),requested_action:String(input.requested_action||''),requested_by:String(input.requested_by||''),correlation_id:correlation,project_mode:input.project_mode==='AUTO'?'AUTO':'MANUAL',repository_url:String(input.repository_url||''),mode:input.command==='RESUME_RUN'?'MANUAL':'AUTO_REASSESSMENT'}}];"
+    normalize = r"""const source=$json.body||$json,input=source.body||source,
+sourceRunId=String(input.source_run_id||input.run_id||''),providedCorrelation=String(input.correlation_id||''),
+mode=input.command==='RESUME_RUN'?'MANUAL':'AUTO_REASSESSMENT',
+correlationValid=/^[A-Za-z0-9_.:-]{3,96}$/.test(providedCorrelation),
+correlation=correlationValid?providedCorrelation:mode==='AUTO_REASSESSMENT'?'auto-'+sourceRunId:'';
+return[{json:{project_id:String(input.project_id||''),source_run_id:sourceRunId,
+issue_number:input.issue_number===undefined?'':String(input.issue_number),
+continuation_reason:String(input.continuation_reason||''),requested_action:String(input.requested_action||''),
+requested_by:String(input.requested_by||''),correlation_id:correlation,correlation_valid:correlationValid||mode==='AUTO_REASSESSMENT',
+project_mode:input.project_mode==='AUTO'?'AUTO':'MANUAL',repository_url:String(input.repository_url||''),mode}}];"""
     wf.add_node(code_node("Normalize Continuation Request", normalize, P(1, 0)))
     query = "const s=$json;return[{json:{...s,filter_raw:JSON.stringify({filters:[{columnName:'project_id',condition:'eq',value:s.project_id}]})}}];"
     wf.add_node(code_node("Prepare Project Query", query, P(2, 0)))
@@ -3035,7 +3134,8 @@ def build_08_project_reassessment_canonical(cfg):
     wf.nodes[-1]["alwaysOutputData"] = True
     wf.add_node(http_node("Fetch Project Issues", "GET", cfg.issue_rows(), "{}", P(5, 0), cfg.cr_n8n, send_body=False, params_extra={"url": cfg.issue_rows(), "sendQuery": True, "queryParameters": {"parameters": [{"name": "filter", "value": "={{ $('Prepare Project Query').first().json.filter_raw }}"}]}}))
     wf.nodes[-1]["alwaysOutputData"] = True
-    decision = r"""const req=$('Normalize Continuation Request').first().json,projects=Array.isArray($('Fetch Canonical Project').first().json.data)?$('Fetch Canonical Project').first().json.data:[],runs=Array.isArray($('Fetch Project Runs').first().json.data)?$('Fetch Project Runs').first().json.data:[],issues=Array.isArray($json.data)?$json.data:[],project=projects[0]||null,activeStates=new Set(['ACCEPTED','BASELINING','RESEARCHING','PLANNING','BUILDING','VERIFYING','REVIEWING','DECIDING','RUNNING','ACTIVE']),terminalStates=new Set(['DONE','COMPLETED','ABORTED','BLOCKED','FAILED','PAUSED','PLAN_BLOCKED']),active=runs.find(r=>activeStates.has(String(r.state||'').toUpperCase())),source=runs.find(r=>String(r.run_id||'')===req.source_run_id),duplicate=runs.find(r=>String(r.correlation_id||'')===req.correlation_id&&String(r.created_via||'')==='CONTROL_TOWER_CONTINUATION'),selectedIssue=req.issue_number?issues.find(i=>String(i.issue_number||i.number||'')===req.issue_number):null;let code='';if(!project)code='PROJECT_NOT_FOUND';else if(duplicate)code='DUPLICATE_REQUEST';else if(active)code='PROJECT_ACTIVE_RUN_CONFLICT';else if(!source||String(source.project_id||'')!==req.project_id||!terminalStates.has(String(source.state||'').toUpperCase()))code='CONTINUATION_NOT_ALLOWED';else if(req.issue_number&&(!selectedIssue||['OBSOLETE','DUPLICATE'].includes(String(selectedIssue.morpheus_status||selectedIssue.status||'').toUpperCase())))code='ISSUE_NOT_FOUND';else if(req.mode==='MANUAL'&&(!req.continuation_reason.trim()||req.continuation_reason.length>240||!req.requested_action.trim()||req.requested_action.length>240))code='CONTINUATION_NOT_ALLOWED';const issueNumber=req.issue_number||String(source&&source.issue_number||''),issue=selectedIssue||issues.find(i=>String(i.issue_number||i.number||'')===issueNumber)||null,reason=req.continuation_reason.trim()||'continue next approved project work',action=req.requested_action.trim()||String(issue&&issue.title||'reassess and continue project'),repository=String(project&&(project.repository_url||project.repository_ref)||req.repository_url||(source&&source.repository_ref)||'').replace(/^https:\/\/github\.com\//,'').replace(/\/$/,''),runId='run-cont-'+req.correlation_id.replace(/[^A-Za-z0-9_-]/g,'').slice(-48),description=[String(issue&&issue.body||issue&&issue.title||''),action,reason].filter(Boolean).join('\n\n').slice(0,4000);return[{json:{...req,valid:!code,code,project,source_run:source||null,selected_issue:issue||null,continuation_run_id:runId,start_request:{task:{run_id:runId,task_ref:'project:'+req.project_id+(issueNumber?':issue:'+issueNumber:''),repository_ref:repository,workspace:String((project&&project.workspace)||req.project_id),task_description:description||('Continue project '+req.project_id),acceptance_hint:action,max_attempts:2,project_id:req.project_id,project_mode:'MANUAL',issue_number:issueNumber,source_run_id:req.source_run_id,continuation_reason:reason,requested_action:action,requested_by:req.requested_by,created_via:'CONTROL_TOWER_CONTINUATION','x-metadata':{project_id:req.project_id,project_mode:'MANUAL',issue_number:issueNumber,source_run_id:req.source_run_id,continuation_reason:reason,requested_action:action,requested_by:req.requested_by,created_via:'CONTROL_TOWER_CONTINUATION',correlation_id:req.correlation_id}},backend:'opencode-builder-8001'}}];"""
+    decision = CONTINUATION_RUN_ID_JS + r"""
+const req=$('Normalize Continuation Request').first().json,projects=Array.isArray($('Fetch Canonical Project').first().json.data)?$('Fetch Canonical Project').first().json.data:[],runs=Array.isArray($('Fetch Project Runs').first().json.data)?$('Fetch Project Runs').first().json.data:[],issues=Array.isArray($json.data)?$json.data:[],project=projects[0]||null,activeStates=new Set(['ACCEPTED','BASELINING','RESEARCHING','PLANNING','BUILDING','VERIFYING','REVIEWING','DECIDING','RUNNING','ACTIVE']),terminalStates=new Set(['DONE','COMPLETED','ABORTED','BLOCKED','FAILED','PAUSED','PLAN_BLOCKED']),active=runs.find(r=>activeStates.has(String(r.state||'').toUpperCase())),source=runs.find(r=>String(r.run_id||'')===req.source_run_id),duplicate=runs.find(r=>String(r.correlation_id||'')===req.correlation_id&&String(r.created_via||'')==='CONTROL_TOWER_CONTINUATION'),selectedIssue=req.issue_number?issues.find(i=>String(i.issue_number||i.number||'')===req.issue_number):null;let code='';if(!project)code='PROJECT_NOT_FOUND';else if(req.mode==='MANUAL'&&!req.correlation_valid)code='CORRELATION_ID_INVALID';else if(duplicate)code='DUPLICATE_REQUEST';else if(active)code='PROJECT_ACTIVE_RUN_CONFLICT';else if(!source||String(source.project_id||'')!==req.project_id||!terminalStates.has(String(source.state||'').toUpperCase()))code='CONTINUATION_NOT_ALLOWED';else if(req.issue_number&&(!selectedIssue||['OBSOLETE','DUPLICATE'].includes(String(selectedIssue.morpheus_status||selectedIssue.status||'').toUpperCase())))code='ISSUE_NOT_FOUND';else if(req.mode==='MANUAL'&&(!req.continuation_reason.trim()||req.continuation_reason.length>240||!req.requested_action.trim()||req.requested_action.length>240))code='CONTINUATION_NOT_ALLOWED';const issueNumber=req.issue_number||String(source&&source.issue_number||''),issue=selectedIssue||issues.find(i=>String(i.issue_number||i.number||'')===issueNumber)||null,reason=req.continuation_reason.trim()||'continue next approved project work',action=req.requested_action.trim()||String(issue&&issue.title||'reassess and continue project'),repository=String(project&&(project.repository_url||project.repository_ref)||req.repository_url||(source&&source.repository_ref)||'').replace(/^https:\/\/github\.com\//,'').replace(/\/$/,''),continuationIdentity=JSON.stringify([req.project_id,req.source_run_id,req.correlation_id]),runId=canonicalContinuationRunId(req.project_id,req.source_run_id,req.correlation_id),description=[String(issue&&issue.body||issue&&issue.title||''),action,reason].filter(Boolean).join('\n\n').slice(0,4000);return[{json:{...req,valid:!code,code,project,source_run:source||null,selected_issue:issue||null,continuation_identity:continuationIdentity,continuation_run_id:runId,start_request:{task:{run_id:runId,task_ref:'project:'+req.project_id+(issueNumber?':issue:'+issueNumber:''),repository_ref:repository,workspace:String((project&&project.workspace)||req.project_id),task_description:description||('Continue project '+req.project_id),acceptance_hint:action,max_attempts:2,project_id:req.project_id,project_mode:'MANUAL',issue_number:issueNumber,source_run_id:req.source_run_id,continuation_reason:reason,requested_action:action,requested_by:req.requested_by,created_via:'CONTROL_TOWER_CONTINUATION','x-metadata':{project_id:req.project_id,project_mode:'MANUAL',issue_number:issueNumber,source_run_id:req.source_run_id,continuation_reason:reason,requested_action:action,requested_by:req.requested_by,created_via:'CONTROL_TOWER_CONTINUATION',correlation_id:req.correlation_id}},backend:'opencode-builder-8001'}}];"""
     wf.add_node(code_node("Decide Canonical Continuation", decision, P(6, 0)))
     wf.add_node(bool_if("Continuation Allowed?", "$json.valid === true", P(7, 0)))
     wf.add_node(code_node("Reject Continuation", "const s=$json;return[{json:{status:'error',code:s.code||'CONTINUATION_NOT_ALLOWED',project_id:s.project_id,source_run_id:s.source_run_id,correlation_id:s.correlation_id}}];", P(8, 1)))

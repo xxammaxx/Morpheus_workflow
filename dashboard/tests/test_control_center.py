@@ -112,6 +112,8 @@ class ControlCenterPolicyTests(unittest.TestCase):
         self.assertEqual(continuation_policy({"project_id": "p"}, runs, [{"project_id": "p", "issue_number": "42"}], request)["code"], "ISSUE_NOT_FOUND")
         replay = runs + [{"project_id": "p", "run_id": "run-cont-1", "state": "ACCEPTED", "correlation_id": "ct-replay", "created_via": "CONTROL_TOWER_CONTINUATION"}]
         self.assertEqual(continuation_policy({"project_id": "p"}, replay, [], {"project_id": "p", "source_run_id": "run-1", "correlation_id": "ct-replay"})["code"], "DUPLICATE_REQUEST")
+        source_two = {"project_id": "p", "run_id": "run-2", "state": "DONE"}
+        self.assertEqual(continuation_policy({"project_id": "p"}, replay + [source_two], [], {"project_id": "p", "source_run_id": "run-2", "correlation_id": "ct-replay"})["code"], "DUPLICATE_REQUEST")
 
     def test_project_projection_exposes_history_and_continuation_guard(self):
         value = project_projection(

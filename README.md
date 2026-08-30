@@ -23,7 +23,10 @@ reads the canonical project, issue, and run tables, rejects active-run
 conflicts and invalid references, then starts one new run through the normal
 `00 → 01` pipeline. The new run retains `project_id`, `source_run_id`, issue
 context, `correlation_id`, and `created_via=CONTROL_TOWER_CONTINUATION`; old
-runs remain historical rows.
+runs remain historical rows. Continuation identity is the bounded tuple
+`(project_id, source_run_id, correlation_id)`; n8n derives the grammar-valid
+run ID from its SHA-256 digest and refuses any attempted reassignment of an
+existing run ID to different canonical provenance.
 
 ```mermaid
 flowchart LR

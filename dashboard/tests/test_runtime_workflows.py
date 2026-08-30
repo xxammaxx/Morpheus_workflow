@@ -1,4 +1,6 @@
 import json
+import importlib.util
+import hashlib
 import subprocess
 import sys
 import tempfile
@@ -11,6 +13,21 @@ GENERATOR = ROOT / "workflow" / "v2" / "generate_workflows_v2.py"
 
 
 class RuntimeWorkflowTests(unittest.TestCase):
+    @staticmethod
+    def _generator_module():
+        spec = importlib.util.spec_from_file_location("morpheus_workflow_generator", GENERATOR)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def _continuation_js(self, statement):
+        generator = self._generator_module()
+        completed = subprocess.run(
+            ["node", "-e", generator.CONTINUATION_RUN_ID_JS + "\n" + generator.RUN_OWNERSHIP_GUARD_JS + "\n" + statement],
+            check=True, capture_output=True, text=True,
+        )
+        return json.loads(completed.stdout)
+
     def _generate(self):
         config = {
             "n8n_base": "http://n8n",
@@ -125,12 +142,47 @@ class RuntimeWorkflowTests(unittest.TestCase):
         self.assertIn("Fetch Canonical Project", reassessment_text)
         self.assertIn("Fetch Project Runs", reassessment_text)
         self.assertIn("Fetch Project Issues", reassessment_text)
-        for code in ("PROJECT_NOT_FOUND", "PROJECT_ACTIVE_RUN_CONFLICT", "CONTINUATION_NOT_ALLOWED", "ISSUE_NOT_FOUND", "DUPLICATE_REQUEST"):
+        for code in ("PROJECT_NOT_FOUND", "PROJECT_ACTIVE_RUN_CONFLICT", "CONTINUATION_NOT_ALLOWED", "ISSUE_NOT_FOUND", "DUPLICATE_REQUEST", "CORRELATION_ID_INVALID"):
             self.assertIn(code, reassessment_text)
         self.assertIn("CONTROL_TOWER_CONTINUATION", reassessment_text)
         self.assertIn("source_run_id", reassessment_text)
         self.assertIn("new_run_id", reassessment_text)
         self.assertIn("run-cont-", reassessment_text)
+
+    def test_continuation_identity_is_project_source_and_correlation_namespaced(self):
+        result = self._continuation_js("""
+const correlation = 'ct-same-correlation';
+const runA = canonicalContinuationRunId('project-a', 'run-source-a', correlation);
+const runB = canonicalContinuationRunId('project-b', 'run-source-a', correlation);
+const replay = canonicalContinuationRunId('project-a', 'run-source-a', correlation);
+const differentSource = canonicalContinuationRunId('project-a', 'run-source-b', correlation);
+const maximum = canonicalContinuationRunId('p'.repeat(96), 'run-' + 's'.repeat(60), 'c'.repeat(96));
+console.log(JSON.stringify({runA,runB,replay,differentSource,maximum}));
+""")
+        self.assertNotEqual(result["runA"], result["runB"])
+        self.assertEqual(result["runA"], result["replay"])
+        self.assertNotEqual(result["runA"], result["differentSource"])
+        expected = "run-cont-" + hashlib.sha256(
+            json.dumps(["project-a", "run-source-a", "ct-same-correlation"], separators=(",", ":")).encode()
+        ).hexdigest()[:48]
+        self.assertEqual(result["runA"], expected)
+        for run_id in result.values():
+            self.assertRegex(run_id, r"^run-[A-Za-z0-9_-]{1,60}$")
+            self.assertLessEqual(len(run_id), 64)
+
+    def test_start_refuses_cross_project_run_id_reassignment_and_replays_exact_identity(self):
+        result = self._continuation_js("""
+const existing = {run_id:'run-cont-fixed',project_id:'project-a',source_run_id:'run-source-a',correlation_id:'ct-a',created_via:'CONTROL_TOWER_CONTINUATION'};
+const same = requestedRunOwnership(existing, existing);
+const crossProject = requestedRunOwnership({...existing, project_id:'project-b'}, existing);
+const differentSource = requestedRunOwnership({...existing, source_run_id:'run-source-b'}, existing);
+console.log(JSON.stringify({same,crossProject,differentSource}));
+""")
+        self.assertTrue(result["same"]["ownership_ok"])
+        self.assertTrue(result["same"]["continuation_replay"])
+        self.assertFalse(result["crossProject"]["ownership_ok"])
+        self.assertEqual(result["crossProject"]["ownership_code"], "RUN_ID_OWNERSHIP_CONFLICT")
+        self.assertFalse(result["differentSource"]["ownership_ok"])
 
     def test_start_contract_carries_continuation_provenance_into_new_run(self):
         workflow = self._generate()["00 AutoDev API Start"]
@@ -138,6 +190,12 @@ class RuntimeWorkflowTests(unittest.TestCase):
         for field in ("source_run_id", "continuation_reason", "requested_action", "created_via", "requested_by", "correlation_id"):
             self.assertIn(field, start)
         self.assertIn("requestedRunId", start)
+        self.assertIn("Fetch Requested Run", {node["name"] for node in workflow["nodes"]})
+        self.assertIn("Guard Requested Run Ownership", {node["name"] for node in workflow["nodes"]})
+        self.assertIn("RUN_ID_OWNERSHIP_CONFLICT", start)
+        replay_routes = workflow["connections"]["Continuation Intake Replay?"]["main"]
+        self.assertEqual(replay_routes[0][0]["node"], "Respond Existing Continuation")
+        self.assertEqual(replay_routes[1][0]["node"], "Insert Run Row")
         insert = next(node for node in workflow["nodes"] if node["name"] == "Insert Run Row")
         self.assertTrue(insert["parameters"]["url"].endswith("/upsert"))
         self.assertIn("run_id", insert["parameters"]["jsonBody"])

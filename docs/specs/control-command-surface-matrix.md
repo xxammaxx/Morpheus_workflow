@@ -26,4 +26,9 @@ not in the command contract or UI.
 run restart. It requires an existing `project_id`, terminal `source_run_id`,
 bounded `continuation_reason` and `requested_action`, and may carry one
 existing `issue_number`. n8n rejects an active project run, unknown project or
-issue, and replayed continuation correlation before creating a new run.
+issue, and replayed continuation correlation before creating a new run. The
+new run ID is derived in n8n from the bounded tuple `(project_id,
+source_run_id, correlation_id)`, rather than correlation alone. `00 AutoDev
+API Start` preflights an existing requested run ID: only an exact continuation
+replay may reuse it; a project/source/correlation ownership mismatch fails
+closed as `RUN_ID_OWNERSHIP_CONFLICT` before Data Table upsert.
