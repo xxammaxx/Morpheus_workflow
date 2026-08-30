@@ -1,8 +1,8 @@
 # Morpheus project closure and release gate
 
 Audit date: 2026-08-30
-Scope: repository state after `MORPHEUS_RUN_LMSTUDIO_GPU_CORRELATION`
-Classification: `AMBER_MORPHEUS_RELEASE_READY_WITH_NONBLOCKING_DEBT`
+Scope: PR #56 closure correction after `MORPHEUS_RUN_LMSTUDIO_GPU_CORRELATION`
+Classification: `AMBER_MORPHEUS_RELEASE_BLOCKED`
 
 The correlation workstream is closed. This report is the current closure
 record; older files under `evidence/` remain historical evidence and are not
@@ -11,11 +11,15 @@ rewritten.
 ## 1. Reality refresh and release history
 
 ```text
-START_MAIN= db0f9d000cf096e4d02e6ed2e915f03e612e1a81
+AUDIT_BASELINE_COMMIT= db0f9d000cf096e4d02e6ed2e915f03e612e1a81
 ORIGIN_MAIN= db0f9d000cf096e4d02e6ed2e915f03e612e1a81
-AUDIT_TREE= identical to origin/main before closure documentation changes
-WORKTREE_AT_REFRESH= clean
-OPEN_PRS= 0
+START_MAIN= db0f9d000cf096e4d02e6ed2e915f03e612e1a81
+CLOSURE_PR= 56
+CLOSURE_PR_HEAD= see PR #56 exact head at report publication
+CLOSURE_PR_STATUS= OPEN
+FINAL_MAIN= NOT_YET_MERGED
+OPEN_PRS_AT_INITIAL_AUDIT= 0
+OPEN_PRS= 1 (#56)
 OPEN_ISSUES= 1 (#10)
 LATEST_TAG= v1.1.2
 LATEST_TAG_COMMIT= 16977b47683ff7d6db5a8e51be19752a34b909e0
@@ -77,12 +81,11 @@ The deployed topology observed by read-only probes is:
 | LM Studio | optional local provider | proven by supplied acceptance run; not required for canonical health |
 
 The public static dashboard assets (`index.html`, `app.js`, `styles.css`, and
-the pinned Mermaid runtime) hash-identically to the deployed assets at the
-start of this audit. The closure PR changes only the free-route alert text;
-deployment was intentionally not performed, so the deployed service remains
-on its pre-closure asset tree until the PR is merged and separately deployed.
-A full authenticated Control Tower projection was not queried because the
-workspace does not contain a viewer token.
+the pinned Mermaid runtime) were exercised against the deployed service. The
+closure PR also adds explicit Projekte/Datenfluss browser coverage and a
+target allowlist in the BFF and canonical workflow generator. Deployment was
+intentionally not performed; production therefore remains on the pre-PR
+target-validation code until PR #56 is merged and separately deployed.
 
 ## 3. Data flow, project model, routing, and telemetry
 
@@ -132,6 +135,7 @@ are inserted as text. Mermaid is local, pinned, and hash-recorded in
 ## 4. Closed correlation baseline
 
 ```text
+AUDIT_BASELINE_COMMIT=db0f9d000cf096e4d02e6ed2e915f03e612e1a81
 BASELINE_COMMIT=db0f9d000cf096e4d02e6ed2e915f03e612e1a81
 BASELINE_CLASSIFICATION=GREEN_MORPHEUS_RUN_LMSTUDIO_GPU_CORRELATION_PROVEN
 ROUTING=GREEN
@@ -140,7 +144,7 @@ LOCAL_ZERO_COST_EVIDENCE=GREEN
 GPU_OFFLOAD=GREEN
 CONTROL_CENTER_LIVE_CORRELATION=GREEN
 ACTIVE_TO_IDLE_TRANSITION=GREEN
-BROWSER_QA=GREEN in supplied acceptance evidence
+BROWSER_QA=PASS fresh authenticated run, 5 viewports, all 8 views
 SECURITY_GATES=GREEN
 ```
 
@@ -158,10 +162,10 @@ LM Studio ACTIVE→IDLE telemetry, and terminal abort behavior.
 | Gate | Result | Evidence |
 |---|---|---|
 | Repository clean | OK | clean at refresh; closure changes are scoped |
-| Root tests | OK | `pytest -q`: 125 passed, 0 failed, 0 skipped |
-| Dashboard / Control Tower tests | OK | 68 passed |
+| Root tests | OK | `pytest -q`: 126 passed, 0 failed, 0 skipped |
+| Dashboard / Control Tower tests | OK | 69 passed |
 | Runtime / Adapter / Router tests | OK | 53 passed; targeted router/security subsets also pass |
-| Script tests | OK | 4 passed |
+| Script tests | OK | included in root suite; no separate script test target is defined |
 | Contract tests | OK | `python3 runtime/tests/test_contracts.py`: 34/34 |
 | Validator equivalence | OK | `python3 runtime/tests/test_validator_equivalence.py`: 34/34 |
 | Workflow tests | OK | 6 passed; generated canonical workflows validate |
@@ -170,15 +174,25 @@ LM Studio ACTIVE→IDLE telemetry, and terminal abort behavior.
 | Diff check | OK | `git diff --check` |
 | Architecture sentinel | OK | builder dashboard boundary, read-only telemetry, and workflow ownership tests |
 | Documentation / Mermaid gate | OK after closure alignment | current spec, operations docs, and report mirror implementation |
-| Security tests / secret scan | OK | targeted security tests pass; tracked-file scan found no secret values |
-| Governance gate | OK with follow-up | no open PRs; Issue #10 is implemented but still open |
+| Security tests / secret scan | OK in PR; deployed target guard pending | targeted security tests pass; tracked-file scan found no secret values |
+| Governance gate | AMBER | PR #56 is open and requires exact-head authorization; Issue #10 is implemented but still open |
 
-The fresh browser script was attempted against the live service at all five
-configured viewport sizes. It could not pass authentication because no viewer
-token is available in this workspace; it therefore remains
-`BLOCKIERT_EXTERN`, not a claimed fresh GREEN result. The latest checked-in
-visual evidence records four-view QA PASS, and deployed static assets match
-the audited tree.
+Fresh authenticated browser QA used the deployment's existing protected
+viewer credential in-process. It covered Übersicht, Projekte, Läufe, Anbieter,
+Systemkarte, Datenfluss, Debugging, and Administration at five configured
+viewports. Result: `AUTHENTICATED_BROWSER_QA=PASS`,
+`CONSOLE_ERRORS=0`, `HTTP_500_COUNT=0`, and
+`HORIZONTAL_OVERFLOW=false`.
+
+The live command path created a disposable canonical run through n8n and sent
+one authenticated `ABORT_RUN` through the Control Tower BFF. The response was
+nonempty, carried correlation ID `ct-280e9a5d71ba6a9f1187`, the canonical row
+became `ABORTED`, and remained `ABORTED` after the late-callback window. The
+deployed validator rejected unknown commands, unauthenticated requests,
+missing CSRF, and operator use of admin commands. A valid command with an
+arbitrary target key was accepted by the deployed pre-fix validator and then
+rejected only as `RUN_NOT_FOUND`; this is the proven defect corrected by this
+PR. Therefore target-denial is PASS in PR code but not yet a production claim.
 
 ## 6. Security closure
 
@@ -195,6 +209,18 @@ STRICT_HOST_KEY_CHECKING=PASS
 GPU_READ_ONLY=true
 PROXMOX_READ_ONLY=true
 SECRET_SCAN=PASS
+COMMAND_GATEWAY_AUTH=PASS
+COMMAND_ALLOWLIST=PASS
+ROLE_ENFORCEMENT=PASS
+CSRF_PROTECTION=PASS
+ARBITRARY_COMMAND_DENIED=PASS
+ARBITRARY_TARGET_DENIED=PASS in PR code; NOT_YET_DEPLOYED in production
+COMMAND_GATEWAY_LIVE_MUTATION=PASS
+COMMAND_RESPONSE_NONEMPTY=PASS
+COMMAND_CORRELATION_ID=PASS
+N8N_STATE_MUTATION=PASS
+FINAL_TEST_RUN_STATE=ABORTED
+LATE_CALLBACK_RESURRECTION=false
 ```
 
 The repository contains only credential-handling code and sanitized evidence
@@ -205,17 +231,15 @@ private key, or password value is committed. Values were not printed.
 
 ### Release blockers
 
-None found in implementation, contracts, routing policy, security boundaries,
-or production health probes. Publication remains withheld because the fresh
-authenticated browser proof could not be rerun here and release publication
-requires owner authorization.
+- PR #56 must be merged and the corrected Control Tower/n8n command validators
+  must be deployed before production can claim arbitrary-target denial.
+- Exact-head authorization for PR #56 is required before merge. No merge,
+  deployment, tag, or release was performed in this run.
 
 ### Important, non-blocking
 
-- Repeat browser QA with a valid viewer token and attach fresh evidence.
-- Perform a read-only authenticated check of the deployed n8n command gateway
-  and operator/admin credential wiring; no mutating command was sent during
-  this audit.
+- Re-run the authenticated browser and command-gateway gates after the PR is
+  deployed; the current fresh evidence is pre-deployment for the target fix.
 - Close or update GitHub Issue #10 under normal project policy. Its map
   acceptance criteria are implemented by PR #11 and the later correlation
   work in PR #55; the original five-item navigation wording was superseded by
@@ -239,31 +263,36 @@ runtime policy and should not be used to reopen the closed LM Studio workstream.
 ## 8. Open PR / issue triage
 
 ```text
-OPEN_PRS=0
+OPEN_PRS_AT_INITIAL_AUDIT=0
 OPEN_ISSUES=1
 ISSUE_10=DONE (implemented; left open for owner-controlled closure)
+PR_56=OPEN; current closure branch contains the correction and awaits exact-head authorization
 ```
 
-No PR is open for the frozen workstream, and PR #56 was not started. The
-implementation provenance is issue #10 → PR #11 (maps) → PR #42 (project
+The historical `OPEN_PRS=0` value above is not current; it is retained only as
+the initial-audit snapshot and is superseded by `OPEN_PRS=1 (#56)` in the
+reality-refresh block. PR #56 is the focused closure correction and remains
+open. The implementation provenance is issue #10 → PR #11 (maps) → PR #42 (project
 Control Center) → PRs #54/#55 (live correlation) → current tests and supplied
 acceptance run.
 
 ## 9. Release decision and publication boundary
 
 ```text
-RELEASE_DECISION=AMBER_RELEASE_READY_WITH_NONBLOCKING_DEBT
+RELEASE_DECISION=AMBER_RELEASE_BLOCKED
 CURRENT_RELEASE=v1.1.2
 PROPOSED_NEXT_RELEASE=v1.2.0
 RELEASE_PUBLICATION_READY=false
 RELEASE_TAG_PROPOSED=v1.2.0
 RELEASE_COMMIT=NOT_CREATED
+PR_MERGED=false
+RELEASE_CREATED=false
 ```
 
 No Git tag, GitHub Release, or release artifact was created. The candidate
-needs fresh authenticated browser evidence and owner authorization before
-publication. The closure-only documentation PR is the only change proposed
-by this audit.
+has fresh browser and live abort evidence, but production publication also
+requires the PR #56 target-boundary correction to be merged and deployed.
+Owner authorization remains a separate publication requirement.
 
 ## 10. Next milestone
 
@@ -308,6 +337,6 @@ it must not create a second source of truth.
 
 ```text
 NEXT_RECOMMENDED_MILESTONE=Canonical project continuation and command-gateway operational proof
-KNOWN_BLOCKERS=none in implementation; fresh browser evidence is externally blocked
-USER_ACTION_REQUIRED=provide a valid Control Tower viewer token for fresh browser QA; authorize release publication separately if desired
+KNOWN_BLOCKERS=PR #56 target-boundary correction is not yet merged/deployed; no LM Studio or correlation blocker
+USER_ACTION_REQUIRED=EXACT_HEAD_AUTHORIZATION_FOR_PR_56
 ```
