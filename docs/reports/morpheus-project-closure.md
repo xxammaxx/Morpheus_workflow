@@ -77,9 +77,12 @@ The deployed topology observed by read-only probes is:
 | LM Studio | optional local provider | proven by supplied acceptance run; not required for canonical health |
 
 The public static dashboard assets (`index.html`, `app.js`, `styles.css`, and
-the pinned Mermaid runtime) hash-identically to the deployed assets. A full
-authenticated Control Tower projection was not queried because the workspace
-does not contain a viewer token.
+the pinned Mermaid runtime) hash-identically to the deployed assets at the
+start of this audit. The closure PR changes only the free-route alert text;
+deployment was intentionally not performed, so the deployed service remains
+on its pre-closure asset tree until the PR is merged and separately deployed.
+A full authenticated Control Tower projection was not queried because the
+workspace does not contain a viewer token.
 
 ## 3. Data flow, project model, routing, and telemetry
 
@@ -254,7 +257,7 @@ CURRENT_RELEASE=v1.1.2
 PROPOSED_NEXT_RELEASE=v1.2.0
 RELEASE_PUBLICATION_READY=false
 RELEASE_TAG_PROPOSED=v1.2.0
-RELEASE_COMMIT=db0f9d000cf096e4d02e6ed2e915f03e612e1a81
+RELEASE_COMMIT=afd84ff471d2dbc93a51ca19f3e36aa62e20960f
 ```
 
 No Git tag, GitHub Release, or release artifact was created. The candidate
