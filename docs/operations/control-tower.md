@@ -3,9 +3,8 @@
 URL: `http://192.168.1.136:8092/` (8090 ist durch den bestehenden Resolver belegt)
 
 Technischer Dienst: `morpheus-control-tower.service`, Benutzer `morpheus-ct`.
-Build: `1.2.0` (closure candidate). Latest tagged Morpheus release: `v1.1.2`.
-Proposed next release: `v1.2.0`; no tag or GitHub Release is created by the
-closure process.
+Build: post-`v1.2.0` continuation candidate. Latest tagged Morpheus release:
+`v1.2.0`. This task creates no tag or release.
 
 ```sh
 systemctl status morpheus-control-tower
@@ -36,6 +35,18 @@ Datenfluss, Debugging und Administration. Operatoren dürfen laufbezogene
 Aktionen ausführen; globale Routing-, Credential-, Service- und Release-
 Aktionen erfordern Admin. `Anzeige pausieren` im Debugging stoppt nur die
 UI-Nachführung und niemals den Run.
+
+## Projektfortsetzung
+
+In der Projektansicht zeigt jede kanonische Projektion die Projekt-ID, den
+letzten und die historischen Runs, Issue-Kontext, das letzte Ergebnis und den
+Fortsetzungsstatus. Operatoren können bei einem terminalen Run einen kurzen
+Grund und die nächste Arbeit angeben. `RESUME_RUN` wird mit einer stabilen
+Correlation-ID einmalig an den n8n Control Gateway gesendet. n8n prüft Projekt,
+Quell-Run, optionales bestehendes Issue, aktive Runs und Replay-Idempotenz und
+startet anschließend einen neuen Run über `00 AutoDev API Start` und `01
+AutoDev Orchestrator`. Ein aktiver Run blockiert die Fortsetzung mit
+`PROJECT_ACTIVE_RUN_CONFLICT`; Viewer bleiben schreibgeschützt.
 
 ## Runtime-Telemetrie
 

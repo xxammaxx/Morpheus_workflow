@@ -200,7 +200,7 @@ def list_items(payload):
 def sanitize_run(row):
     if not isinstance(row, dict):
         return {}
-    allowed = ("run_id", "project_id", "issue_number", "state", "current_job", "decision", "reason_code", "created_at", "updated_at", "started_at", "ended_at", "job_id", "attempt_id", "job", "status", "result_ref", "task_ref", "repository_ref", "attempt_count", "failure_signature", "strategy_delta", "selected_provider", "selected_model", "resolved_model", "actual_provider", "actual_model", "cost_class", "actual_cost", "free_eligible", "fallback_chain", "paid_escalation", "harness_id", "harness_fingerprint", "input_contract", "output_contract", "payload", "source", "target", "worker_id", "mcp_call_id", "routing_event_id", "correlation_id", "contract", "validation", "backend", "runtime_backend", "runtime_guest_id", "runtime_guest", "runtime_guests", "usage")
+    allowed = ("run_id", "project_id", "issue_number", "state", "current_job", "decision", "reason_code", "created_at", "updated_at", "started_at", "ended_at", "job_id", "attempt_id", "job", "status", "result_ref", "task_ref", "repository_ref", "attempt_count", "failure_signature", "strategy_delta", "selected_provider", "selected_model", "resolved_model", "actual_provider", "actual_model", "cost_class", "actual_cost", "free_eligible", "fallback_chain", "paid_escalation", "harness_id", "harness_fingerprint", "input_contract", "output_contract", "payload", "source", "target", "worker_id", "mcp_call_id", "routing_event_id", "correlation_id", "contract", "validation", "backend", "runtime_backend", "runtime_guest_id", "runtime_guest", "runtime_guests", "usage", "source_run_id", "created_via", "continuation_reason", "requested_action", "requested_by", "trace_id", "last_action")
     return {key: row.get(key) for key in allowed if key in row}
 
 
@@ -378,6 +378,22 @@ def projection():
     return {"contract": "autodev.control-tower-overview.v1", "version": "v1", "generated_at": now(), "freshness": {"checked_at": now(), "freshness_seconds": 0}, "system_health": modules, "system_health_summary": {"status": "OK" if mandatory_ok else "NICHT_OK", "diagnostic_status": "OK" if mandatory_ok else "NICHT_OK", "mandatory_ok": mandatory_ok, "ok": sum(value.get("status") in {"HEALTHY", "OK"} for value in modules.values()), "total": len(modules), "optional_not_configured": len(optional_missing)}, "free_pool": {"size": len(pool), "providers": pool}, "run_counts": run_counts, "recent_runs": recent, "projects": project_rows, "active_run": active, "debugging": {"current_run_id": active.get("run_id") if active else None, "stage": active.get("current_job") if active else None, "events": debug, "source": "LIVE" if debug_ok else "IDLE"}, "telemetry": telemetry, "alerts": alerts, "optional_components_not_configured": optional_missing, "release": {"dashboard_version": VERSION, "core_v1_release": "v1.0.0", "morpheus_release": "v1.1.2", "dashboard_release": VERSION, "v1_release": "v1.0.0", "n8n_autodev_workflows": health_n8n.get("workflow_count", 0), "free_first_active": bool(runtime.get("free_first_enabled")), "paid_escalation": bool(runtime.get("automatic_paid_agent_escalation")), "deepseek": "INELIGIBLE"}, "sources": {"n8n": "LIVE" if runs_ok and health_n8n["status"] == "HEALTHY" else "UNAVAILABLE", "adapter": "LIVE" if runtime_ok else "UNAVAILABLE", "projects": "LIVE" if projects_ok or issues_ok else "DERIVED"}}
 
 
+def command_result_status(upstream_status: int, result: dict) -> int:
+    """Map bounded canonical errors to HTTP without exposing upstream details."""
+    if upstream_status >= 300:
+        return upstream_status
+    code = str(result.get("code", "")) if isinstance(result, dict) else ""
+    if code in {"PROJECT_NOT_FOUND", "ISSUE_NOT_FOUND", "RUN_NOT_FOUND"}:
+        return 404
+    if code in {"PROJECT_ACTIVE_RUN_CONFLICT", "DUPLICATE_REQUEST", "CONTINUATION_NOT_ALLOWED"}:
+        return 409
+    if code in {"INVALID_TARGET", "COMMAND_NOT_ALLOWED", "ROLE_FORBIDDEN"}:
+        return 403 if code == "ROLE_FORBIDDEN" else 400
+    if isinstance(result, dict) and result.get("status") == "error":
+        return 409
+    return 202
+
+
 def choose_active_run(runs):
     active = [run for run in runs if is_active_run(run)]
     return sort_recent_runs(active, 1)[0] if active else None
@@ -487,8 +503,8 @@ class Handler(BaseHTTPRequestHandler):
             envelope = {"contract": "autodev.control-command.v1", "version": "v1", "command": command, "target": target, "payload": redact(payload), "actor": {"role": role}, "correlation_id": correlation}
             status, result = command_post(COMMAND_PATHS[command], envelope)
             result = redact(result)
-            result.update({"contract": "autodev.command-result.v1", "command": command, "correlation_id": correlation, "audit": audit_entry(command, role, target, "ACCEPTED" if status < 300 else "FAILED", payload.get("project_id"), payload.get("run_id"), correlation)})
-            return self.send_json(202 if status < 300 else status, result)
+            result.update({"contract": "autodev.command-result.v1", "command": command, "correlation_id": correlation, "audit": audit_entry(command, role, target, "ACCEPTED" if status < 300 and result.get("status") != "error" else "FAILED", payload.get("project_id"), payload.get("run_id") or payload.get("source_run_id"), correlation)})
+            return self.send_json(command_result_status(status, result), result)
         except PermissionError as exc:
             return self.send_json(403, {"error": str(exc)})
         except (ValueError, TypeError, json.JSONDecodeError) as exc:

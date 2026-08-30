@@ -113,6 +113,42 @@ class RuntimeWorkflowTests(unittest.TestCase):
         self.assertIn("p.dry_run!==true", blueprint)
         self.assertIn("blueprint_write", blueprint)
 
+    def test_resume_run_is_canonical_project_continuation(self):
+        workflows = self._generate()
+        gateway = workflows["05 AutoDev Control Gateway"]
+        reassessment = workflows["08 AutoDev Project Reassessment"]
+        gateway_text = json.dumps(gateway)
+        reassessment_text = json.dumps(reassessment)
+        self.assertIn("RESUME_RUN", gateway_text)
+        self.assertIn("requested_by", gateway_text)
+        self.assertIn("autodev/project/reassess", gateway_text)
+        self.assertIn("Fetch Canonical Project", reassessment_text)
+        self.assertIn("Fetch Project Runs", reassessment_text)
+        self.assertIn("Fetch Project Issues", reassessment_text)
+        for code in ("PROJECT_NOT_FOUND", "PROJECT_ACTIVE_RUN_CONFLICT", "CONTINUATION_NOT_ALLOWED", "ISSUE_NOT_FOUND", "DUPLICATE_REQUEST"):
+            self.assertIn(code, reassessment_text)
+        self.assertIn("CONTROL_TOWER_CONTINUATION", reassessment_text)
+        self.assertIn("source_run_id", reassessment_text)
+        self.assertIn("new_run_id", reassessment_text)
+        self.assertIn("run-cont-", reassessment_text)
+
+    def test_start_contract_carries_continuation_provenance_into_new_run(self):
+        workflow = self._generate()["00 AutoDev API Start"]
+        start = json.dumps(workflow)
+        for field in ("source_run_id", "continuation_reason", "requested_action", "created_via", "requested_by", "correlation_id"):
+            self.assertIn(field, start)
+        self.assertIn("requestedRunId", start)
+        insert = next(node for node in workflow["nodes"] if node["name"] == "Insert Run Row")
+        self.assertTrue(insert["parameters"]["url"].endswith("/upsert"))
+        self.assertIn("run_id", insert["parameters"]["jsonBody"])
+        self.assertIn("Restore Intake Carrier", {node["name"] for node in workflow["nodes"]})
+
+    def test_continuation_has_no_provider_or_model_selection(self):
+        reassessment = json.dumps(self._generate()["08 AutoDev Project Reassessment"])
+        self.assertIn("backend:'opencode-builder-8001'", reassessment)
+        self.assertNotIn("provider:", reassessment)
+        self.assertNotIn("model:", reassessment)
+
 
 if __name__ == "__main__":
     unittest.main()

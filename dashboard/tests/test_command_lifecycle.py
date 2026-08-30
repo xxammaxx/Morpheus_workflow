@@ -22,6 +22,15 @@ class CommandLifecycleTests(unittest.TestCase):
         self.assertNotIn("document.querySelectorAll('.tabs button').forEach(button => button.addEventListener", APP)
         self.assertEqual(APP.count("document.addEventListener('click', eventObject => { const button = eventObject.target?.closest?.('[data-view]')"), 1)
 
+    def test_project_continuation_uses_bounded_form_and_single_correlation(self):
+        self.assertIn("project-continuation-form", APP)
+        self.assertIn("continuation_reason", APP)
+        self.assertIn("requested_action", APP)
+        self.assertIn("source_run_id", APP)
+        self.assertIn("button.dataset.correlation || (button.dataset.correlation = newCorrelation())", APP)
+        self.assertIn("const commandInFlight = new Set()", APP)
+        self.assertIn("if (commandInFlight.has(key)) return;", APP)
+
 
 if __name__ == "__main__":
     unittest.main()

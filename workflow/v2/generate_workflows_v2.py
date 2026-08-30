@@ -599,7 +599,8 @@ def build_00(cfg):
         """const raw = $json.body || $json;
 const task = raw.task && typeof raw.task === 'object' ? raw.task : raw;
 const now = new Date();
-const runId = 'run-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+const requestedRunId = typeof task.run_id === 'string' && /^run-[A-Za-z0-9_-]{1,60}$/.test(task.run_id) ? task.run_id : '';
+const runId = requestedRunId || 'run-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
 const issue = {
   contract: 'autodev.issue.v1', version: 'v1', run_id: runId,
   task_ref: task.task_ref || '', repository_ref: task.repository_ref || '',
@@ -611,7 +612,12 @@ const issue = {
   trace_id: 'trace-' + runId, source: 'autodev-start-api',
   'x-metadata': {project_id: task.project_id || '', project_mode: task.project_mode || 'MANUAL',
     issue_number: task.issue_number || '', correlation_id: task.correlation_id ||
-      (task['x-metadata'] && task['x-metadata'].correlation_id) || ''},
+      (task['x-metadata'] && task['x-metadata'].correlation_id) || '',
+    source_run_id: task.source_run_id || (task['x-metadata'] && task['x-metadata'].source_run_id) || '',
+    continuation_reason: task.continuation_reason || (task['x-metadata'] && task['x-metadata'].continuation_reason) || '',
+    requested_action: task.requested_action || (task['x-metadata'] && task['x-metadata'].requested_action) || '',
+    created_via: task.created_via || (task['x-metadata'] && task['x-metadata'].created_via) || 'CONTROL_TOWER_START',
+    requested_by: task.requested_by || (task['x-metadata'] && task['x-metadata'].requested_by) || ''},
 };
 """
         + JS_VALIDATOR
@@ -651,7 +657,13 @@ return [{json: {intake: {issue: s.issue, fixture: s.fixture, backend: s.backend,
   issue_number: (s.issue['x-metadata'] || {}).issue_number || '', state: 'ACCEPTED', task_ref: s.issue.task_ref || '',
   repository_ref: s.issue.repository_ref || '', current_job: 'intake', decision: '',
   reason_code: 'INTAKE_OK', created_at: s.issue.created_at, updated_at: s.issue.created_at,
-  result_ref: '', trace_id: s.issue.trace_id || '', backend: s.backend}], returnType: 'all'}}];""",
+  result_ref: '', trace_id: s.issue.trace_id || '', backend: s.backend,
+  correlation_id: (s.issue['x-metadata'] || {}).correlation_id || '',
+  source_run_id: (s.issue['x-metadata'] || {}).source_run_id || '',
+  continuation_reason: (s.issue['x-metadata'] || {}).continuation_reason || '',
+  requested_action: (s.issue['x-metadata'] || {}).requested_action || '',
+  created_via: (s.issue['x-metadata'] || {}).created_via || 'CONTROL_TOWER_START',
+  requested_by: (s.issue['x-metadata'] || {}).requested_by || ''}], returnType: 'all'}}];""",
             P(2, 1),
         )
     )
@@ -659,12 +671,13 @@ return [{json: {intake: {issue: s.issue, fixture: s.fixture, backend: s.backend,
         http_node(
             "Insert Run Row",
             "POST",
-            cfg.rows(cfg.runs),
-            "JSON.stringify($json)",
+            cfg.rows(cfg.runs) + "/upsert",
+            "JSON.stringify({filter:{filters:[{columnName:'run_id',condition:'eq',value:$json.data[0].run_id}]},data:$json.data[0],returnData:true})",
             P(3, 1),
             cfg.cr_n8n,
         )
     )
+    wf.nodes[-1]["alwaysOutputData"] = True
     wf.add_node(
         respond_node(
             "Respond 202",
@@ -672,6 +685,13 @@ return [{json: {intake: {issue: s.issue, fixture: s.fixture, backend: s.backend,
             "={{ JSON.stringify({ run_id: $json.run_id, status: 'ACCEPTED', status_url: '"
             + cfg.webhook
             + "/webhook/autodev/status?run_id=' + $json.run_id }) }}",
+        )
+    )
+    wf.add_node(
+        code_node(
+            "Restore Intake Carrier",
+            "const original=$('Prepare Run Row').first().json,row=(original.data||[])[0]||{};return[{json:{...original,run_id:row.run_id}}];",
+            P(4, 0),
         )
     )
     wf.add_node(
@@ -699,7 +719,8 @@ return [{json: Object.assign({}, intake, {run_row: row,
         )
     )
     wf.add("Prepare Run Row", "Insert Run Row")
-    wf.add("Insert Run Row", "Pass Intake")
+    wf.add("Insert Run Row", "Restore Intake Carrier")
+    wf.add("Restore Intake Carrier", "Pass Intake")
     wf.add("Pass Intake", "Respond 202")
     wf.add("Pass Intake", "Run Orchestrator")
     return wf
@@ -840,7 +861,7 @@ return [{json: {
   provider: s.provider || null,
   model: s.model || null,
   model_revision: s.model_revision || null,
-  run_row: {state: 'ACCEPTED', project_id: (issue['x-metadata'] || {}).project_id || '', issue_number: (issue['x-metadata'] || {}).issue_number || '', task_ref: issue.task_ref || '', repository_ref: issue.repository_ref || '', current_job: 'baseline', reason_code: 'INTAKE_OK'},
+  run_row: {state: 'ACCEPTED', project_id: (issue['x-metadata'] || {}).project_id || '', issue_number: (issue['x-metadata'] || {}).issue_number || '', task_ref: issue.task_ref || '', repository_ref: issue.repository_ref || '', current_job: 'baseline', reason_code: 'INTAKE_OK', correlation_id: (issue['x-metadata'] || {}).correlation_id || '', source_run_id: (issue['x-metadata'] || {}).source_run_id || '', continuation_reason: (issue['x-metadata'] || {}).continuation_reason || '', requested_action: (issue['x-metadata'] || {}).requested_action || '', created_via: (issue['x-metadata'] || {}).created_via || 'CONTROL_TOWER_START', requested_by: (issue['x-metadata'] || {}).requested_by || ''},
   baseline: null, research: null, plan: null, gate: null,
   build: null, verification: null, review: null, decision: null,
   attempt_build: 0, attempt_fix: 0,
@@ -2724,7 +2745,16 @@ const targetKeys=new Set(['run_id','project_id','issue_number']);
 if(Object.keys(e.target||{}).some(k=>!targetKeys.has(k)))errors.push('TARGET_KEY_NOT_ALLOWED');
 if(Object.values(e.target||{}).some(v=>(typeof v!=='string'&&typeof v!=='number')||typeof v==='boolean'||!/^[A-Za-z0-9_.:#-]{1,96}$/.test(String(v))))errors.push('TARGET_VALUE_INVALID');
 if(!p||typeof p!=='object'||Array.isArray(p))errors.push('PAYLOAD_INVALID');
-if(['PAUSE_RUN','RESUME_RUN','ABORT_RUN','RETRY_STAGE','RETRY_RUN','EXCLUDE_MODEL_FOR_RUN','EXCLUDE_PROVIDER_FOR_RUN','APPROVE_HUMAN_GATE'].includes(command)&&!/^run-[A-Za-z0-9_-]{6,60}$/.test(String(p&&p.run_id||'')))errors.push('RUN_ID_INVALID');
+if(['PAUSE_RUN','ABORT_RUN','RETRY_STAGE','RETRY_RUN','EXCLUDE_MODEL_FOR_RUN','EXCLUDE_PROVIDER_FOR_RUN','APPROVE_HUMAN_GATE'].includes(command)&&!/^run-[A-Za-z0-9_-]{6,60}$/.test(String(p&&p.run_id||'')))errors.push('RUN_ID_INVALID');
+if(command==='RESUME_RUN'){
+  const continuationKeys=new Set(['project_id','source_run_id','run_id','issue_number','continuation_reason','requested_action']);
+  if(Object.keys(p||{}).some(k=>!continuationKeys.has(k)))errors.push('CONTINUATION_FIELD_NOT_ALLOWED');
+  if(!/^[A-Za-z0-9_.:#-]{1,96}$/.test(String(p&&p.project_id||'')))errors.push('PROJECT_ID_INVALID');
+  if(!/^run-[A-Za-z0-9_-]{1,60}$/.test(String(p&&p.source_run_id||p&&p.run_id||'')))errors.push('SOURCE_RUN_ID_INVALID');
+  if(p&&p.issue_number!==undefined&&!/^[A-Za-z0-9_.:#-]{1,96}$/.test(String(p.issue_number)))errors.push('ISSUE_NUMBER_INVALID');
+  if(!String(p&&p.continuation_reason||'').trim()||String(p.continuation_reason).length>240)errors.push('CONTINUATION_REASON_INVALID');
+  if(!String(p&&p.requested_action||'').trim()||String(p.requested_action).length>240)errors.push('REQUESTED_ACTION_INVALID');
+}
 const repo=String(p&&p.repository_url||''); let parts=[];
 if(repo){const match=repo.match(/^https:\/\/github\.com\/([^/]+)\/([^/?#]+)$/);if(!match)errors.push('REPOSITORY_URL_INVALID');else parts=[match[1],match[2]]}
 if(['START_ISSUE','START_REPO_ANALYSIS'].includes(command)&&!repo)errors.push('REPOSITORY_REQUIRED');
@@ -2830,7 +2860,7 @@ return [{json:{status:ok?'OK':'NICHT_OK',module:'router',test:name,source:'adapt
     wf.add_node(http_node("Run Blueprint Bootstrap", "POST", cfg.webhook+"/webhook/autodev/project/blueprint", "JSON.stringify($('Restore Valid Command').first().json.envelope)", P(6,6), cfg.cr_api))
     wf.add("Is Repo Analysis?", "Is Blueprint Start?", 1); wf.add("Is Blueprint Start?", "Run Blueprint Bootstrap", 0); wf.add("Run Blueprint Bootstrap", "Respond Repo Analysis")
     wf.add_node(if_node("Is Project Resume?", [{"leftValue":"={{$json.route}}","rightValue":"=RESUME_RUN","operator":{"type":"string","operation":"equals"}}], P(5,7)))
-    wf.add_node(http_node("Reassess Project", "POST", cfg.webhook+"/webhook/autodev/project/reassess", "JSON.stringify($('Restore Valid Command').first().json.envelope.payload)", P(6,7), cfg.cr_api))
+    wf.add_node(http_node("Reassess Project", "POST", cfg.webhook+"/webhook/autodev/project/reassess", "JSON.stringify(Object.assign({}, $('Restore Valid Command').first().json.envelope.payload, {command: 'RESUME_RUN', correlation_id: $('Restore Valid Command').first().json.envelope.correlation_id, requested_by: $('Restore Valid Command').first().json.role}))", P(6,7), cfg.cr_api))
     wf.add_node(code_node("Project Resume Result", "const v=$('Restore Valid Command').first().json;return[{json:{status:$json.status||'ACCEPTED',command:v.command,correlation_id:v.envelope.correlation_id,result:$json,source:'n8n-project-reassessment'}}];", P(7,7)))
     wf.add_node(respond_node("Respond Project Resume", P(8,7)))
     wf.add_node(if_node("Is Canonical Run Action?", [{"leftValue":"={{['PAUSE_RUN','RESUME_RUN','ABORT_RUN','RETRY_STAGE','RETRY_RUN','EXCLUDE_MODEL_FOR_RUN','EXCLUDE_PROVIDER_FOR_RUN','APPROVE_HUMAN_GATE'].includes($json.route)}}","rightValue":"=true","operator":{"type":"boolean","operation":"equals"}}], P(5,8)))
@@ -2979,15 +3009,57 @@ def build_07_blueprint_bootstrap(cfg):
     wf.add("Blueprint Webhook","Parse Blueprint Graph");wf.add("Parse Blueprint Graph","Blueprint Valid?");wf.add("Blueprint Valid?","Reject Blueprint",1);wf.add("Blueprint Valid?","Create New Repository?",0);wf.add("Create New Repository?","Create GitHub Repository",0);wf.add("Create New Repository?","Normalize Existing Repository",1);wf.add("Create GitHub Repository","Normalize Created Repository");wf.add("Normalize Created Repository","Persist Blueprint in Repository");wf.add("Persist Blueprint in Repository","Restore Blueprint State");wf.add("Normalize Existing Repository","Persist Existing Blueprint?");wf.add("Persist Existing Blueprint?","Persist Blueprint in Repository",0);wf.add("Persist Existing Blueprint?","Restore Blueprint State",1);wf.add("Restore Blueprint State","Persist Blueprint Project");wf.add("Persist Blueprint Project","Prepare Blueprint Issue Items");wf.add("Prepare Blueprint Issue Items","Create Blueprint Issues?");wf.add("Create Blueprint Issues?","Create GitHub Blueprint Issue",0);wf.add("Create Blueprint Issues?","Persist Blueprint Issue Graph",1);wf.add("Create GitHub Blueprint Issue","Blueprint Issue Persistence Complete");wf.add("Persist Blueprint Issue Graph","Blueprint Issue Persistence Complete");wf.add("Blueprint Issue Persistence Complete","Blueprint Bootstrap Result");wf.add("Blueprint Bootstrap Result","Respond Blueprint Bootstrap");return wf
 
 
-def build_08_project_reassessment(cfg):
+def build_08_project_reassessment_legacy(cfg):
     wf=WF("08 AutoDev Project Reassessment");P=lambda x,y:[x*260,y*170] # noqa: E731
     wf.add_node(webhook_node("Project Reassessment Webhook","autodev/project/reassess","POST",cfg.cr_api,P(0,0)))
     wf.add_node(code_node("Prepare Project Issue Query","const source=$json.body||$json,input=source.body||source,projectId=String(input.project_id||'');return[{json:{filter_raw:JSON.stringify({filters:[{columnName:'project_id',condition:'eq',value:projectId}]})}}];",P(1,0)))
     wf.add_node(http_node("Fetch Project Issues","GET",cfg.issue_rows(),"{}",P(2,0),cfg.cr_n8n,send_body=False,params_extra={"url":cfg.issue_rows(),"sendQuery":True,"queryParameters":{"parameters":[{"name":"filter","value":"={{ $json.filter_raw }}"}]}}))
     wf.add_node(code_node("Decide Project Continuation",r"""const source=$('Project Reassessment Webhook').first().json,input=source.body||source,raw=$json,issues=Array.isArray(input.issues)?input.issues:(Array.isArray(raw.data)?raw.data:[]),mode=input.project_mode==='AUTO'?'AUTO':'MANUAL',done=new Set(issues.filter(i=>String(i.status||i.morpheus_status||'').toUpperCase()==='DONE').map(i=>String(i.issue_number||i.number||''))),n=issues.map(i=>{const status=String(i.status||i.morpheus_status||'UNKNOWN').toUpperCase(),deps=String(i.depends_on||'').split(',').map(x=>x.trim().replace(/^#/,'')).filter(Boolean),unmet=deps.filter(d=>!done.has(d));return {...i,status:status==='BLOCKED'&&!unmet.length?'READY':status}}),ready=n.filter(i=>i.status==='READY'),blocked=n.filter(i=>i.status==='BLOCKED'),open=n.filter(i=>!['DONE','OBSOLETE','DUPLICATE'].includes(i.status)),coverage=input.blueprint_coverage===true||input.blueprint_coverage==='true';let status=ready.length?'READY':blocked.length?'BLOCKED':open.length?'UNKNOWN':coverage?'PROJECT_DONE':'BLUEPRINT_COVERAGE_REQUIRED';return[{json:{project_id:input.project_id||'',run_id:input.run_id||'',repository_url:input.repository_url||'',mode,status,ready,blocked,blueprint_coverage:coverage,next_issue:mode==='AUTO'&&ready.length?ready[0]:null,action:mode==='AUTO'&&ready.length?'START_NEXT_CANONICAL_RUN':'DISPLAY_CANDIDATES'}}];""",P(3,0)))
     wf.add_node(if_node("Auto Continue?", [{"leftValue":"={{$json.action}}","rightValue":"=START_NEXT_CANONICAL_RUN","operator":{"type":"string","operation":"equals"}}],P(3,0)))
-    wf.add_node(code_node("Prepare Next Run","const s=$json,i=s.next_issue||{},repositoryRef=String(s.repository_url||'').replace(/^https:\/\/github\.com\//,'').replace(/\/$/,'');return[{json:{task:{task_ref:'project:'+s.project_id+':issue:'+String(i.issue_number||i.number||''),repository_ref:repositoryRef,task_description:String(i.body||i.title||''),project_id:s.project_id,project_mode:'AUTO',issue_number:i.issue_number||i.number||'', 'x-metadata':{project_id:s.project_id,project_mode:'AUTO'}},backend:'opencode-builder-8001'}}];",P(4,0)));wf.add_node(http_node("Start Next Canonical Run","POST",cfg.webhook+"/webhook/autodev/start","JSON.stringify($json)",P(5,0),cfg.cr_api));wf.add_node(code_node("Auto Continuation Result","return[{json:{status:'ACCEPTED',continuation:'STARTED',reassessment:$('Decide Project Continuation').first().json,result:$json}}];",P(6,0)))
+    wf.add_node(code_node("Prepare Next Run",r"const s=$json,i=s.next_issue||{},repositoryRef=String(s.repository_url||'').replace(/^https:\/\/github\.com\//,'').replace(/\/$/,'');return[{json:{task:{task_ref:'project:'+s.project_id+':issue:'+String(i.issue_number||i.number||''),repository_ref:repositoryRef,task_description:String(i.body||i.title||''),project_id:s.project_id,project_mode:'AUTO',issue_number:i.issue_number||i.number||'', 'x-metadata':{project_id:s.project_id,project_mode:'AUTO'}},backend:'opencode-builder-8001'}}];",P(4,0)));wf.add_node(http_node("Start Next Canonical Run","POST",cfg.webhook+"/webhook/autodev/start","JSON.stringify($json)",P(5,0),cfg.cr_api));wf.add_node(code_node("Auto Continuation Result","return[{json:{status:'ACCEPTED',continuation:'STARTED',reassessment:$('Decide Project Continuation').first().json,result:$json}}];",P(6,0)))
     wf.add_node(code_node("Manual Continuation Result","return[{json:{status:'ACCEPTED',continuation:'CANDIDATES_PRESENTED',reassessment:$json}}];",P(4,1)));wf.add_node(respond_node("Respond Reassessment",P(7,0)));wf.add("Project Reassessment Webhook","Prepare Project Issue Query");wf.add("Prepare Project Issue Query","Fetch Project Issues");wf.add("Fetch Project Issues","Decide Project Continuation");wf.add("Decide Project Continuation","Auto Continue?");wf.add("Auto Continue?","Prepare Next Run",0);wf.add("Prepare Next Run","Start Next Canonical Run");wf.add("Start Next Canonical Run","Auto Continuation Result");wf.add("Auto Continue?","Manual Continuation Result",1);wf.add("Auto Continuation Result","Respond Reassessment");wf.add("Manual Continuation Result","Respond Reassessment");return wf
+
+
+def build_08_project_reassessment_canonical(cfg):
+    """Reassess canonical project history and create exactly one next run."""
+    wf = WF("08 AutoDev Project Reassessment")
+    P = lambda x, y: [x * 260, y * 170]  # noqa: E731
+    wf.add_node(webhook_node("Project Reassessment Webhook", "autodev/project/reassess", "POST", cfg.cr_api, P(0, 0)))
+    normalize = "const source=$json.body||$json,input=source.body||source,sourceRunId=String(input.source_run_id||input.run_id||''),correlation=String(input.correlation_id||'auto-'+sourceRunId);return[{json:{project_id:String(input.project_id||''),source_run_id:sourceRunId,issue_number:input.issue_number===undefined?'':String(input.issue_number),continuation_reason:String(input.continuation_reason||''),requested_action:String(input.requested_action||''),requested_by:String(input.requested_by||''),correlation_id:correlation,project_mode:input.project_mode==='AUTO'?'AUTO':'MANUAL',repository_url:String(input.repository_url||''),mode:input.command==='RESUME_RUN'?'MANUAL':'AUTO_REASSESSMENT'}}];"
+    wf.add_node(code_node("Normalize Continuation Request", normalize, P(1, 0)))
+    query = "const s=$json;return[{json:{...s,filter_raw:JSON.stringify({filters:[{columnName:'project_id',condition:'eq',value:s.project_id}]})}}];"
+    wf.add_node(code_node("Prepare Project Query", query, P(2, 0)))
+    wf.add_node(http_node("Fetch Canonical Project", "GET", cfg.project_rows(), "{}", P(3, 0), cfg.cr_n8n, send_body=False, params_extra={"url": cfg.project_rows(), "sendQuery": True, "queryParameters": {"parameters": [{"name": "filter", "value": "={{ $json.filter_raw }}"}]}}))
+    wf.nodes[-1]["alwaysOutputData"] = True
+    wf.add_node(http_node("Fetch Project Runs", "GET", cfg.rows(cfg.runs), "{}", P(4, 0), cfg.cr_n8n, send_body=False, params_extra={"url": cfg.rows(cfg.runs), "sendQuery": True, "queryParameters": {"parameters": [{"name": "filter", "value": "={{ $('Prepare Project Query').first().json.filter_raw }}"}]}}))
+    wf.nodes[-1]["alwaysOutputData"] = True
+    wf.add_node(http_node("Fetch Project Issues", "GET", cfg.issue_rows(), "{}", P(5, 0), cfg.cr_n8n, send_body=False, params_extra={"url": cfg.issue_rows(), "sendQuery": True, "queryParameters": {"parameters": [{"name": "filter", "value": "={{ $('Prepare Project Query').first().json.filter_raw }}"}]}}))
+    wf.nodes[-1]["alwaysOutputData"] = True
+    decision = r"""const req=$('Normalize Continuation Request').first().json,projects=Array.isArray($('Fetch Canonical Project').first().json.data)?$('Fetch Canonical Project').first().json.data:[],runs=Array.isArray($('Fetch Project Runs').first().json.data)?$('Fetch Project Runs').first().json.data:[],issues=Array.isArray($json.data)?$json.data:[],project=projects[0]||null,activeStates=new Set(['ACCEPTED','BASELINING','RESEARCHING','PLANNING','BUILDING','VERIFYING','REVIEWING','DECIDING','RUNNING','ACTIVE']),terminalStates=new Set(['DONE','COMPLETED','ABORTED','BLOCKED','FAILED','PAUSED','PLAN_BLOCKED']),active=runs.find(r=>activeStates.has(String(r.state||'').toUpperCase())),source=runs.find(r=>String(r.run_id||'')===req.source_run_id),duplicate=runs.find(r=>String(r.correlation_id||'')===req.correlation_id&&String(r.created_via||'')==='CONTROL_TOWER_CONTINUATION'),selectedIssue=req.issue_number?issues.find(i=>String(i.issue_number||i.number||'')===req.issue_number):null;let code='';if(!project)code='PROJECT_NOT_FOUND';else if(duplicate)code='DUPLICATE_REQUEST';else if(active)code='PROJECT_ACTIVE_RUN_CONFLICT';else if(!source||String(source.project_id||'')!==req.project_id||!terminalStates.has(String(source.state||'').toUpperCase()))code='CONTINUATION_NOT_ALLOWED';else if(req.issue_number&&(!selectedIssue||['OBSOLETE','DUPLICATE'].includes(String(selectedIssue.morpheus_status||selectedIssue.status||'').toUpperCase())))code='ISSUE_NOT_FOUND';else if(req.mode==='MANUAL'&&(!req.continuation_reason.trim()||req.continuation_reason.length>240||!req.requested_action.trim()||req.requested_action.length>240))code='CONTINUATION_NOT_ALLOWED';const issueNumber=req.issue_number||String(source&&source.issue_number||''),issue=selectedIssue||issues.find(i=>String(i.issue_number||i.number||'')===issueNumber)||null,reason=req.continuation_reason.trim()||'continue next approved project work',action=req.requested_action.trim()||String(issue&&issue.title||'reassess and continue project'),repository=String(project&&(project.repository_url||project.repository_ref)||req.repository_url||(source&&source.repository_ref)||'').replace(/^https:\/\/github\.com\//,'').replace(/\/$/,''),runId='run-cont-'+req.correlation_id.replace(/[^A-Za-z0-9_-]/g,'').slice(-48),description=[String(issue&&issue.body||issue&&issue.title||''),action,reason].filter(Boolean).join('\n\n').slice(0,4000);return[{json:{...req,valid:!code,code,project,source_run:source||null,selected_issue:issue||null,continuation_run_id:runId,start_request:{task:{run_id:runId,task_ref:'project:'+req.project_id+(issueNumber?':issue:'+issueNumber:''),repository_ref:repository,workspace:String((project&&project.workspace)||req.project_id),task_description:description||('Continue project '+req.project_id),acceptance_hint:action,max_attempts:2,project_id:req.project_id,project_mode:'MANUAL',issue_number:issueNumber,source_run_id:req.source_run_id,continuation_reason:reason,requested_action:action,requested_by:req.requested_by,created_via:'CONTROL_TOWER_CONTINUATION','x-metadata':{project_id:req.project_id,project_mode:'MANUAL',issue_number:issueNumber,source_run_id:req.source_run_id,continuation_reason:reason,requested_action:action,requested_by:req.requested_by,created_via:'CONTROL_TOWER_CONTINUATION',correlation_id:req.correlation_id}},backend:'opencode-builder-8001'}}];"""
+    wf.add_node(code_node("Decide Canonical Continuation", decision, P(6, 0)))
+    wf.add_node(bool_if("Continuation Allowed?", "$json.valid === true", P(7, 0)))
+    wf.add_node(code_node("Reject Continuation", "const s=$json;return[{json:{status:'error',code:s.code||'CONTINUATION_NOT_ALLOWED',project_id:s.project_id,source_run_id:s.source_run_id,correlation_id:s.correlation_id}}];", P(8, 1)))
+    wf.add_node(http_node("Start Next Canonical Run", "POST", cfg.webhook + "/webhook/autodev/start", "JSON.stringify($json.start_request)", P(8, 0), cfg.cr_api))
+    wf.add_node(code_node("Canonical Continuation Result", "const s=$('Decide Canonical Continuation').first().json;return[{json:{status:'ACCEPTED',continuation:'STARTED',project_id:s.project_id,source_run_id:s.source_run_id,new_run_id:s.continuation_run_id,correlation_id:s.correlation_id,created_via:'CONTROL_TOWER_CONTINUATION',result:$json,source:'n8n-project-reassessment'}}];", P(9, 0)))
+    wf.add_node(respond_node("Respond Reassessment", P(10, 0)))
+    wf.add("Project Reassessment Webhook", "Normalize Continuation Request")
+    wf.add("Normalize Continuation Request", "Prepare Project Query")
+    wf.add("Prepare Project Query", "Fetch Canonical Project")
+    wf.add("Fetch Canonical Project", "Fetch Project Runs")
+    wf.add("Fetch Project Runs", "Fetch Project Issues")
+    wf.add("Fetch Project Issues", "Decide Canonical Continuation")
+    wf.add("Decide Canonical Continuation", "Continuation Allowed?")
+    wf.add("Continuation Allowed?", "Start Next Canonical Run", 0)
+    wf.add("Continuation Allowed?", "Reject Continuation", 1)
+    wf.add("Start Next Canonical Run", "Canonical Continuation Result")
+    wf.add("Canonical Continuation Result", "Respond Reassessment")
+    wf.add("Reject Continuation", "Respond Reassessment")
+    return wf
+
+
+def build_08_project_reassessment(cfg):
+    """Compatibility entry point for callers of the existing builder name."""
+    return build_08_project_reassessment_canonical(cfg)
 
 
 JS_VALIDATOR = r"""function validateAutodevContract(payload, schema) {

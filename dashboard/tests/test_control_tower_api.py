@@ -44,6 +44,45 @@ class ContractAndProjectionTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    def test_continuation_provenance_is_projected_without_content(self):
+        value = control_tower.sanitize_run({
+            "run_id": "run-2", "project_id": "p", "source_run_id": "run-1",
+            "created_via": "CONTROL_TOWER_CONTINUATION", "continuation_reason": "resume",
+            "requested_action": "next milestone", "prompt": "private",
+        })
+        self.assertEqual(value["source_run_id"], "run-1")
+        self.assertEqual(value["created_via"], "CONTROL_TOWER_CONTINUATION")
+        self.assertNotIn("prompt", value)
+
+    def test_bounded_canonical_errors_map_to_safe_http_status(self):
+        self.assertEqual(control_tower.command_result_status(200, {"status": "error", "code": "PROJECT_ACTIVE_RUN_CONFLICT"}), 409)
+        self.assertEqual(control_tower.command_result_status(200, {"status": "error", "code": "PROJECT_NOT_FOUND"}), 404)
+
+    def test_continuation_mutation_requires_auth_role_and_csrf(self):
+        server = control_tower.ThreadingHTTPServer(("127.0.0.1", 0), control_tower.Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        url = "http://127.0.0.1:%s/api/v1/commands" % server.server_port
+        body = json.dumps({"command": "RESUME_RUN", "payload": {"project_id": "p", "source_run_id": "run-1", "continuation_reason": "resume", "requested_action": "next"}, "target": {"project_id": "p"}}).encode()
+        try:
+            with self.assertRaises(urllib.error.HTTPError) as missing:
+                urllib.request.urlopen(urllib.request.Request(url, data=body, method="POST"), timeout=3)
+            self.assertEqual(missing.exception.code, 401)
+            with self.assertRaises(urllib.error.HTTPError) as csrf:
+                urllib.request.urlopen(urllib.request.Request(url, data=body, method="POST", headers={"X-Control-Tower-Token": "test-viewer-token"}), timeout=3)
+            self.assertEqual(csrf.exception.code, 403)
+            headers = {"X-Control-Tower-Token": "test-viewer-token", "X-Control-Tower-Request": "1", "Content-Type": "application/json"}
+            with self.assertRaises(urllib.error.HTTPError) as viewer:
+                urllib.request.urlopen(urllib.request.Request(url, data=body, method="POST", headers=headers), timeout=3)
+            self.assertEqual(viewer.exception.code, 403)
+            invalid = json.dumps({"command": "RESUME_RUN", "payload": {"project_id": "p", "source_run_id": "run-1", "continuation_reason": "resume", "requested_action": "next"}, "target": {"url": "https://evil"}}).encode()
+            with self.assertRaises(urllib.error.HTTPError) as target:
+                urllib.request.urlopen(urllib.request.Request(url, data=invalid, method="POST", headers={**headers}), timeout=3)
+            self.assertEqual(target.exception.code, 400)
+        finally:
+            server.shutdown()
+            server.server_close()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,7 +9,7 @@
     "contract": {"const": "autodev.control-command.v1"},
     "version": {"const": "v1"},
     "command": {"enum": ["START_PROJECT", "START_ISSUE", "START_REPO_ANALYSIS", "START_BLUEPRINT_PROJECT", "PAUSE_RUN", "RESUME_RUN", "ABORT_RUN", "RETRY_STAGE", "RETRY_RUN", "EXCLUDE_MODEL_FOR_RUN", "EXCLUDE_PROVIDER_FOR_RUN", "APPROVE_HUMAN_GATE", "RUN_ROUTER_TEST", "RUN_MCP_TEST", "RUN_SYSTEM_TEST", "REFRESH_CATALOG", "SYNC_CREDENTIALS"]},
-    "target": {"type": "object", "additionalProperties": true},
+    "target": {"type": "object", "additionalProperties": false, "properties": {"run_id": {"type": ["string", "integer"], "pattern": "^[A-Za-z0-9_.:#-]{1,96}$"}, "project_id": {"type": ["string", "integer"], "pattern": "^[A-Za-z0-9_.:#-]{1,96}$"}, "issue_number": {"type": ["string", "integer"], "pattern": "^[A-Za-z0-9_.:#-]{1,96}$"}}},
     "payload": {"type": "object", "additionalProperties": true},
     "actor": {"type": "object", "required": ["role"], "properties": {"role": {"enum": ["OPERATOR", "ADMIN"]}}, "additionalProperties": false},
     "correlation_id": {"type": "string", "pattern": "^[A-Za-z0-9_.:-]{3,96}$"}
