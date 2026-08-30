@@ -43,6 +43,8 @@ class RuntimeWorkflowTests(unittest.TestCase):
         self.assertEqual(webhook["parameters"]["path"], "autodev/control")
         self.assertEqual(webhook["parameters"]["authentication"], "headerAuth")
         self.assertIn("COMMAND_NOT_ALLOWED", next(node for node in gateway["nodes"] if node["name"] == "Validate Control Command")["parameters"]["jsCode"])
+        self.assertIn("TARGET_KEY_NOT_ALLOWED", json.dumps(gateway))
+        self.assertIn("TARGET_VALUE_INVALID", json.dumps(gateway))
         self.assertIn("autodev/project/reassess", json.dumps(gateway))
         self.assertNotIn("COMMAND_NOT_IMPLEMENTED", json.dumps(gateway))
         self.assertIn("overall", json.dumps(gateway))

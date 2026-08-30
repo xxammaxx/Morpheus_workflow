@@ -42,6 +42,7 @@ ROUTER_TESTS = frozenset({
 
 SECRET_KEYS = re.compile(r"(?:authorization|cookie|token|secret|password|api[_-]?key|private[_-]?key|ssh[_-]?key|credential|reasoning|chain.?of.?thought)", re.I)
 REASONING_KEYS = {"reasoning_content", "reasoning", "chain_of_thought", "chain-of-thought", "thoughts"}
+TARGET_KEYS = frozenset({"run_id", "project_id", "issue_number"})
 
 
 def utc_now() -> str:
@@ -95,6 +96,22 @@ def validate_blueprint(markdown: object) -> str:
     if len(markdown.encode("utf-8")) > 512_000:
         raise ValueError("blueprint_md exceeds the 512 KiB limit")
     return markdown
+
+
+def validate_target(target: object) -> dict:
+    """Validate the non-routing target metadata accepted by the command contract."""
+    if target is None:
+        return {}
+    if not isinstance(target, dict) or len(target) > len(TARGET_KEYS):
+        raise ValueError("target must be a small JSON object")
+    for key, value in target.items():
+        if key not in TARGET_KEYS:
+            raise ValueError("target key is not allowed")
+        if not isinstance(value, (str, int)) or isinstance(value, bool):
+            raise ValueError("target values must be scalar identifiers")
+        if not re.fullmatch(r"[A-Za-z0-9_.:#-]{1,96}", str(value)):
+            raise ValueError("target value is invalid")
+    return target
 
 
 def validate_command(command: object, payload: object, role: str) -> tuple[str, dict]:

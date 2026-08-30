@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from control_center import (
     ADMIN_COMMANDS, OPERATOR_COMMANDS, blueprint_projection, classify_issue,
-    project_projection, reassessment, redact, validate_command,
+    project_projection, reassessment, redact, validate_command, validate_target,
 )
 
 
@@ -27,6 +27,13 @@ class ControlCenterPolicyTests(unittest.TestCase):
             validate_command("START_ISSUE", {"repository_url": "https://github.com/o/r", "issue": "#42", "api_key": "x"}, "OPERATOR")
         with self.assertRaises(ValueError):
             validate_command("START_PROJECT", {"blueprint_md": "# safe", "model": "deepseek/deepseek-chat"}, "OPERATOR")
+
+    def test_target_allowlist_rejects_arbitrary_routing_metadata(self):
+        self.assertEqual(validate_target({"run_id": "run-safe"}), {"run_id": "run-safe"})
+        with self.assertRaises(ValueError):
+            validate_target({"url": "http://127.0.0.1"})
+        with self.assertRaises(ValueError):
+            validate_target({"run_id": {"nested": "target"}})
 
     def test_blueprint_is_structured_and_persistent_intent(self):
         value = blueprint_projection("# Ziel\nEin Produkt\n## Acceptance Criteria\n- Tests grün")

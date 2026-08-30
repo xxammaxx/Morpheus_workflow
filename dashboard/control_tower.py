@@ -19,7 +19,7 @@ from control_center import (ADMIN_COMMANDS, COMMAND_PATHS, OPERATOR_COMMANDS,
                             READ_ROLES, audit_entry, blueprint_projection,
                             correlation_id,
                             project_projection, redact, role_for_token,
-                            validate_command)
+                            validate_command, validate_target)
 from telemetry import runtime_telemetry
 
 VERSION = "1.2.0"
@@ -478,6 +478,7 @@ class Handler(BaseHTTPRequestHandler):
             body = self.request_body()
             command = body.get("command")
             target = redact(body.get("target")) if isinstance(body.get("target"), dict) else {}
+            validate_target(target)
             payload = body.get("payload", {})
             command, payload = validate_command(command, payload, role)
             correlation = body.get("correlation_id")
