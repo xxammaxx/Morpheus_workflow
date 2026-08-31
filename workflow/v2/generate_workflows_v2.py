@@ -678,18 +678,33 @@ const issue = {
         + """
 const schema = %s;
 const v = validateAutodevContract(issue, schema);
+const envelopeAdaptive = raw.adaptive_metadata || null;
+const taskAdaptive = (task['x-metadata'] && task['x-metadata'].adaptive_metadata) || null;
+const adaptiveMetadata = envelopeAdaptive || taskAdaptive;
+const adaptiveSchema = %s;
+const adaptiveValidation = adaptiveMetadata === null
+  ? {ok: true, errors: []}
+  : validateAutodevContract(adaptiveMetadata, adaptiveSchema);
+const adaptiveFields = ['experiment_id','benchmark_task_id','benchmark_split','candidate_id','factor','context_policy','repo_explorer_policy','experience_policy','config_hash','task_set_hash','harness_version'];
+const adaptiveBindingValid = envelopeAdaptive === null || taskAdaptive === null ||
+  adaptiveFields.every((key) => envelopeAdaptive[key] === taskAdaptive[key]);
+if (adaptiveValidation.ok && adaptiveMetadata !== null) {
+  issue['x-metadata'].adaptive_metadata = adaptiveMetadata;
+}
 const fixture = (raw.fixture && ['invalid_plan','verify_fail_delta','verify_fail_no_delta','no_signature','attempt_limit','security_critical_blocking','review_fix','review_split'].includes(raw.fixture)) ? raw.fixture : null;
 const backend = (raw.backend === 'embedded' || raw.backend === 'opencode-builder-8001') ? raw.backend : 'opencode-builder-8001';
 const provider = (typeof raw.provider === 'string' && ['embedded','lmstudio','groq','openrouter','ollama'].includes(raw.provider)) ? raw.provider : null;
 const model = (typeof raw.model === 'string' && raw.model.length <= 64) ? raw.model : null;
 const modelRevision = (typeof raw.model_revision === 'string' && raw.model_revision.length <= 64) ? raw.model_revision : null;
 const deepseekRequested = /deepseek/i.test(String(raw.provider || '')) || /deepseek/i.test(String(raw.model || ''));
-const intakeErrors = deepseekRequested ? v.errors.concat(['DEEPSEEK_RETIRED']) : v.errors;
-return [{ json: { intake_valid: v.ok && !deepseekRequested, errors: intakeErrors, issue: issue,
+const intakeErrors = (deepseekRequested ? v.errors.concat(['DEEPSEEK_RETIRED']) : v.errors)
+  .concat(adaptiveValidation.errors || [])
+  .concat(adaptiveBindingValid ? [] : ['ADAPTIVE_METADATA_REBIND']);
+return [{ json: { intake_valid: v.ok && adaptiveValidation.ok && adaptiveBindingValid && !deepseekRequested, errors: intakeErrors, issue: issue,
   fixture: fixture, backend: backend, provider: provider, model: model,
   model_revision: modelRevision, run_id: runId } }];
 """
-        % embed_schema("autodev.issue.v1")
+        % (embed_schema("autodev.issue.v1"), embed_schema("autodev.adaptive-metadata.v1"))
     )
     wf.add_node(code_node("Validate Intake", validate_js, P(1, 0)))
     wf.add_node(bool_if("Intake Valid?", "$json.intake_valid", P(2, 0)))
@@ -717,7 +732,18 @@ return [{json: {intake: {issue: s.issue, fixture: s.fixture, backend: s.backend,
   continuation_reason: (s.issue['x-metadata'] || {}).continuation_reason || '',
   requested_action: (s.issue['x-metadata'] || {}).requested_action || '',
   created_via: (s.issue['x-metadata'] || {}).created_via || 'CONTROL_TOWER_START',
-  requested_by: (s.issue['x-metadata'] || {}).requested_by || ''}], returnType: 'all'}}];""",
+  requested_by: (s.issue['x-metadata'] || {}).requested_by || '',
+  experiment_id: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).experiment_id || '',
+  benchmark_task_id: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_task_id || '',
+  benchmark_split: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_split || '',
+  candidate_id: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).candidate_id || '',
+  factor: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).factor || '',
+  config_hash: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).config_hash || '',
+  task_set_hash: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).task_set_hash || '',
+  harness_version: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).harness_version || '',
+  context_policy: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).context_policy || '',
+  repo_explorer_policy: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).repo_explorer_policy || '',
+  experience_policy: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).experience_policy || ''}], returnType: 'all'}}];""",
             P(2, 1),
         )
     )
@@ -951,7 +977,8 @@ return [{json: {
   provider: s.provider || null,
   model: s.model || null,
   model_revision: s.model_revision || null,
-  run_row: {state: 'ACCEPTED', project_id: (issue['x-metadata'] || {}).project_id || '', issue_number: (issue['x-metadata'] || {}).issue_number || '', task_ref: issue.task_ref || '', repository_ref: issue.repository_ref || '', current_job: 'baseline', reason_code: 'INTAKE_OK', correlation_id: (issue['x-metadata'] || {}).correlation_id || '', source_run_id: (issue['x-metadata'] || {}).source_run_id || '', continuation_reason: (issue['x-metadata'] || {}).continuation_reason || '', requested_action: (issue['x-metadata'] || {}).requested_action || '', created_via: (issue['x-metadata'] || {}).created_via || 'CONTROL_TOWER_START', requested_by: (issue['x-metadata'] || {}).requested_by || ''},
+  adaptive_metadata: (issue['x-metadata'] || {}).adaptive_metadata || null,
+  run_row: {state: 'ACCEPTED', project_id: (issue['x-metadata'] || {}).project_id || '', issue_number: (issue['x-metadata'] || {}).issue_number || '', task_ref: issue.task_ref || '', repository_ref: issue.repository_ref || '', current_job: 'baseline', reason_code: 'INTAKE_OK', correlation_id: (issue['x-metadata'] || {}).correlation_id || '', source_run_id: (issue['x-metadata'] || {}).source_run_id || '', continuation_reason: (issue['x-metadata'] || {}).continuation_reason || '', requested_action: (issue['x-metadata'] || {}).requested_action || '', created_via: (issue['x-metadata'] || {}).created_via || 'CONTROL_TOWER_START', requested_by: (issue['x-metadata'] || {}).requested_by || '', experiment_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).experiment_id || '', benchmark_task_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_task_id || '', benchmark_split: ((issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_split || '', candidate_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).candidate_id || '', factor: ((issue['x-metadata'] || {}).adaptive_metadata || {}).factor || '', config_hash: ((issue['x-metadata'] || {}).adaptive_metadata || {}).config_hash || '', task_set_hash: ((issue['x-metadata'] || {}).adaptive_metadata || {}).task_set_hash || '', harness_version: ((issue['x-metadata'] || {}).adaptive_metadata || {}).harness_version || '', context_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).context_policy || '', repo_explorer_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).repo_explorer_policy || '', experience_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).experience_policy || ''},
   baseline: null, research: null, plan: null, gate: null,
   build: null, verification: null, review: null, decision: null,
   attempt_build: 0, attempt_fix: 0,
@@ -1651,6 +1678,7 @@ return [{json: {
   provider: (s.provider || null),
   model: (s.model || null),
   model_revision: (s.model_revision || null),
+  adaptive_metadata: (input['x-metadata'] || {}).adaptive_metadata || null,
   task_class: '%s'
 }}];""" % (
             input_expr,
@@ -1735,6 +1763,7 @@ return [{json: {
     job_id: rec.job_id, status: rec.status, job_type: rec.job_type,
     attempt_id: rec.attempt_id, backend: rec.backend, provider: rec.provider,
     model: rec.model, input_contract: rec.input_contract,
+    adaptive_metadata: rec.adaptive_metadata || null,
     input_fingerprint: rec.input_fingerprint,
     output_contract: rec.output_contract,
     output_fingerprint: rec.output_fingerprint,
@@ -1760,6 +1789,7 @@ return [{json: {ok: false, failure_class: s.failure_class || 'UNKNOWN',
     backend: s.backend, provider: s.provider, model: s.model,
     input_contract: s.input_contract, input_fingerprint: s.input_fingerprint,
     output_contract: s.output_contract, output_fingerprint: null,
+    adaptive_metadata: s.adaptive_metadata || null,
     started_at: s.started_at, ended_at: s.ended_at, duration_ms: s.duration_ms,
     failure_class: s.failure_class, failure_signature: s.failure_signature,
     strategy_delta: s.strategy_delta, result_ref: s.result_ref, error: s.error}}}];""",
@@ -1832,6 +1862,9 @@ if (!v.ok) {
 const ctx = $('Sub-Workflow Trigger').first().json;
 const issue = ctx.issue || {};
 const baselineHead = (ctx.baseline && ctx.baseline.repository && ctx.baseline.repository.head) || '';
+const expectedAdaptive = (issue['x-metadata'] || {}).adaptive_metadata || null;
+const observedAdaptive = (plan['x-metadata'] || {}).adaptive_metadata ||
+  (s.job_record || {}).adaptive_metadata || null;
 const reasons = [];
 if (plan.run_id !== issue.run_id) reasons.push('PLAN_RUN_ID_MISMATCH');
 if (baselineHead && plan.repository_head !== baselineHead) reasons.push('PLAN_HEAD_MISMATCH');
@@ -1840,6 +1873,8 @@ if (!plan.build_scope || !plan.build_scope.allowed_files || !plan.build_scope.al
 if (!plan.required_tests || !plan.required_tests.length) reasons.push('REQUIRED_TESTS_INVALID');
 if (!plan.context || !plan.context.fingerprint) reasons.push('CONTEXT_FINGERPRINT_MISSING');
 if (plan.safety && (plan.safety.sentinel_absent !== true || plan.safety.repo_unchanged !== true)) reasons.push('FORBIDDEN_MUTATION');
+const adaptiveFields = ['experiment_id','benchmark_task_id','benchmark_split','candidate_id','factor','context_policy','repo_explorer_policy','experience_policy','config_hash','task_set_hash','harness_version'];
+if (expectedAdaptive && adaptiveFields.some((key) => (observedAdaptive || {})[key] !== expectedAdaptive[key])) reasons.push('ADAPTIVE_METADATA_MISMATCH');
 const planTargets = [].concat((plan.targets && plan.targets.files) || [],
   (plan.build_scope && plan.build_scope.allowed_files) || []);
 if (planTargets.some((path) => path === '.plan-canary-sentinel' || path === './.plan-canary-sentinel')) reasons.push('FORBIDDEN_TARGET');
@@ -1906,7 +1941,8 @@ const input = {
   changes_expected: plan.changes_expected !== false,
   task_description: issue.task_description || '',
   strategy_delta: null,
-  failure_context: null
+  failure_context: null,
+  'x-metadata': {adaptive_metadata: (issue['x-metadata'] || {}).adaptive_metadata || null}
 };
 return [{json: {
   run_id: issue.run_id, job_id: issue.run_id + ':build:' + ((s.attempt_build || 0) + 1),
@@ -1916,6 +1952,7 @@ return [{json: {
   provider: (s.provider || null),
   model: (s.model || null),
   model_revision: (s.model_revision || null),
+  adaptive_metadata: (input['x-metadata'] || {}).adaptive_metadata || null,
   task_class: 'build'
 }}];"""
         prep = code_node("Prep Build Input", prep_js, P(0, 0))
@@ -2064,7 +2101,8 @@ const input = {
   build_scope: plan.build_scope || {allowed_files: []},
   changes_expected: plan.changes_expected !== false,
   task_description: issue.task_description || '',
-  strategy_delta: null, failure_context: null
+  strategy_delta: null, failure_context: null,
+  'x-metadata': {adaptive_metadata: (issue['x-metadata'] || {}).adaptive_metadata || null}
 };
 return [{json: {
   run_id: issue.run_id, job_id: issue.run_id + ':verify:' + attemptId.split(':').pop(),
@@ -2074,6 +2112,7 @@ return [{json: {
   provider: (s.provider || null),
   model: (s.model || null),
   model_revision: (s.model_revision || null),
+  adaptive_metadata: (input['x-metadata'] || {}).adaptive_metadata || null,
   task_class: 'verify'
 }}];"""
         prep = code_node("Prep Verify Input", prep_js, P(0, 0))
@@ -2226,7 +2265,8 @@ const input = {
     failure_signature: verification.failure_signature || '',
     failure_class: verification.failure_class || 'UNKNOWN',
     new_evidence: verification.new_evidence || []
-  }
+  },
+  'x-metadata': {adaptive_metadata: (issue['x-metadata'] || {}).adaptive_metadata || null}
 };
 return [{json: {
   run_id: issue.run_id, job_id: issue.run_id + ':fix:' + attemptNo,
@@ -2236,6 +2276,7 @@ return [{json: {
   provider: (s.provider || null),
   model: (s.model || null),
   model_revision: (s.model_revision || null),
+  adaptive_metadata: (input['x-metadata'] || {}).adaptive_metadata || null,
   task_class: 'build'
 }}];"""
         prep = code_node("Prep Fix Input", prep_js, P(0, 0))
@@ -2381,6 +2422,7 @@ const jobs = ['code', 'docs', 'tests'].map((area) => ({
   provider: s.provider || null,
   model: s.model || null,
   model_revision: s.model_revision || null,
+  adaptive_metadata: (s.issue['x-metadata'] || {}).adaptive_metadata || null,
   task_class: 'research',
   timeout_s: 600
 }));

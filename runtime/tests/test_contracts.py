@@ -82,6 +82,21 @@ def main():
 
     # --- CONTRACT_VALIDATION: every schema accepts its canonical sample
     valid_samples = {
+        "autodev.adaptive-metadata.v1": {
+            "contract": "autodev.adaptive-metadata.v1",
+            "version": "v1",
+            "experiment_id": "morpheus-abc123",
+            "benchmark_task_id": "d-001",
+            "benchmark_split": "development",
+            "candidate_id": None,
+            "factor": "BASELINE",
+            "context_policy": "disabled",
+            "repo_explorer_policy": "disabled",
+            "experience_policy": "disabled",
+            "config_hash": "a" * 64,
+            "task_set_hash": "b" * 64,
+            "harness_version": "v1",
+        },
         "autodev.issue.v1": sample_issue(),
         "autodev.baseline.v1": {
             "contract": "autodev.baseline.v1",

@@ -1,0 +1,253 @@
+{
+  "name": "06 AutoDev Project Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "autodev/project/analyse",
+        "responseMode": "responseNode",
+        "options": {},
+        "authentication": "headerAuth"
+      },
+      "id": "project-analysis-webhook",
+      "name": "Project Analysis Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "bNrV3DszwdD7hXuY",
+          "name": "autodev-api-auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const env=$json.body||$json,e=env.envelope||{},p=e.payload||{},raw=env.issues; const issues=Array.isArray(raw)?raw:(raw&&Array.isArray(raw.data)?raw.data:[]); const projectId=p.project_id||`project-${String(e.github_owner||'')}-${String(e.github_repo||'')}`;\nfunction status(i){const l=(i.labels||[]).map(x=>String(x.name||x).toUpperCase());if(i.pull_request)return'OBSOLETE';if(i.state==='closed')return'DONE';if(l.some(x=>x.includes('DUPLICATE')))return'DUPLICATE';if(l.some(x=>x.includes('BLOCKED')))return'BLOCKED';if(l.some(x=>x.includes('RUNNING')))return'RUNNING';return'READY'}\nconst rows=issues.filter(i=>!i.pull_request).map(i=>({project_id:projectId,issue_number:String(i.number||''),title:String(i.title||''),body:String(i.body||'').slice(0,12000),state:String(i.state||'open'),morpheus_status:status(i),depends_on:(String(i.body||'').match(/DEPENDS_ON=([^\\\\n]+)/i)||[])[1]||'',changes_expected:!String(i.body||'').match(/CHANGES_EXPECTED=false/i),github_url:i.html_url||'',blueprint_section:(String(i.body||'').match(/BLUEPRINT_SECTION=([^\\\\n]+)/i)||[])[1]||'',updated_at:i.updated_at||new Date().toISOString()})); const counts={READY:0,RUNNING:0,BLOCKED:0,DONE:0,OBSOLETE:0,DUPLICATE:0,UNKNOWN:0}; rows.forEach(r=>counts[r.morpheus_status]=(counts[r.morpheus_status]||0)+1);\nreturn[{json:{project_row:{project_id:projectId,name:p.project_name||`${e.github_owner}/${e.github_repo}`,repository_url:p.repository_url||'',blueprint_ref:p.blueprint_ref||'',project_mode:p.project_mode||'MANUAL',status:counts.BLOCKED?'BLOCKED':counts.RUNNING?'RUNNING':'READY',current_run_id:'',current_issue:'',created_at:new Date().toISOString(),updated_at:new Date().toISOString(),blueprint_sha256:p.blueprint_sha256||'',blueprint_coverage:'UNKNOWN'},issue_rows:rows,summary:{project_id:projectId,counts,source:'github-read-only'}}}];"
+      },
+      "id": "normalize-project-analysis",
+      "name": "Normalize Project Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables//rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({filter:{filters:[{columnName:'project_id',condition:'eq',value:$json.project_row.project_id}]},data:$json.project_row,returnData:true}) }}",
+        "options": {}
+      },
+      "id": "persist-project-projection",
+      "name": "Persist Project Projection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        520,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$('Normalize Project Analysis').first().json.issue_rows.length}}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "issues-present?",
+      "name": "Issues Present?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        780,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s=$('Normalize Project Analysis').first().json;return s.issue_rows.map(issue=>({json:{filter:{filters:[{columnName:'project_id',condition:'eq',value:issue.project_id},{columnName:'issue_number',condition:'eq',value:issue.issue_number}]},data:issue,returnData:true}}));"
+      },
+      "id": "prepare-issue-projection-upserts",
+      "name": "Prepare Issue Projection Upserts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables//rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "persist-issue-projection",
+      "name": "Persist Issue Projection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1040,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s=$('Normalize Project Analysis').first().json;return[{json:{status:'ACCEPTED',project:s.project_row,summary:s.summary,issue_count:s.issue_rows.length,source:'n8n-project-analysis'}}];"
+      },
+      "id": "project-analysis-result",
+      "name": "Project Analysis Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-project-analysis",
+      "name": "Respond Project Analysis",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Project Analysis Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Project Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Project Analysis": {
+      "main": [
+        [
+          {
+            "node": "Persist Project Projection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Project Projection": {
+      "main": [
+        [
+          {
+            "node": "Issues Present?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Issues Present?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Issue Projection Upserts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Project Analysis Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Issue Projection Upserts": {
+      "main": [
+        [
+          {
+            "node": "Persist Issue Projection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Issue Projection": {
+      "main": [
+        [
+          {
+            "node": "Project Analysis Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Project Analysis Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Project Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

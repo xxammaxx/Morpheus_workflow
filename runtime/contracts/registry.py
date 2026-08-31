@@ -33,6 +33,7 @@ CONTRACTS = [
     "autodev.context-pack.v1",
     "autodev.experience.v1",
     "autodev.harness-candidate.v1",
+    "autodev.adaptive-metadata.v1",
 ]
 
 _SCHEMAS = {}

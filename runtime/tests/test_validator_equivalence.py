@@ -28,6 +28,15 @@ def build_fixtures():
 
     # valid samples per contract
     valid = {
+        "autodev.adaptive-metadata.v1": {
+            "contract": "autodev.adaptive-metadata.v1", "version": "v1",
+            "experiment_id": "morpheus-test-001", "benchmark_task_id": "d-001",
+            "benchmark_split": "development", "candidate_id": None,
+            "factor": "BASELINE", "context_policy": "disabled",
+            "repo_explorer_policy": "disabled", "experience_policy": "disabled",
+            "config_hash": "a" * 64, "task_set_hash": "b" * 64,
+            "harness_version": "v1",
+        },
         "autodev.issue.v1": sample_issue(),
         "autodev.baseline.v1": {
             "contract": "autodev.baseline.v1",
@@ -228,6 +237,10 @@ def build_fixtures():
     fixtures["invalid_extra_prop"] = {
         "schema": schemas["autodev.plan.v1"],
         "payload": dict(valid["autodev.plan.v1"], evil_extra=1),
+    }
+    fixtures["invalid_adaptive_factor"] = {
+        "schema": schemas["autodev.adaptive-metadata.v1"],
+        "payload": dict(valid["autodev.adaptive-metadata.v1"], factor="UNKNOWN"),
     }
     fixtures["invalid_wrong_type"] = {
         "schema": schemas["autodev.plan.v1"],

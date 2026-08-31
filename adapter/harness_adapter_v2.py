@@ -521,6 +521,7 @@ def new_job(
     task_class=None,
     harness_resolution=None,
     route_decision=None,
+    adaptive_metadata=None,
 ):
     rec = {
         "ts": _now(),
@@ -552,6 +553,7 @@ def new_job(
         "harness_resolution": harness_resolution,
         "input_contract": input_contract,
         "correlation_id": (payload.get("x-metadata") or {}).get("correlation_id"),
+        "adaptive_metadata": adaptive_metadata,
         "source": "Adapter",
         "target": "OpenCode" if backend == "opencode-builder-8001" else "Adapter",
         "contract": input_contract,
@@ -621,6 +623,12 @@ def finalize_job(
         rec["execution_proof"] = provider_execution.get("execution_proof")
         rec["failover"] = provider_execution.get("failover", [])
     if result is not None:
+        if isinstance(result, dict) and rec.get("adaptive_metadata") is not None:
+            result_metadata = dict(result.get("x-metadata") or {})
+            # Provenance is controller-owned. Worker/model output cannot
+            # rebind the experiment, factor, task set, or config hash.
+            result_metadata["adaptive_metadata"] = rec["adaptive_metadata"]
+            result["x-metadata"] = result_metadata
         rec["result"] = result
         rec["output_contract"] = (
             result.get("contract") if isinstance(result, dict) else None
@@ -680,6 +688,7 @@ def finalize_job(
                     "harness_version",
                     "harness_fingerprint",
                     "input_contract",
+                    "adaptive_metadata",
                     "input_fingerprint",
                     "output_contract",
                     "output_fingerprint",
@@ -1723,6 +1732,43 @@ def _extract_json(text):
     return None
 
 
+def _validate_adaptive_metadata(payload):
+    """Return immutable benchmark provenance or a fail-closed error."""
+    metadata = (payload.get("x-metadata") or {}).get("adaptive_metadata")
+    if metadata is None:
+        return None, None
+    if not isinstance(metadata, dict):
+        return None, "adaptive_metadata must be an object"
+    result = registry.validate(metadata, "autodev.adaptive-metadata.v1")
+    if not result["ok"]:
+        return None, "adaptive_metadata contract invalid: %s" % result["errors"]
+    return json.loads(json.dumps(metadata, sort_keys=True)), None
+
+
+def _adaptive_metadata_equal(left, right):
+    if not isinstance(left, dict) or not isinstance(right, dict):
+        return False
+    fields = ("experiment_id", "benchmark_task_id", "benchmark_split",
+              "candidate_id", "factor", "context_policy",
+              "repo_explorer_policy", "experience_policy", "config_hash",
+              "task_set_hash", "harness_version")
+    return all(left.get(field) == right.get(field) for field in fields)
+
+
+def _validate_adaptive_metadata_binding(body_metadata, input_metadata):
+    """Validate the duplicated job envelope provenance before dispatch."""
+    if body_metadata is None:
+        return None
+    _, error = _validate_adaptive_metadata(
+        {"x-metadata": {"adaptive_metadata": body_metadata}}
+    )
+    if error:
+        return "ADAPTIVE_METADATA_INVALID: %s" % error
+    if not _adaptive_metadata_equal(body_metadata, input_metadata):
+        return "ADAPTIVE_METADATA_REBIND: job and input adaptive metadata differ"
+    return None
+
+
 def _write_attempts(tool_events):
     writes = [e for e in tool_events if e in ("edit", "write")]
     denied = [e for e in tool_events if e.startswith("denied")]
@@ -1743,6 +1789,38 @@ def _plan_scope_errors(plan):
     if outside:
         errors.append("$.build_scope: targets outside allowed_files: %s" % ", ".join(outside[:10]))
     return errors
+
+
+def _plan_candidate(obj, payload, run_id, head, fingerprint, sentinel_present,
+                    head_before, status_before, head_after, status_after,
+                    tool_events, backend, provider, model):
+    """Map model fields without inventing missing semantic content."""
+    obj = obj if isinstance(obj, dict) else {}
+    targets = obj.get("targets") if isinstance(obj.get("targets"), dict) else {}
+    scope = obj.get("build_scope") if isinstance(obj.get("build_scope"), dict) else {}
+    return {
+        "contract": "autodev.plan.v1", "version": "v1", "run_id": run_id,
+        "repository_head": head[:40],
+        "targets": {"files": targets.get("files", []), "symbols": targets.get("symbols", [])},
+        "acceptance_criteria": obj.get("acceptance_criteria", []),
+        "required_tests": obj.get("required_tests", []),
+        "risks": obj.get("risks", []),
+        "build_scope": {"allowed_files": scope.get("allowed_files", [])},
+        "changes_expected": _changes_expected(payload, scope.get("allowed_files", [])),
+        "context": {"fingerprint": fingerprint, "research_summary": str(obj.get("research_summary", ""))[:4000]},
+        "safety": {
+            "sentinel_absent": not sentinel_present,
+            "repo_unchanged": head_before == head_after and status_before == status_after,
+            "write_attempts": _write_attempts(tool_events)[0],
+            "denied_events": _write_attempts(tool_events)[1],
+        },
+        "x-metadata": {
+            "backend": backend, "semantic_attempt_id": payload.get("attempt_id") or "",
+            "contract_serialization_pass": True, "formatter_calls": 0,
+            "serialization_path": "native_cloud_json",
+            "provider": provider, "model": model,
+        },
+    }
 
 
 def _explicit_scoped_plan(payload, run_id, head):
@@ -2119,7 +2197,9 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         "The read-only policy and sentinel-deny preflight are already verified. "
         "Do not call write, edit, task, bash, or any tool; do not access the network. "
         "Return JSON immediately, with concrete non-empty targets and allowed_files "
-        "supported by the task/research. Never include .plan-canary-sentinel.\n"
+        "supported by the task/research. Every targets.files entry MUST also occur "
+        "in build_scope.allowed_files; use the exact same relative path spelling. "
+        "Never include .plan-canary-sentinel.\n"
         "Schema: {\"targets\":{\"files\":[\"path\"],\"symbols\":[]},"
         "\"acceptance_criteria\":[\"criterion\"],\"required_tests\":[\"test\"],"
         "\"risks\":[],\"build_scope\":{\"allowed_files\":[\"path\"]},"
@@ -2174,49 +2254,50 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         pct_stdout("cd '%s' && ls .plan-canary-sentinel 2>/dev/null || true" % ws)
     )
     writes, denied = _write_attempts(events)
-    formatter_used = False
     parse_failed = not isinstance(obj, dict)
-    if not isinstance(obj, dict):
-        obj = {}
-    plan = {
-        "contract": "autodev.plan.v1",
-        "version": "v1",
-        "run_id": run_id,
-        "repository_head": head_after[:40],
-        "targets": {
-            "files": obj.get("targets", {}).get("files", []),
-            "symbols": obj.get("targets", {}).get("symbols", []),
-        },
-        "acceptance_criteria": obj.get("acceptance_criteria", []),
-        "required_tests": obj.get("required_tests", []),
-        "risks": obj.get("risks", []),
-        "build_scope": {
-            "allowed_files": obj.get("build_scope", {}).get("allowed_files", [])
-        },
-        "changes_expected": _changes_expected(
-            payload, obj.get("build_scope", {}).get("allowed_files", [])
-        ),
-        "context": {
-            "fingerprint": fp(payload),
-            "research_summary": obj.get("research_summary", "")[:4000],
-        },
-        "safety": {
-            "sentinel_absent": not sentinel_present,
-            "repo_unchanged": head_before == head_after
-            and status_before == status_after,
-            "write_attempts": writes,
-            "denied_events": denied,
-        },
-    }
+    plan = _plan_candidate(obj, payload, run_id, head_after, fp(payload), sentinel_present,
+                           head_before, status_before, head_after, status_after,
+                           events, backend, route_provider, route_model)
     v = registry.validate(plan, "autodev.plan.v1")
     consistency_errors = _plan_scope_errors(plan)
     if plan["safety"]["sentinel_absent"] is not True:
         consistency_errors.append("$.safety.sentinel_absent: must be true")
     if plan["safety"]["repo_unchanged"] is not True:
         consistency_errors.append("$.safety.repo_unchanged: must be true")
+    # The observed failure was a model-produced scope mismatch. Give the same
+    # worker one bounded correction opportunity with the exact deterministic
+    # invariant; this is prompt repair, not semantic field invention.
+    if any("targets outside allowed_files" in error for error in consistency_errors):
+        retry_prompt = (
+            "/no_think Return ONLY the corrected JSON object for this task: %s\n"
+            "The previous object failed because every targets.files path must be "
+            "present verbatim in build_scope.allowed_files. Preserve all semantic "
+            "fields, add no files, call no tools, and never include .plan-canary-sentinel.\n"
+            "Schema keys: targets(files,symbols), acceptance_criteria, required_tests, "
+            "risks, build_scope(allowed_files), research_summary."
+        ) % payload.get("task_description", "")
+        retry_script = _opencode_script(
+            ws, "plan-worker", _agent_md("plan-worker", PLAN_SERIALIZATION_TOOLS,
+            PLAN_PERMS, "Read-only planning worker", _worker_model_ref(payload)),
+            retry_prompt, timeout_s, *_opencode_worker_identity(payload),
+        )
+        retry_execution = pct_exec(retry_script, timeout=timeout_s)
+        if retry_execution.returncode == 0:
+            retry_text, retry_events = _parse_opencode_jsonl(ws)
+            retry_obj = _extract_json(retry_text)
+            events.extend(retry_events)
+            if isinstance(retry_obj, dict):
+                plan = _plan_candidate(retry_obj, payload, run_id, head_after, fp(payload),
+                                       sentinel_present, head_before, status_before,
+                                       head_after, status_after, events, backend,
+                                       route_provider, route_model)
+                v = registry.validate(plan, "autodev.plan.v1")
+                consistency_errors = _plan_scope_errors(plan)
+                parse_failed = False
+
     if not v["ok"] or consistency_errors:
         errors = list(v["errors"]) + consistency_errors
-        errors.insert(0, "native cloud JSON serialization failed; no local formatter is configured")
+        errors.insert(0, "plan output violated the canonical semantic scope invariant")
         finalize_job(
             job_id,
             "failed",
@@ -2225,17 +2306,10 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
             failure_signature="PLAN_PARSE_FAILED" if parse_failed else "CONTRACT_INVALID",
         )
         return
-    plan["x-metadata"] = {
-        "backend": backend,
-        "semantic_attempt_id": (payload.get("attempt_id") or ""),
-        "contract_serialization_pass": formatter_used,
-        "formatter_calls": 1 if formatter_used else 0,
-        "serialization_path": "native_cloud_json",
-        "provider": route_provider,
-        "model": route_model,
+    plan["x-metadata"].update({
         "model_alias": MORPHEUS_MODEL_ALIAS,
         "provider_execution": _opencode_proof(ws, route_provider, route_model),
-    }
+    })
     finalize_job(
         job_id,
         "completed",
@@ -2849,6 +2923,9 @@ def _dispatch(
         )
     payload = dict(payload)
     metadata = dict(payload.get("x-metadata") or {})
+    adaptive_metadata, adaptive_error = _validate_adaptive_metadata(payload)
+    if adaptive_error:
+        return None, err("ADAPTIVE_METADATA_INVALID", adaptive_error)
     metadata["execution_provider"] = provider or ("embedded" if backend == "embedded" else MORPHEUS_MODEL_ALIAS)
     metadata["execution_model"] = model or ("embedded" if backend == "embedded" else "runtime-selected")
     payload["x-metadata"] = metadata
@@ -2961,6 +3038,7 @@ def _dispatch(
             or (None if hamh_resolver is None else _task_class_of(job_type)),
             harness_resolution=harness_resolution,
             route_decision=route_decision,
+            adaptive_metadata=adaptive_metadata,
         )
         run_job_thread(
             run_id,
@@ -3055,6 +3133,7 @@ def _job_view(rec, with_result=True):
             "harness_version",
             "harness_fingerprint",
             "correlation_id",
+            "adaptive_metadata",
             "input_contract",
             "input_fingerprint",
             "output_contract",
@@ -3212,7 +3291,7 @@ class Handler(BaseHTTPRequestHandler):
                             record = json.loads(line)
                         except ValueError:
                             continue
-                        events.append({key: record.get(key) for key in ("event", "timestamp", "ts", "started_at", "ended_at", "run_id", "job_id", "attempt_id", "job_type", "status", "provider", "model", "selected_provider", "selected_model", "actual_provider", "actual_model", "resolved_model", "failure_signature", "input_contract", "output_contract", "routing_event_id", "worker_id", "mcp_call_id", "correlation_id", "source", "target", "contract", "validation") if record.get(key) is not None})
+                        events.append({key: record.get(key) for key in ("event", "timestamp", "ts", "started_at", "ended_at", "run_id", "job_id", "attempt_id", "job_type", "status", "provider", "model", "selected_provider", "selected_model", "actual_provider", "actual_model", "resolved_model", "failure_signature", "input_contract", "output_contract", "routing_event_id", "worker_id", "mcp_call_id", "correlation_id", "adaptive_metadata", "source", "target", "contract", "validation") if record.get(key) is not None})
             self._send(200, ok({"events": events, "source": "canonical_run_ledger"}))
             return
         if path.startswith("/v1/jobs/"):
@@ -3300,6 +3379,16 @@ class Handler(BaseHTTPRequestHandler):
             }))
             return
         if self.path == "/v1/jobs":
+            input_payload = body.get("input") or {}
+            body_metadata = body.get("adaptive_metadata")
+            input_metadata = (input_payload.get("x-metadata") or {}).get("adaptive_metadata")
+            metadata_binding_error = _validate_adaptive_metadata_binding(
+                body_metadata, input_metadata
+            )
+            if metadata_binding_error:
+                code, _, message = metadata_binding_error.partition(": ")
+                self._send(400, err(code, message))
+                return
             rec, e = _dispatch(
                 body.get("run_id"),
                 body.get("job_id"),
