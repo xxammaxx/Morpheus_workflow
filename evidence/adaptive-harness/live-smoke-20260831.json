@@ -1,0 +1,84 @@
+{
+  "date": "2026-08-31",
+  "route": {
+    "provider": "opencode",
+    "model": "big-pickle",
+    "actual_provider": "opencode",
+    "actual_model": "big-pickle",
+    "adapter_version": "2.0.0",
+    "authorized_existing_route": true,
+    "zero_cost": true,
+    "cost_class": "FREE_HARD_STOP",
+    "actual_cost": 0.0,
+    "health": "HEALTHY",
+    "deepseek": false,
+    "automatic_paid_escalation": false
+  },
+  "matched_task": "d-001",
+  "config_invariants": [
+    "provider",
+    "model",
+    "model configuration",
+    "task",
+    "tools",
+    "verifier",
+    "runtime"
+  ],
+  "config_delta_only": "context policy / read-only repository context",
+  "runs": {
+    "baseline": {
+      "tasks": 1,
+      "success": 1,
+      "execution_proof": "PASS",
+      "duration_ms": 25000,
+      "input_tokens": "UNKNOWN",
+      "output_tokens": "UNKNOWN",
+      "tool_calls": "UNKNOWN",
+      "retries": "UNKNOWN"
+    },
+    "context": {
+      "tasks": 1,
+      "success": 1,
+      "execution_proof": "PASS",
+      "duration_ms": 31000,
+      "input_tokens": "UNKNOWN",
+      "output_tokens": "UNKNOWN",
+      "tool_calls": "UNKNOWN",
+      "retries": "UNKNOWN"
+    },
+    "repo_explorer": {
+      "tasks": 1,
+      "success": 1,
+      "execution_proof": "PASS",
+      "duration_ms": 32000,
+      "input_tokens": "UNKNOWN",
+      "output_tokens": "UNKNOWN",
+      "tool_calls": "UNKNOWN",
+      "retries": "UNKNOWN"
+    }
+  },
+  "result": {
+    "matched_smoke": "PASS",
+    "context_success_delta": 0,
+    "explorer_success_delta": 0,
+    "value_proven": false,
+    "generalization_proven": false,
+    "experience_top1": "NOT_RUN",
+    "experience_top3": "NOT_RUN",
+    "validation": "NOT_RUN",
+    "holdout": "NOT_RUN"
+  },
+  "safety": {
+    "deepseek_requests": 0,
+    "paid_requests": 0,
+    "production_state_writes": 0,
+    "model_weights_changed": false,
+    "auto_promotion": false,
+    "n8n_sole_control_plane": true,
+    "second_source_of_truth": false
+  },
+  "correlation": {
+    "adapter_to_control_tower_debugging": "PASS",
+    "canonical_n8n_run_equality": "NOT_PROVEN"
+  }
+}
