@@ -1,0 +1,20 @@
+"""Architecture and policy sentinels for the adaptive layer."""
+
+N8N_SOLE_CONTROL_PLANE = True
+CONTROL_TOWER_SECOND_SOR = False
+DASHBOARD_DIRECT_STATE_MUTATION = False
+ADAPTER_CANONICAL_RUN_SOR = False
+AUTOMATIC_PAID_AGENT_ESCALATION = False
+DEEPSEEK_ALLOWED = False
+
+
+def assert_invariants() -> dict[str, bool]:
+    result = {"N8N_SOLE_CONTROL_PLANE": N8N_SOLE_CONTROL_PLANE,
+              "CONTROL_TOWER_SECOND_SOR": not CONTROL_TOWER_SECOND_SOR,
+              "DASHBOARD_DIRECT_STATE_MUTATION": not DASHBOARD_DIRECT_STATE_MUTATION,
+              "ADAPTER_CANONICAL_RUN_SOR": not ADAPTER_CANONICAL_RUN_SOR,
+              "AUTOMATIC_PAID_AGENT_ESCALATION": not AUTOMATIC_PAID_AGENT_ESCALATION,
+              "DEEPSEEK_EXCLUSION": not DEEPSEEK_ALLOWED}
+    if not all(result.values()):
+        raise RuntimeError("ARCHITECTURE_GATE_FAILED")
+    return result
