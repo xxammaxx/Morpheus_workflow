@@ -1,0 +1,20 @@
+[Unit]
+Description=Morpheus continuation idempotency claim guard
+After=network.target
+
+[Service]
+Type=simple
+User=n8n
+Group=n8n
+EnvironmentFile=-/var/lib/n8n/morpheus-continuation-claim.env
+ExecStart=/usr/bin/python3 /opt/morpheus-workflow/runtime/continuation_claim.py --host 127.0.0.1 --port 8091 --db /var/lib/n8n/morpheus-continuation-claims.sqlite
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/n8n
+
+[Install]
+WantedBy=multi-user.target

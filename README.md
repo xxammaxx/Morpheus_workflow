@@ -31,9 +31,13 @@ existing run ID to different canonical provenance.
 ```mermaid
 flowchart LR
   CT[Control Tower] --> GW[n8n Control Gateway]
-  GW --> RA[08 Project Reassessment]
-  RA --> DT[(n8n Data Tables)]
-  RA --> START[00 Start → 01 Orchestrator]
+  GW --> CV[Continuation Validation]
+  CV --> AC[Atomic Identity Claim]
+  AC -->|already claimed| RP[Replay/Duplicate Response]
+  AC -->|claim acquired or replay| DI[01 Durable Delivery Intake]
+  DI -->|first accept| DT[(autodev_runs<br/>canonical run state)]
+  DI -->|already accepted| RP2[Replay Same run_id]
+  DT --> START[Atomic ACCEPTED → BASELINING]
   P[Project] --> R1[Run 1]
   P --> R2[Run 2]
   P --> RN[Run N]

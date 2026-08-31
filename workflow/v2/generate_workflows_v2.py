@@ -360,6 +360,7 @@ class Cfg:
         self.runs = cfg["tables"]["runs"]
         self.attempts = cfg["tables"]["attempts"]
         self.cr_n8n = cfg["creds"]["n8n_api"]
+        self.cr_claim = cfg.get("creds", {}).get("claim", {"id": "PENDING_morpheus-claim", "name": "morpheus-continuation-claim"})
         self.cr_harness = cfg["creds"]["harness_token"]
         self.cr_api = cfg["creds"]["api_auth"]
         self.cr_github = cfg.get("creds", {}).get("github_api")
@@ -367,6 +368,7 @@ class Cfg:
         self.projects = cfg.get("tables", {}).get("projects", "")
         self.issues = cfg.get("tables", {}).get("issues", "")
         self.audit = cfg.get("tables", {}).get("audit", "")
+        self.claim = cfg.get("claim_base", "http://127.0.0.1:8091")
 
     def rows(self, table):
         return "%s/api/v1/data-tables/%s/rows" % (self.n8n, table)
@@ -406,15 +408,19 @@ return [{json: {
   data: row, returnData: true}}];"""
 
 
-def state_update_nodes(wf, cfg, name_prefix, state, current_job, extra_fields, pos):
+def state_update_nodes(wf, cfg, name_prefix, state, current_job, extra_fields, pos, expected_state=None):
+    state_filter = (
+        "{columnName: 'state', condition: 'eq', value: 'ACCEPTED'}, "
+        "{columnName: 'state', condition: 'neq', value: 'ABORTED'}"
+        if expected_state else "{columnName: 'state', condition: 'neq', value: 'ABORTED'}"
+    )
     js = (
         "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\n"
         "row.run_id = s.issue.run_id;\nrow.state = '%s';\nrow.current_job = '%s';\n%s\n"
         "row.updated_at = new Date().toISOString();\n"
         "return [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', "
-        "value: s.issue.run_id}, {columnName: 'state', condition: 'neq', "
-        "value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
-        % (state, current_job, extra_fields)
+        "value: s.issue.run_id}, %s], type: 'and'}, data: row, returnData: true, state: s}}];"
+        % (state, current_job, extra_fields, state_filter)
     )
     c = code_node(name_prefix + " Prep", js, pos)
     h = http_node(
@@ -749,6 +755,14 @@ return[{json:{...carrier,existing_run:existing,...requestedRunOwnership(proposed
     )
     wf.add_node(bool_if("Requested Run Ownership Allowed?", "$json.ownership_ok === true", P(5, 1)))
     wf.add_node(respond_node("Respond Run ID Ownership Conflict", P(6, 2), "={{ JSON.stringify({status:'error',code:$json.ownership_code||'RUN_ID_OWNERSHIP_CONFLICT',run_id:(($json.data||[])[0]||{}).run_id,project_id:(($json.data||[])[0]||{}).project_id}) }}"))
+    wf.add_node(bool_if("Continuation Claim Required?", "(($json.data||[])[0]||{}).created_via === 'CONTROL_TOWER_CONTINUATION'", P(6, 1)))
+    wf.add_node(code_node("Prepare Continuation Claim", "const row=(($json.data||[])[0]||{}),identity_key=JSON.stringify([String(row.project_id||''),String(row.source_run_id||''),String(row.correlation_id||'')]);return[{json:{claim:{identity_key,run_id:String(row.run_id||''),project_id:String(row.project_id||''),source_run_id:String(row.source_run_id||''),correlation_id:String(row.correlation_id||'')},carrier:$json}}];", P(7, 1)))
+    wf.add_node(http_node("Atomic Continuation Claim", "POST", cfg.claim + "/claim", "JSON.stringify($json.claim)", P(8, 1), cfg.cr_claim))
+    wf.nodes[-1]["alwaysOutputData"] = True
+    wf.add_node(code_node("Restore Continuation Claim", "const claim=$json,prepared=$('Prepare Continuation Claim').first().json;return[{json:{...prepared.carrier,claim_result:claim,claim_request:prepared.claim}}];", P(9, 1)))
+    wf.add_node(bool_if("Continuation Claim Acquired?", "$json.claim_result.claim_acquired === true", P(10, 1)))
+    wf.add_node(respond_node("Respond Existing Continuation Claim", P(11, 2), "={{ JSON.stringify({run_id:$json.claim_result.run_id,status:'ACCEPTED',replay:true,code:'DUPLICATE_REQUEST',status_url:'" + cfg.webhook + "/webhook/autodev/status?run_id=' + $json.claim_result.run_id}) }}"))
+    wf.add_node(code_node("Replay Continuation Delivery", "const s=$json,row=(s.data||[])[0]||{};return[{json:{...s,data:[{...row,run_id:s.claim_result.run_id}],run_id:s.claim_result.run_id}}];", P(11, 1)))
     wf.add_node(bool_if("Continuation Intake Replay?", "$json.continuation_replay === true", P(6, 1)))
     wf.add_node(respond_node("Respond Existing Continuation", P(7, 2), "={{ JSON.stringify({run_id:($json.existing_run||{}).run_id,status:'ACCEPTED',replay:true,status_url:'" + cfg.webhook + "/webhook/autodev/status?run_id=' + ($json.existing_run||{}).run_id}) }}"))
     wf.add_node(
@@ -774,7 +788,7 @@ return[{json:{...carrier,existing_run:existing,...requestedRunOwnership(proposed
     wf.add_node(
         code_node(
             "Restore Intake Carrier",
-            "const original=$('Prepare Run Row').first().json,row=(original.data||[])[0]||{};return[{json:{...original,run_id:row.run_id}}];",
+            "const original=$('Prepare Run Row').first().json,row=(original.data||[])[0]||{};let claim_result=null,claim_request=null;try{const c=$('Restore Continuation Claim').first().json;claim_result=c.claim_result;claim_request=c.claim_request;}catch(e){}return[{json:{...original,run_id:row.run_id,claim_result,claim_request}}];",
             P(4, 0),
         )
     )
@@ -798,7 +812,8 @@ return[{json:{...carrier,existing_run:existing,...requestedRunOwnership(proposed
 const intake = $('Prepare Run Row').first().json.intake || {};
 const row = (s.data && s.data[0]) || {};
 return [{json: Object.assign({}, intake, {run_row: row,
-  run_id: intake.issue ? intake.issue.run_id : row.run_id})}];""",
+  run_id: intake.issue ? intake.issue.run_id : row.run_id,
+  claim_result: s.claim_result || null, claim_request: s.claim_request || null})}];""",
             P(4, 0),
         )
     )
@@ -806,7 +821,16 @@ return [{json: Object.assign({}, intake, {run_row: row,
     wf.add("Fetch Requested Run", "Guard Requested Run Ownership")
     wf.add("Guard Requested Run Ownership", "Requested Run Ownership Allowed?")
     wf.add("Requested Run Ownership Allowed?", "Respond Run ID Ownership Conflict", 1)
-    wf.add("Requested Run Ownership Allowed?", "Continuation Intake Replay?", 0)
+    wf.add("Requested Run Ownership Allowed?", "Continuation Claim Required?", 0)
+    wf.add("Continuation Claim Required?", "Prepare Continuation Claim", 0)
+    wf.add("Continuation Claim Required?", "Continuation Intake Replay?", 1)
+    wf.add("Prepare Continuation Claim", "Atomic Continuation Claim")
+    wf.add("Atomic Continuation Claim", "Restore Continuation Claim")
+    wf.add("Restore Continuation Claim", "Continuation Claim Acquired?")
+    wf.add("Continuation Claim Acquired?", "Respond Existing Continuation Claim", 1)
+    wf.add("Continuation Claim Acquired?", "Replay Continuation Delivery", 1)
+    wf.add("Replay Continuation Delivery", "Pass Intake")
+    wf.add("Continuation Claim Acquired?", "Insert Run Row", 0)
     wf.add("Continuation Intake Replay?", "Respond Existing Continuation", 0)
     wf.add("Continuation Intake Replay?", "Insert Run Row", 1)
     wf.add("Insert Run Row", "Restore Intake Carrier")
@@ -940,6 +964,13 @@ def build_01(cfg):
             1,
         )
     )
+    wf.add_node(code_node("Prepare Orchestration Delivery", "const s=$json,issue=s.issue||s,m=issue['x-metadata']||{},continuation=m.created_via==='CONTROL_TOWER_CONTINUATION';return[{json:{...s,continuation_delivery:continuation,delivery_request:continuation?{identity_key:JSON.stringify([String(m.project_id||''),String(m.source_run_id||''),String(m.correlation_id||'')]),run_id:String(issue.run_id||''),generation:Number((s.claim_result||{}).generation||0)}:null}}];", P(-1, 0)))
+    wf.add_node(bool_if("Continuation Delivery?", "$json.continuation_delivery === true", P(0, 0)))
+    wf.add_node(http_node("Accept Orchestration Delivery", "POST", cfg.claim + "/orchestration/accept", "JSON.stringify($json.delivery_request)", P(0, 1), cfg.cr_claim))
+    wf.nodes[-1]["alwaysOutputData"] = True
+    wf.add_node(code_node("Restore Orchestration Delivery", "const result=$json,s=$('Prepare Orchestration Delivery').first().json;return[{json:{...s,delivery_result:result}}];", P(1, 1)))
+    wf.add_node(bool_if("Orchestration Delivery Accepted?", "$json.continuation_delivery !== true || $json.delivery_result.stale !== true", P(2, 1)))
+    wf.add_node(code_node("Return Existing Orchestration", "const s=$json;return[{json:{run_id:s.delivery_result.run_id||((s.issue||{}).run_id),orchestration_replay:true,status:'ACCEPTED'}}];", P(3, 2)))
     wf.add_node(
         code_node(
             "Init Run State",
@@ -960,7 +991,14 @@ return [{json: {
             P(0, 0),
         )
     )
-    wf.add("Sub-Workflow Trigger", "Init Run State")
+    wf.add("Sub-Workflow Trigger", "Prepare Orchestration Delivery")
+    wf.add("Prepare Orchestration Delivery", "Continuation Delivery?")
+    wf.add("Continuation Delivery?", "Accept Orchestration Delivery", 0)
+    wf.add("Continuation Delivery?", "Orchestration Delivery Accepted?", 1)
+    wf.add("Accept Orchestration Delivery", "Restore Orchestration Delivery")
+    wf.add("Restore Orchestration Delivery", "Orchestration Delivery Accepted?")
+    wf.add("Orchestration Delivery Accepted?", "Init Run State", 0)
+    wf.add("Orchestration Delivery Accepted?", "Return Existing Orchestration", 1)
 
     # BASELINE phase
     c, h, r = state_update_nodes(
@@ -971,6 +1009,7 @@ return [{json: {
         "baseline",
         "row.reason_code = 'START_BASELINE';",
         P(1, 0),
+        expected_state="ACCEPTED",
     )
     wf.add("Init Run State", c)
     wf.add_node(

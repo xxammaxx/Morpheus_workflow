@@ -26,7 +26,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $json.body || $json;\nconst task = raw.task && typeof raw.task === 'object' ? raw.task : raw;\nconst now = new Date();\nconst runId = 'run-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);\nconst issue = {\n  contract: 'autodev.issue.v1', version: 'v1', run_id: runId,\n  task_ref: task.task_ref || '', repository_ref: task.repository_ref || '',\n  workspace: task.workspace || 'autodev-v2',\n  task_description: task.task_description || '',\n  acceptance_hint: task.acceptance_hint || '',\n  max_attempts: task.max_attempts || 2,\n  created_at: now.toISOString(),\n  trace_id: 'trace-' + runId, source: 'autodev-start-api',\n};\nfunction validateAutodevContract(payload, schema) {\n  const errors = [];\n  try {\n    if (schema && schema.type === 'object' && typeof payload !== 'object') {\n      errors.push('$: expected object, got ' + typeof payload);\n    } else {\n      validateNode(payload, schema, '$', errors, schema);\n    }\n  } catch (e) {\n    return { ok: false, contract: schema && schema.$id, errors: ['validator error: ' + e.message], error_count: 1 };\n  }\n  const contract = schema && schema.$id ? schema.$id : null;\n  return { ok: errors.length === 0, contract, errors, error_count: errors.length };\n}\nfunction validateNode(value, schema, path, errors, root) {\n  if (schema === true) return;\n  if (schema === false) { errors.push(path + ': schema forbids value'); return; }\n  if (schema.$ref) {\n    const name = schema.$ref.replace('#/$defs/', '');\n    const defs = (root.$defs || {})[name];\n    if (!defs) throw new Error('unresolved $ref ' + schema.$ref);\n    validateNode(value, defs, path, errors, root);\n    return;\n  }\n  if (schema.oneOf) {\n    let matched = 0;\n    for (const sub of schema.oneOf) {\n      const subErrors = [];\n      validateNode(value, sub, path, subErrors, root);\n      if (subErrors.length === 0) matched++;\n    }\n    if (matched !== 1) {\n      errors.push(path + ': must match exactly one of ' + schema.oneOf.length + ' alternatives (matched ' + matched + ')');\n    }\n    return;\n  }\n  if (schema.type) {\n    const expected = Array.isArray(schema.type) ? schema.type : [schema.type];\n    const ok = expected.some((t) => typeCheck(value, t));\n    if (!ok) {\n      errors.push(path + ': expected ' + expected.join(' or ') + ', got ' + jsTypeName(value));\n      return;\n    }\n  }\n  if (schema.const !== undefined) {\n    if (JSON.stringify(value) !== JSON.stringify(schema.const)) {\n      errors.push(path + ': must equal ' + pyRepr(schema.const));\n    }\n    return;\n  }\n  if (schema.enum) {\n    if (!schema.enum.some((e) => JSON.stringify(e) === JSON.stringify(value))) {\n      errors.push(path + ': must be one of [' + schema.enum.map(pyRepr).join(', ') + ']');\n    }\n    return;\n  }\n  if (typeof value === 'string') {\n    if (schema.minLength !== undefined && value.length < schema.minLength) {\n      errors.push(path + ': length must be >= ' + schema.minLength);\n    }\n    if (schema.maxLength !== undefined && value.length > schema.maxLength) {\n      errors.push(path + ': length must be <= ' + schema.maxLength);\n    }\n    if (schema.pattern) {\n      const re = new RegExp(schema.pattern);\n      if (!re.test(value)) errors.push(path + ': must match pattern ' + pyRepr(schema.pattern));\n    }\n    return;\n  }\n  if (typeof value === 'number' && Number.isFinite(value)) {\n    if (schema.minimum !== undefined && value < schema.minimum) {\n      errors.push(path + ': must be >= ' + schema.minimum);\n    }\n    if (schema.maximum !== undefined && value > schema.maximum) {\n      errors.push(path + ': must be <= ' + schema.maximum);\n    }\n    return;\n  }\n  if (Array.isArray(value)) {\n    if (schema.minItems !== undefined && value.length < schema.minItems) {\n      errors.push(path + ': must have at least ' + schema.minItems + ' items');\n    }\n    if (schema.maxItems !== undefined && value.length > schema.maxItems) {\n      errors.push(path + ': must have at most ' + schema.maxItems + ' items');\n    }\n    if (schema.items) {\n      value.forEach((item, i) => validateNode(item, schema.items, path + '[' + i + ']', errors, root));\n    }\n    return;\n  }\n  if (typeof value === 'object' && value !== null) {\n    const props = schema.properties || {};\n    for (const [name, sub] of Object.entries(props)) {\n      if (name in value) validateNode(value[name], sub, path + '.' + name, errors, root);\n    }\n    for (const name of schema.required || []) {\n      if (!(name in value)) errors.push(path + ': ' + name + ' is required');\n    }\n    const addl = schema.additionalProperties === undefined ? true : schema.additionalProperties;\n    if (addl === false) {\n      for (const key of Object.keys(value)) {\n        if (!(key in props)) errors.push(path + ': additional property ' + pyRepr(key) + ' not allowed');\n      }\n    } else if (typeof addl === 'object') {\n      for (const key of Object.keys(value)) {\n        if (!(key in props)) validateNode(value[key], addl, path + '.' + key, errors, root);\n      }\n    }\n    return;\n  }\n}\nfunction typeCheck(value, expected) {\n  switch (expected) {\n    case 'integer': return typeof value === 'number' && Number.isInteger(value);\n    case 'number': return typeof value === 'number' && Number.isFinite(value);\n    case 'string': return typeof value === 'string';\n    case 'boolean': return typeof value === 'boolean';\n    case 'object': return typeof value === 'object' && value !== null && !Array.isArray(value);\n    case 'array': return Array.isArray(value);\n    case 'null': return value === null;\n    default: throw new Error('unsupported type ' + expected);\n  }\n}\nfunction jsTypeName(value) {\n  if (value === null) return 'NoneType';\n  if (Array.isArray(value)) return 'list';\n  if (typeof value === 'object') return 'dict';\n  if (typeof value === 'string') return 'str';\n  if (typeof value === 'boolean') return 'bool';\n  if (typeof value === 'number') return Number.isInteger(value) ? 'int' : 'float';\n  return typeof value;\n}\nfunction pyRepr(value) {\n  if (value === null) return 'None';\n  if (typeof value === 'boolean') return value ? 'True' : 'False';\n  if (typeof value === 'string') return \"'\" + value.replace(/'/g, \"\\\\'\") + \"'\";\n  return String(value);\n}\n\nconst schema = {\"$id\": \"autodev.issue.v1\", \"$schema\": \"https://json-schema.org/draft/2020-12/schema\", \"additionalProperties\": false, \"description\": \"Canonical task intake for the AutoDev harness control plane.\", \"properties\": {\"acceptance_hint\": {\"maxLength\": 2000, \"type\": \"string\"}, \"contract\": {\"const\": \"autodev.issue.v1\"}, \"created_at\": {\"maxLength\": 64, \"type\": \"string\"}, \"max_attempts\": {\"maximum\": 5, \"minimum\": 1, \"type\": \"integer\"}, \"repository_ref\": {\"maxLength\": 128, \"minLength\": 1, \"type\": \"string\"}, \"run_id\": {\"maxLength\": 64, \"minLength\": 6, \"pattern\": \"^[A-Za-z0-9_-]+$\", \"type\": \"string\"}, \"source\": {\"maxLength\": 64, \"type\": \"string\"}, \"task_description\": {\"maxLength\": 4000, \"minLength\": 10, \"type\": \"string\"}, \"task_ref\": {\"maxLength\": 128, \"type\": \"string\"}, \"trace_id\": {\"maxLength\": 128, \"type\": \"string\"}, \"version\": {\"const\": \"v1\"}, \"workspace\": {\"maxLength\": 256, \"minLength\": 1, \"type\": \"string\"}, \"x-metadata\": {\"additionalProperties\": true, \"type\": \"object\"}}, \"required\": [\"contract\", \"version\", \"run_id\", \"repository_ref\", \"task_description\", \"workspace\"], \"title\": \"AutoDev Issue Contract v1\", \"type\": \"object\", \"x-metadata\": [\"trace_id\", \"created_at\", \"source\"]};\nconst v = validateAutodevContract(issue, schema);\nconst fixture = (raw.fixture && ['invalid_plan','verify_fail_delta','verify_fail_no_delta','no_signature','attempt_limit','security_critical_blocking','review_fix','review_split'].includes(raw.fixture)) ? raw.fixture : null;\nconst backend = (raw.backend === 'embedded' || raw.backend === 'opencode-builder-8001') ? raw.backend : 'opencode-builder-8001';\nconst provider = (typeof raw.provider === 'string' && ['embedded','lmstudio','groq','openrouter','ollama'].includes(raw.provider)) ? raw.provider : null;\nconst model = (typeof raw.model === 'string' && raw.model.length <= 64) ? raw.model : null;\nconst modelRevision = (typeof raw.model_revision === 'string' && raw.model_revision.length <= 64) ? raw.model_revision : null;\nconst deepseekRequested = /deepseek/i.test(String(raw.provider || '')) || /deepseek/i.test(String(raw.model || ''));\nconst intakeErrors = deepseekRequested ? v.errors.concat(['DEEPSEEK_RETIRED']) : v.errors;\nreturn [{ json: { intake_valid: v.ok && !deepseekRequested, errors: intakeErrors, issue: issue,\n  fixture: fixture, backend: backend, provider: provider, model: model,\n  model_revision: modelRevision, run_id: runId } }];\n"
+        "jsCode": "const raw = $json.body || $json;\nconst task = raw.task && typeof raw.task === 'object' ? raw.task : raw;\nconst now = new Date();\nconst requestedRunId = typeof task.run_id === 'string' && /^run-[A-Za-z0-9_-]{1,60}$/.test(task.run_id) ? task.run_id : '';\nconst runId = requestedRunId || 'run-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);\nconst issue = {\n  contract: 'autodev.issue.v1', version: 'v1', run_id: runId,\n  task_ref: task.task_ref || '', repository_ref: task.repository_ref || '',\n  workspace: task.workspace || 'autodev-v2',\n  task_description: task.task_description || '',\n  acceptance_hint: task.acceptance_hint || '',\n  max_attempts: task.max_attempts || 2,\n  created_at: now.toISOString(),\n  trace_id: 'trace-' + runId, source: 'autodev-start-api',\n  'x-metadata': {project_id: task.project_id || '', project_mode: task.project_mode || 'MANUAL',\n    issue_number: task.issue_number || '', correlation_id: task.correlation_id ||\n      (task['x-metadata'] && task['x-metadata'].correlation_id) || '',\n    source_run_id: task.source_run_id || (task['x-metadata'] && task['x-metadata'].source_run_id) || '',\n    continuation_reason: task.continuation_reason || (task['x-metadata'] && task['x-metadata'].continuation_reason) || '',\n    requested_action: task.requested_action || (task['x-metadata'] && task['x-metadata'].requested_action) || '',\n    created_via: task.created_via || (task['x-metadata'] && task['x-metadata'].created_via) || 'CONTROL_TOWER_START',\n    requested_by: task.requested_by || (task['x-metadata'] && task['x-metadata'].requested_by) || ''},\n};\nfunction validateAutodevContract(payload, schema) {\n  const errors = [];\n  try {\n    if (schema && schema.type === 'object' && typeof payload !== 'object') {\n      errors.push('$: expected object, got ' + typeof payload);\n    } else {\n      validateNode(payload, schema, '$', errors, schema);\n    }\n  } catch (e) {\n    return { ok: false, contract: schema && schema.$id, errors: ['validator error: ' + e.message], error_count: 1 };\n  }\n  const contract = schema && schema.$id ? schema.$id : null;\n  return { ok: errors.length === 0, contract, errors, error_count: errors.length };\n}\nfunction validateNode(value, schema, path, errors, root) {\n  if (schema === true) return;\n  if (schema === false) { errors.push(path + ': schema forbids value'); return; }\n  if (schema.$ref) {\n    const name = schema.$ref.replace('#/$defs/', '');\n    const defs = (root.$defs || {})[name];\n    if (!defs) throw new Error('unresolved $ref ' + schema.$ref);\n    validateNode(value, defs, path, errors, root);\n    return;\n  }\n  if (schema.oneOf) {\n    let matched = 0;\n    for (const sub of schema.oneOf) {\n      const subErrors = [];\n      validateNode(value, sub, path, subErrors, root);\n      if (subErrors.length === 0) matched++;\n    }\n    if (matched !== 1) {\n      errors.push(path + ': must match exactly one of ' + schema.oneOf.length + ' alternatives (matched ' + matched + ')');\n    }\n    return;\n  }\n  if (schema.type) {\n    const expected = Array.isArray(schema.type) ? schema.type : [schema.type];\n    const ok = expected.some((t) => typeCheck(value, t));\n    if (!ok) {\n      errors.push(path + ': expected ' + expected.join(' or ') + ', got ' + jsTypeName(value));\n      return;\n    }\n  }\n  if (schema.const !== undefined) {\n    if (JSON.stringify(value) !== JSON.stringify(schema.const)) {\n      errors.push(path + ': must equal ' + pyRepr(schema.const));\n    }\n    return;\n  }\n  if (schema.enum) {\n    if (!schema.enum.some((e) => JSON.stringify(e) === JSON.stringify(value))) {\n      errors.push(path + ': must be one of [' + schema.enum.map(pyRepr).join(', ') + ']');\n    }\n    return;\n  }\n  if (typeof value === 'string') {\n    if (schema.minLength !== undefined && value.length < schema.minLength) {\n      errors.push(path + ': length must be >= ' + schema.minLength);\n    }\n    if (schema.maxLength !== undefined && value.length > schema.maxLength) {\n      errors.push(path + ': length must be <= ' + schema.maxLength);\n    }\n    if (schema.pattern) {\n      const re = new RegExp(schema.pattern);\n      if (!re.test(value)) errors.push(path + ': must match pattern ' + pyRepr(schema.pattern));\n    }\n    return;\n  }\n  if (typeof value === 'number' && Number.isFinite(value)) {\n    if (schema.minimum !== undefined && value < schema.minimum) {\n      errors.push(path + ': must be >= ' + schema.minimum);\n    }\n    if (schema.maximum !== undefined && value > schema.maximum) {\n      errors.push(path + ': must be <= ' + schema.maximum);\n    }\n    return;\n  }\n  if (Array.isArray(value)) {\n    if (schema.minItems !== undefined && value.length < schema.minItems) {\n      errors.push(path + ': must have at least ' + schema.minItems + ' items');\n    }\n    if (schema.maxItems !== undefined && value.length > schema.maxItems) {\n      errors.push(path + ': must have at most ' + schema.maxItems + ' items');\n    }\n    if (schema.items) {\n      value.forEach((item, i) => validateNode(item, schema.items, path + '[' + i + ']', errors, root));\n    }\n    return;\n  }\n  if (typeof value === 'object' && value !== null) {\n    const props = schema.properties || {};\n    for (const [name, sub] of Object.entries(props)) {\n      if (name in value) validateNode(value[name], sub, path + '.' + name, errors, root);\n    }\n    for (const name of schema.required || []) {\n      if (!(name in value)) errors.push(path + ': ' + name + ' is required');\n    }\n    const addl = schema.additionalProperties === undefined ? true : schema.additionalProperties;\n    if (addl === false) {\n      for (const key of Object.keys(value)) {\n        if (!(key in props)) errors.push(path + ': additional property ' + pyRepr(key) + ' not allowed');\n      }\n    } else if (typeof addl === 'object') {\n      for (const key of Object.keys(value)) {\n        if (!(key in props)) validateNode(value[key], addl, path + '.' + key, errors, root);\n      }\n    }\n    return;\n  }\n}\nfunction typeCheck(value, expected) {\n  switch (expected) {\n    case 'integer': return typeof value === 'number' && Number.isInteger(value);\n    case 'number': return typeof value === 'number' && Number.isFinite(value);\n    case 'string': return typeof value === 'string';\n    case 'boolean': return typeof value === 'boolean';\n    case 'object': return typeof value === 'object' && value !== null && !Array.isArray(value);\n    case 'array': return Array.isArray(value);\n    case 'null': return value === null;\n    default: throw new Error('unsupported type ' + expected);\n  }\n}\nfunction jsTypeName(value) {\n  if (value === null) return 'NoneType';\n  if (Array.isArray(value)) return 'list';\n  if (typeof value === 'object') return 'dict';\n  if (typeof value === 'string') return 'str';\n  if (typeof value === 'boolean') return 'bool';\n  if (typeof value === 'number') return Number.isInteger(value) ? 'int' : 'float';\n  return typeof value;\n}\nfunction pyRepr(value) {\n  if (value === null) return 'None';\n  if (typeof value === 'boolean') return value ? 'True' : 'False';\n  if (typeof value === 'string') return \"'\" + value.replace(/'/g, \"\\\\'\") + \"'\";\n  return String(value);\n}\n\nconst schema = {\"$id\": \"autodev.issue.v1\", \"$schema\": \"https://json-schema.org/draft/2020-12/schema\", \"additionalProperties\": false, \"description\": \"Canonical task intake for the AutoDev harness control plane.\", \"properties\": {\"acceptance_hint\": {\"maxLength\": 2000, \"type\": \"string\"}, \"contract\": {\"const\": \"autodev.issue.v1\"}, \"created_at\": {\"maxLength\": 64, \"type\": \"string\"}, \"max_attempts\": {\"maximum\": 5, \"minimum\": 1, \"type\": \"integer\"}, \"repository_ref\": {\"maxLength\": 128, \"minLength\": 1, \"type\": \"string\"}, \"run_id\": {\"maxLength\": 64, \"minLength\": 6, \"pattern\": \"^[A-Za-z0-9_-]+$\", \"type\": \"string\"}, \"source\": {\"maxLength\": 64, \"type\": \"string\"}, \"task_description\": {\"maxLength\": 4000, \"minLength\": 10, \"type\": \"string\"}, \"task_ref\": {\"maxLength\": 128, \"type\": \"string\"}, \"trace_id\": {\"maxLength\": 128, \"type\": \"string\"}, \"version\": {\"const\": \"v1\"}, \"workspace\": {\"maxLength\": 256, \"minLength\": 1, \"type\": \"string\"}, \"x-metadata\": {\"additionalProperties\": true, \"type\": \"object\"}}, \"required\": [\"contract\", \"version\", \"run_id\", \"repository_ref\", \"task_description\", \"workspace\"], \"title\": \"AutoDev Issue Contract v1\", \"type\": \"object\", \"x-metadata\": [\"trace_id\", \"created_at\", \"source\"]};\nconst v = validateAutodevContract(issue, schema);\nconst fixture = (raw.fixture && ['invalid_plan','verify_fail_delta','verify_fail_no_delta','no_signature','attempt_limit','security_critical_blocking','review_fix','review_split'].includes(raw.fixture)) ? raw.fixture : null;\nconst backend = (raw.backend === 'embedded' || raw.backend === 'opencode-builder-8001') ? raw.backend : 'opencode-builder-8001';\nconst provider = (typeof raw.provider === 'string' && ['embedded','lmstudio','groq','openrouter','ollama'].includes(raw.provider)) ? raw.provider : null;\nconst model = (typeof raw.model === 'string' && raw.model.length <= 64) ? raw.model : null;\nconst modelRevision = (typeof raw.model_revision === 'string' && raw.model_revision.length <= 64) ? raw.model_revision : null;\nconst deepseekRequested = /deepseek/i.test(String(raw.provider || '')) || /deepseek/i.test(String(raw.model || ''));\nconst intakeErrors = deepseekRequested ? v.errors.concat(['DEEPSEEK_RETIRED']) : v.errors;\nreturn [{ json: { intake_valid: v.ok && !deepseekRequested, errors: intakeErrors, issue: issue,\n  fixture: fixture, backend: backend, provider: provider, model: model,\n  model_revision: modelRevision, run_id: runId } }];\n"
       },
       "id": "validate-intake",
       "name": "Validate Intake",
@@ -84,7 +84,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nreturn [{json: {intake: {issue: s.issue, fixture: s.fixture, backend: s.backend,\n  provider: s.provider || null, model: s.model || null,\n  model_revision: s.model_revision || null},\n  data: [{run_id: s.issue.run_id, state: 'ACCEPTED', task_ref: s.issue.task_ref || '',\n  repository_ref: s.issue.repository_ref || '', current_job: 'intake', decision: '',\n  reason_code: 'INTAKE_OK', created_at: s.issue.created_at, updated_at: s.issue.created_at,\n  result_ref: '', trace_id: s.issue.trace_id || '', backend: s.backend}], returnType: 'all'}}];"
+        "jsCode": "const s = $json;\nreturn [{json: {intake: {issue: s.issue, fixture: s.fixture, backend: s.backend,\n  provider: s.provider || null, model: s.model || null,\n  model_revision: s.model_revision || null},\n  data: [{run_id: s.issue.run_id, project_id: (s.issue['x-metadata'] || {}).project_id || '',\n  issue_number: (s.issue['x-metadata'] || {}).issue_number || '', state: 'ACCEPTED', task_ref: s.issue.task_ref || '',\n  repository_ref: s.issue.repository_ref || '', current_job: 'intake', decision: '',\n  reason_code: 'INTAKE_OK', created_at: s.issue.created_at, updated_at: s.issue.created_at,\n  result_ref: '', trace_id: s.issue.trace_id || '', backend: s.backend,\n  correlation_id: (s.issue['x-metadata'] || {}).correlation_id || '',\n  source_run_id: (s.issue['x-metadata'] || {}).source_run_id || '',\n  continuation_reason: (s.issue['x-metadata'] || {}).continuation_reason || '',\n  requested_action: (s.issue['x-metadata'] || {}).requested_action || '',\n  created_via: (s.issue['x-metadata'] || {}).created_via || 'CONTROL_TOWER_START',\n  requested_by: (s.issue['x-metadata'] || {}).requested_by || ''}], returnType: 'all'}}];"
       },
       "id": "prepare-run-row",
       "name": "Prepare Run Row",
@@ -97,17 +97,26 @@
     },
     {
       "parameters": {
-        "method": "POST",
+        "method": "GET",
         "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
+        "sendBody": false,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
-        "options": {}
+        "jsonBody": "={{ {} }}",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filter",
+              "value": "={{ JSON.stringify({filters:[{columnName:'run_id',condition:'eq',value:$('Prepare Run Row').first().json.data[0].run_id}]}) }}"
+            }
+          ]
+        }
       },
-      "id": "insert-run-row",
-      "name": "Insert Run Row",
+      "id": "fetch-requested-run",
+      "name": "Fetch Requested Run",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
@@ -119,7 +128,280 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "function requestedRunOwnership(proposed, existing) {\n  const isContinuation = proposed.created_via === 'CONTROL_TOWER_CONTINUATION';\n  const exactContinuationReplay = Boolean(existing) && isContinuation &&\n    String(existing.project_id || '') === String(proposed.project_id || '') &&\n    String(existing.source_run_id || '') === String(proposed.source_run_id || '') &&\n    String(existing.correlation_id || '') === String(proposed.correlation_id || '') &&\n    String(existing.created_via || '') === 'CONTROL_TOWER_CONTINUATION';\n  const ownershipConflict = Boolean(existing) && !exactContinuationReplay;\n  return {ownership_ok: !ownershipConflict, continuation_replay: exactContinuationReplay,\n    ownership_code: ownershipConflict ? 'RUN_ID_OWNERSHIP_CONFLICT' : ''};\n}\nconst carrier=$('Prepare Run Row').first().json,proposed=(carrier.data||[])[0]||{},raw=$json;\nconst rows=Array.isArray(raw.data)?raw.data:[],existing=rows[0]||null;\nreturn[{json:{...carrier,existing_run:existing,...requestedRunOwnership(proposed,existing)}}];"
+      },
+      "id": "guard-requested-run-ownership",
+      "name": "Guard Requested Run Ownership",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.ownership_ok === true}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "requested-run-ownership-allowed?",
+      "name": "Requested Run Ownership Allowed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({status:'error',code:$json.ownership_code||'RUN_ID_OWNERSHIP_CONFLICT',run_id:(($json.data||[])[0]||{}).run_id,project_id:(($json.data||[])[0]||{}).project_id}) }}"
+      },
+      "id": "respond-run-id-ownership-conflic",
+      "name": "Respond Run ID Ownership Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{(($json.data||[])[0]||{}).created_via === 'CONTROL_TOWER_CONTINUATION'}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "continuation-claim-required?",
+      "name": "Continuation Claim Required?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const row=(($json.data||[])[0]||{}),identity_key=JSON.stringify([String(row.project_id||''),String(row.source_run_id||''),String(row.correlation_id||'')]);return[{json:{claim:{identity_key,run_id:String(row.run_id||''),project_id:String(row.project_id||''),source_run_id:String(row.source_run_id||''),correlation_id:String(row.correlation_id||'')},carrier:$json}}];"
+      },
+      "id": "prepare-continuation-claim",
+      "name": "Prepare Continuation Claim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://127.0.0.1:8091/claim",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.claim) }}",
+        "options": {}
+      },
+      "id": "atomic-continuation-claim",
+      "name": "Atomic Continuation Claim",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1920,
+        160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PENDING_morpheus-claim",
+          "name": "morpheus-continuation-claim"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const claim=$json,prepared=$('Prepare Continuation Claim').first().json;return[{json:{...prepared.carrier,claim_result:claim,claim_request:prepared.claim}}];"
+      },
+      "id": "restore-continuation-claim",
+      "name": "Restore Continuation Claim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.claim_result.claim_acquired === true}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "continuation-claim-acquired?",
+      "name": "Continuation Claim Acquired?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({run_id:$json.claim_result.run_id,status:'ACCEPTED',replay:true,code:'DUPLICATE_REQUEST',status_url:'http://192.168.1.52:5678/webhook/autodev/status?run_id=' + $json.claim_result.run_id}) }}"
+      },
+      "id": "respond-existing-continuation-cl",
+      "name": "Respond Existing Continuation Claim",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s=$json,row=(s.data||[])[0]||{};return[{json:{...s,data:[{...row,run_id:s.claim_result.run_id}],run_id:s.claim_result.run_id}}];"
+      },
+      "id": "replay-continuation-delivery",
+      "name": "Replay Continuation Delivery",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.continuation_replay === true}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "continuation-intake-replay?",
+      "name": "Continuation Intake Replay?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({run_id:($json.existing_run||{}).run_id,status:'ACCEPTED',replay:true,status_url:'http://192.168.1.52:5678/webhook/autodev/status?run_id=' + ($json.existing_run||{}).run_id}) }}"
+      },
+      "id": "respond-existing-continuation",
+      "name": "Respond Existing Continuation",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({filter:{filters:[{columnName:'run_id',condition:'eq',value:$json.data[0].run_id}]},data:$json.data[0],returnData:true}) }}",
+        "options": {}
+      },
+      "id": "insert-run-row",
+      "name": "Insert Run Row",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1680,
+        160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -129,6 +411,19 @@
       "id": "respond-202",
       "name": "Respond 202",
       "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const original=$('Prepare Run Row').first().json,row=(original.data||[])[0]||{};let claim_result=null,claim_request=null;try{const c=$('Restore Continuation Claim').first().json;claim_result=c.claim_result;claim_request=c.claim_request;}catch(e){}return[{json:{...original,run_id:row.run_id,claim_result,claim_request}}];"
+      },
+      "id": "restore-intake-carrier",
+      "name": "Restore Intake Carrier",
+      "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         960,
@@ -160,7 +455,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst intake = $('Prepare Run Row').first().json.intake || {};\nconst row = (s.data && s.data[0]) || {};\nreturn [{json: Object.assign({}, intake, {run_row: row,\n  run_id: intake.issue ? intake.issue.run_id : row.run_id})}];"
+        "jsCode": "const s = $json;\nconst intake = $('Prepare Run Row').first().json.intake || {};\nconst row = (s.data && s.data[0]) || {};\nreturn [{json: Object.assign({}, intake, {run_row: row,\n  run_id: intake.issue ? intake.issue.run_id : row.run_id,\n  claim_result: s.claim_result || null, claim_request: s.claim_request || null})}];"
       },
       "id": "pass-intake",
       "name": "Pass Intake",
@@ -217,6 +512,149 @@
       "main": [
         [
           {
+            "node": "Fetch Requested Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Requested Run": {
+      "main": [
+        [
+          {
+            "node": "Guard Requested Run Ownership",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard Requested Run Ownership": {
+      "main": [
+        [
+          {
+            "node": "Requested Run Ownership Allowed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Requested Run Ownership Allowed?": {
+      "main": [
+        [
+          {
+            "node": "Continuation Claim Required?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Run ID Ownership Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continuation Claim Required?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Continuation Claim",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Continuation Intake Replay?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Continuation Claim": {
+      "main": [
+        [
+          {
+            "node": "Atomic Continuation Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atomic Continuation Claim": {
+      "main": [
+        [
+          {
+            "node": "Restore Continuation Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Continuation Claim": {
+      "main": [
+        [
+          {
+            "node": "Continuation Claim Acquired?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continuation Claim Acquired?": {
+      "main": [
+        [
+          {
+            "node": "Insert Run Row",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Existing Continuation Claim",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Replay Continuation Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replay Continuation Delivery": {
+      "main": [
+        [
+          {
+            "node": "Pass Intake",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continuation Intake Replay?": {
+      "main": [
+        [
+          {
+            "node": "Respond Existing Continuation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Insert Run Row",
             "type": "main",
             "index": 0
@@ -225,6 +663,17 @@
       ]
     },
     "Insert Run Row": {
+      "main": [
+        [
+          {
+            "node": "Restore Intake Carrier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Intake Carrier": {
       "main": [
         [
           {
