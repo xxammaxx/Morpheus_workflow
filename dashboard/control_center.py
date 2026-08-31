@@ -66,15 +66,19 @@ def correlation_id(command: str, target: dict | None = None) -> str:
 
 
 def role_for_token(token: str, operator_token: str, admin_token: str, viewer_token: str) -> str | None:
-    if token and admin_token and _constant_time(token, admin_token):
-        return "ADMIN"
-    if token and operator_token and _constant_time(token, operator_token):
-        return "OPERATOR"
-    # Backwards compatibility: the former viewer token can operate as an
-    # operator only when explicitly opted in.  Default remains read-only.
-    if token and viewer_token and _constant_time(token, viewer_token):
-        return "OPERATOR" if operator_token == viewer_token else "VIEWER"
-    return None
+    """Resolve exactly one configured role; ambiguous credentials fail closed."""
+    if not token:
+        return None
+    configured = (
+        ("ADMIN", admin_token),
+        ("OPERATOR", operator_token),
+        ("VIEWER", viewer_token),
+    )
+    matches = [
+        role for role, credential in configured
+        if credential and _constant_time(token, credential)
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
 def _constant_time(left: str, right: str) -> bool:
