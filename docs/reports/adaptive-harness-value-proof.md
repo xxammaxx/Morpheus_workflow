@@ -167,3 +167,189 @@ RELEASE_CREATED=false
 PRODUCTION_DEPLOYED=false
 PRODUCTION_PROVEN=false
 ```
+
+## 8. Reality refresh and live evidence — 2026-08-31
+
+This section supersedes the initial blocked snapshot above. Repository, remote
+PR, deployed runtime, and test evidence were rechecked on 2026-08-31.
+
+```text
+DATE=2026-08-31
+START_BRANCH=feat/adaptive-harness-foundation
+START_HEAD=5f7089acfb73d83e92c1451fa37cba25ec1955fa
+ORIGIN_MAIN=cbd96c0d0e8c2c3fa47d12ea1c291975e9c0d7b6
+WORKTREE_CLEAN_AT_START=true
+
+PR60_STATE=OPEN
+PR60_REMOTE_HEAD=9a1d63ccee3a67283060a7040e02c0dad341846f
+PR60_BASE=main
+PR60_MERGEABLE=UNKNOWN_AFTER_PUSH
+PR60_CHANGED_FILES=11
+PR60_ADAPTIVE_FILES=0
+PR60_SCOPE_CLEAN=PASS
+PR60_MERGED=false
+PR60_PRODUCTION_PROVEN=false
+OWNER_ACTION_REQUIRED=MERGE_PR60_EXACT_HEAD_9a1d63ccee3a67283060a7040e02c0dad341846f
+
+DEB4D20_EXISTS=true
+DEB4D20_PURPOSE=local continuation idempotency hardening
+DEB4D20_REQUIRED=true
+DEB4D20_FIXES_REAL_DEFECT=true
+DEB4D20_ADDS_REQUIRED_REGRESSION=true
+DEB4D20_REDUNDANT=false
+DEB4D20_SAFE=true
+DEB4D20_PUSHED=true
+
+PR61_STATE=OPEN
+ADAPTIVE_BRANCH=feat/adaptive-harness-foundation
+ADAPTIVE_HEAD=5f7089acfb73d83e92c1451fa37cba25ec1955fa
+ADAPTIVE_POST_PR60_INTEGRATION_GATE=PASS_NO_MAIN_ADVANCEMENT
+```
+
+`deb4d20` was not accepted from its subject line. Its continuation claim
+store and tests were inspected, and a real rebinding gap was found: a new
+identity could previously claim an existing `run_id`. The follow-up PR60 head
+`9a1d63c` rejects that ownership conflict and adds a regression test. The
+isolated PR60 tree passed 22 targeted continuation tests and `159 passed` in
+the full repository suite. Required semantics remain:
+
+```text
+DELIVERY_SEMANTICS=AT_LEAST_ONCE
+CONSUMER_SEMANTICS=IDEMPOTENT
+LOGICAL_EFFECT_SEMANTICS=EFFECTIVELY_ONCE
+```
+
+The PR60 sentinel found zero Adaptive files. No merge was performed because
+there was no owner authorization for the exact new remote head.
+
+## 9. Zero-cost route and matched live smoke
+
+The local LM Studio endpoint was unreachable. The reachable LM Studio endpoint
+returned `401` and explicitly required its existing Bearer credential; no
+auth bypass or credential change was attempted. Ollama was unreachable and
+no existing healthy Ollama service/model was available. The existing adapter
+runtime exposed a healthy hard-stop free route:
+
+```text
+SAFE_ZERO_COST_ROUTE=PASS
+BENCHMARK_PROVIDER=opencode
+BENCHMARK_MODEL=big-pickle
+ACTUAL_PROVIDER=opencode
+ACTUAL_MODEL=big-pickle
+ROUTE_AUTHORIZED=true
+ROUTE_ZERO_COST=true
+ROUTE_MODEL_DISCOVERED=true
+ROUTE_HEALTHY=true
+ACTUAL_COST=0.0
+DEEPSEEK_REQUESTS=0
+PAID_REQUESTS=0
+AUTOMATIC_PAID_ESCALATION=false
+```
+
+The existing adapter token was supplied through a protected stdin pipe. No
+token value was printed, stored in evidence, passed in process arguments, or
+committed. The live adapter jobs completed with execution proof `PASS`:
+
+```text
+BASELINE_TASKS=1
+BASELINE_SUCCESS=1
+CONTEXT_TASKS=1
+CONTEXT_SUCCESS=1
+EXPLORER_TASKS=1
+EXPLORER_SUCCESS=1
+CONTEXT_SUCCESS_DELTA=0
+EXPLORER_SUCCESS_DELTA=0
+BASELINE_INPUT_TOKENS=UNKNOWN
+CONTEXT_INPUT_TOKENS=UNKNOWN
+EXPLORER_INPUT_TOKENS=UNKNOWN
+BASELINE_OUTPUT_TOKENS=UNKNOWN
+CONTEXT_OUTPUT_TOKENS=UNKNOWN
+EXPLORER_OUTPUT_TOKENS=UNKNOWN
+BASELINE_TOOL_CALLS=UNKNOWN
+CONTEXT_TOOL_CALLS=UNKNOWN
+EXPLORER_TOOL_CALLS=UNKNOWN
+BASELINE_RETRIES=UNKNOWN
+CONTEXT_RETRIES=UNKNOWN
+EXPLORER_RETRIES=UNKNOWN
+```
+
+The provider reported zero usage fields rather than measurable token counts,
+so zero was not interpreted as a token result. The direct adapter durations
+were approximately 25s baseline, 31s context, and 32s explorer. Prompt
+characters were 116, 2267, and 2150 respectively; this is diagnostic only and
+not a token measurement. The run used the same provider/model/configuration
+and the same development task. Context Compiler and Repository Explorer were
+read-only; recorded production-state writes were zero.
+
+No trusted Experience item exists in the repository, so Top-1 and Top-3 were
+not fabricated or run. Validation, candidate freeze, and holdout were not
+performed because the matched smoke produced no improvement and the current
+adapter smoke is not wired as a canonical n8n benchmark execution.
+
+```text
+MATCHED_SMOKE=PASS
+DEVELOPMENT_ABLATION=PARTIAL_A_BASELINE_B_CONTEXT_C_EXPLORER
+EXPERIENCE_TOP1=NOT_RUN
+EXPERIENCE_TOP3=NOT_RUN
+VALIDATION_BASELINE=NOT_RUN
+VALIDATION_BEST_CANDIDATE=NOT_RUN
+HOLDOUT_BASELINE=NOT_RUN
+HOLDOUT_BEST_CANDIDATE=NOT_RUN
+HOLDOUT_DELTA=UNKNOWN
+BEST_HARNESS_CONFIGURATION=NONE_PROVEN
+BEST_CHANGED_FACTOR=NONE
+IMPROVEMENT_ATTRIBUTABLE=NO
+GENERALIZATION_PROVEN=NO
+SMALL_MODEL_USED=UNKNOWN
+SMALL_MODEL_IMPROVEMENT_PROVEN=NO
+```
+
+## 10. Control Tower live correlation boundary
+
+The deployed Control Tower was reachable at `http://192.168.1.136:8092`,
+version `1.2.0`. The adapter smoke IDs were visible as `LIVE` events through
+the Control Tower debugging endpoint, but they were not present in the
+Control Tower overview's canonical run projection. Therefore the stronger
+equality claim was not made:
+
+```text
+BENCHMARK_RUN_ID == CONTROL_TOWER_RUN_ID == N8N_CANONICAL_RUN_ID=NOT_PROVEN
+ADAPTER_TO_CONTROL_TOWER_DEBUGGING=PASS
+N8N_CANONICAL_OVERVIEW_CORRELATION=NOT_PROVEN
+```
+
+The Control Tower is read-only with respect to its own state and routes
+commands through the existing n8n gateway. No direct dashboard database write
+or benchmark production-state write was introduced.
+
+## 11. Scientific gates and final classification
+
+```text
+CONTEXT_COMPILER_VALUE_PROVEN=NO
+REPO_EXPLORER_VALUE_PROVEN=NO
+EXPERIENCE_VALUE_PROVEN=NO
+HOLDOUT_ISOLATION=PASS_LOCAL_TESTS
+MEMORY_POISONING_GATE=PASS_LOCAL_TESTS
+ARCHITECTURE_GATE=PASS
+SECURITY_GATE=PASS
+SECRET_SCAN=PASS
+MODEL_WEIGHTS_CHANGED=false
+AUTO_PROMOTION=false
+ADAPTIVE_ROUTING_EXPERIMENT=DEFERRED
+N8N_SOLE_CONTROL_PLANE=true
+SECOND_SOR=false
+BENCHMARK_PRODUCTION_STATE_WRITES=0
+EXPERIENCE_STORE_CANONICAL_RUN_SOR=false
+CONTROL_TOWER_ADAPTIVE_OBSERVABILITY=DEFERRED
+FINAL_CLASSIFICATION=AMBER_ADAPTIVE_HARNESS_DEV_SMOKE_NO_VALUE_PROOF
+OPEN_BLOCKERS=PR60_OWNER_MERGE_GATE;NO_VALIDATION_OR_HOLDOUT_AFTER_ZERO_DELTA;CANONICAL_N8N_BENCHMARK_WIRING_NOT_PROVEN
+NEXT_RECOMMENDED_MILESTONE=OWNER_MERGE_PR60_EXACT_HEAD_THEN_WIRE_A_DISPOSABLE_CANONICAL_N8N_BENCHMARK_RUN
+RELEASE_CREATED=false
+PRODUCTION_DEPLOYED=false
+PRODUCTION_PROVEN=false
+```
+
+The negative result is retained: on one matched task, all three direct
+adapter configurations succeeded, with no measurable success improvement and
+longer observed wall-clock time for the added context. This is a valid smoke
+and route proof, not a value proof or generalization claim.
