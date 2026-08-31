@@ -6,11 +6,19 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from control_center import (
     ADMIN_COMMANDS, OPERATOR_COMMANDS, blueprint_projection, classify_issue,
-    continuation_policy, project_projection, reassessment, redact, validate_command, validate_target,
+    continuation_policy, project_projection, reassessment, redact, role_for_token,
+    validate_command, validate_target,
 )
 
 
 class ControlCenterPolicyTests(unittest.TestCase):
+    def test_role_mapping_is_distinct_and_fail_closed_on_collisions(self):
+        self.assertEqual(role_for_token("viewer", "operator", "admin", "viewer"), "VIEWER")
+        self.assertEqual(role_for_token("operator", "operator", "admin", "viewer"), "OPERATOR")
+        self.assertEqual(role_for_token("admin", "operator", "admin", "viewer"), "ADMIN")
+        self.assertIsNone(role_for_token("viewer", "viewer", "admin", "viewer"))
+        self.assertIsNone(role_for_token("unknown", "operator", "admin", "viewer"))
+
     def test_roles_and_allowlist(self):
         validate_command("PAUSE_RUN", {"run_id": "r-1"}, "OPERATOR")
         with self.assertRaises(PermissionError):
