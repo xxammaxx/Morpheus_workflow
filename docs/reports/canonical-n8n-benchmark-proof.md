@@ -97,3 +97,33 @@ MODEL_WEIGHTS_CHANGED=false
 AUTO_PROMOTION=false
 RELEASE_CREATED=false
 ```
+
+## Current recovery run — 2026-08-31
+
+After deployment of the minimal plan-contract and provenance fix, the real
+canonical path accepted a full metadata envelope. The provider-free contract
+smoke `run-mthmymeg-1z6039` reached `DONE`; its n8n row, Control Tower detail,
+and six adapter jobs agreed on all provenance fields. A separate
+`opencode/big-pickle` run `run-mthmq1hw-4gyrdb` reached baseline and research,
+then was aborted as a disposable cleanup when the three research calls did
+not complete in the bounded observation window.
+
+```text
+PLAN_CONTRACT=PASS_LOCAL_AND_DEPLOYED
+CANONICAL_METADATA_CONTRACT=autodev.adaptive-metadata.v1
+EXPERIMENT_ID_PROPAGATION=PASS
+FACTOR_PROPAGATION=PASS
+CONFIG_HASH_PROPAGATION=PASS
+CANONICAL_EMBEDDED_SMOKE=run-mthmymeg-1z6039 / DONE
+OPENCODE_BIG_PICKLE_SMOKE=run-mthmq1hw-4gyrdb / ABORTED
+A_E_CANONICAL=NOT_RUN
+VALIDATION=NOT_RUN
+CANDIDATE_FREEZE=NOT_RUN
+HOLDOUT=NOT_RUN
+```
+
+The current MorpheusBench task files provide hashes and labels but no
+executable repository/task payloads. Running A–E would require inventing task
+content, so the value proof remains open. See
+[`plan-contract-recovery.md`](plan-contract-recovery.md) and
+[`canonical-metadata-20260831.json`](../../evidence/adaptive-harness/canonical-metadata-20260831.json).

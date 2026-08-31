@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-08-31T19:33:41Z",
+  "head": "45d0c82",
+  "canonical_embedded_smoke": {
+    "run_id": "run-mthmymeg-1z6039",
+    "state": "DONE",
+    "factor": "BASELINE",
+    "experiment_id": "morpheus-contract-chain-20260831",
+    "benchmark_task_id": "contract-chain-smoke",
+    "benchmark_split": "development",
+    "config_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "task_set_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "harness_version": "v1",
+    "provider": "embedded",
+    "model": "embedded",
+    "terminal_chain": ["BASELINE", "RESEARCHING", "PLANNING", "BUILDING", "DONE"]
+  },
+  "adapter_evidence": {
+    "run_id_correlation": "PASS",
+    "experiment_id_propagation": "PASS",
+    "factor_propagation": "PASS",
+    "config_hash_propagation": "PASS",
+    "jobs_checked": 6,
+    "all_jobs_metadata_equal": true,
+    "second_run_state_source": false
+  },
+  "provider_smoke": {
+    "run_id": "run-mthmq1hw-4gyrdb",
+    "requested_provider": "opencode",
+    "requested_model": "big-pickle",
+    "metadata_propagation_through_research": "PASS",
+    "result": "ABORTED_DISPOSABLE_PROVIDER_LATENCY",
+    "paid_requests": 0,
+    "deepseek_requests": 0
+  },
+  "tamper_tests": {
+    "factor_or_metadata_rebind": "REJECTED_ADAPTIVE_METADATA_REBIND",
+    "unknown_property": "REJECTED_ADAPTIVE_METADATA_INVALID",
+    "config_hash_rebind": "REJECTED"
+  },
+  "security": {
+    "n8n_sole_control_plane": true,
+    "second_sor": false,
+    "automatic_paid_escalation": false,
+    "model_weights_changed": false,
+    "auto_promotion": false,
+    "secrets_persisted": false,
+    "private_reasoning_persisted": false
+  }
+}
