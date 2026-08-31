@@ -70,6 +70,8 @@ def run() -> dict:
     viewer, operator, admin = read_tokens()
     result = {
         "url": URL,
+        "tested_local_code_head": os.environ.get("TESTED_LOCAL_CODE_HEAD", "UNKNOWN"),
+        "canonical_run_id": os.environ.get("CONTROL_TOWER_CANONICAL_RUN_ID", "UNKNOWN"),
         "viewports": [f"{w}x{h}" for w, h in VIEWPORTS],
         "views": list(VIEWS),
         "console_errors": 0,
@@ -97,6 +99,7 @@ def run() -> dict:
 
     command = {"command": "RUN_ROUTER_TEST", "payload": {"test": "DeepSeek Sperre", "read_only": True}, "target": {}}
     assert_status(api("", "/api/v1/commands", "POST", command), 401, "unauthenticated mutation")
+    assert_status(api(viewer, "/api/v1/commands", "POST", command, **{"X-Control-Tower-Request": "1", "Origin": URL}), 403, "viewer mutation")
     assert_status(api(admin, "/api/v1/commands", "POST", command), 403, "missing csrf")
     assert_status(api(admin, "/api/v1/commands", "POST", command, **{"X-Control-Tower-Request": "0"}), 403, "bad csrf")
     assert_status(api(admin, "/api/v1/commands", "POST", command, Origin="http://evil.invalid", **{"X-Control-Tower-Request": "1"}), 403, "cross origin")
@@ -107,6 +110,7 @@ def run() -> dict:
     assert_status(api(admin, "/api/v1/commands", "POST", arbitrary_target, **headers), 400, "arbitrary target")
     operator_admin = api(operator, "/api/v1/commands", "POST", command, **headers)
     result["gates"]["CSRF_GATE"] = True
+    result["gates"]["VIEWER_READ_ONLY"] = api(viewer, "/api/v1/session")[1].get("read_only") is True
     result["gates"]["ARBITRARY_COMMAND_GATE"] = True
     result["gates"]["ARBITRARY_TARGET_GATE"] = True
     result["gates"]["OPERATOR_ADMIN_GATE"] = operator_admin[0] == 403
@@ -123,11 +127,15 @@ def run() -> dict:
     # Correlation checks use only public projection fields, never payload content.
     run_map = {str(row.get("run_id")): row for row in runs_payload.get("runs", []) if row.get("run_id")}
     correlation_ok = all(run_id in run_map for run_id in result["run_ids"])
+    canonical_run_id = result["canonical_run_id"]
+    canonical_displayed = canonical_run_id == "UNKNOWN" or canonical_run_id in run_map
+    correlation_ok = correlation_ok and canonical_displayed
     for run_id in result["run_ids"][:3]:
         detail_status, detail = api(admin, "/api/v1/runs/" + urllib.parse.quote(run_id, safe=""))
         if detail_status != 200 or detail.get("run_id") != run_id:
             correlation_ok = False
     result["gates"]["RUN_CORRELATION"] = correlation_ok
+    result["gates"]["CANONICAL_RUN_DISPLAY"] = canonical_displayed
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
@@ -224,6 +232,11 @@ def run() -> dict:
     result["gates"]["DUPLICATE_CLICK_GATE"] = command_statuses == [202]
     result["gates"]["COMMAND_E2E"] = bool(command_statuses) and command_statuses[0] in {200, 202}
     result["gates"]["PLAYWRIGHT_REAL_RUNTIME"] = True
+    result["gates"]["ROLE_GATE"] = (
+        result["role_observed"] == {"viewer": "VIEWER", "operator": "OPERATOR", "admin": "ADMIN"}
+        and result["gates"].get("VIEWER_READ_ONLY") is True
+        and result["gates"].get("OPERATOR_ADMIN_GATE") is True
+    )
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps({"report": str(OUTPUT), "gates": result["gates"], "roles": result["role_observed"]}, ensure_ascii=False))
