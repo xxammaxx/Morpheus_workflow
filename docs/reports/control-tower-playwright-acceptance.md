@@ -137,3 +137,54 @@ N8N_SOLE_CONTROL_PLANE=true
 The browser result is real-runtime evidence with strong read-only and
 security-gate coverage. It is not a false green: role separation and a safe
 canonical mutating command correlation remain explicitly open.
+
+## Current superseding acceptance — 2026-08-31
+
+After the independent Role-Gate fix (PR #62), the same real-runtime suite was
+rerun with the existing viewer, operator, and admin credentials. The operator
+credential now comes from a dedicated protected file; no admin credential was
+changed.
+
+```text
+PLAYWRIGHT_REAL_RUNTIME=PASS
+CONTROL_TOWER_VERSION=1.2.0
+PLAYWRIGHT_VERSION=1.57.0
+PLAYWRIGHT_BROWSER=Chromium 143.0.7499.4
+PLAYWRIGHT_VIEWPORTS=1440x900;1280x800;768x1024;390x844;360x800
+CONTROL_TOWER_MAIN_VIEWS=8_PASS
+ROLE_GATE=PASS
+VIEWER_READ=PASS
+VIEWER_MUTATION=DENY
+OPERATOR_ALLOWLISTED_COMMAND=PASS_READ_ONLY_DIAGNOSTIC
+OPERATOR_ADMIN_COMMAND=DENY
+AUTH_GATE=PASS
+CSRF_GATE=PASS
+ARBITRARY_COMMAND_GATE=PASS
+ARBITRARY_TARGET_GATE=PASS
+LIVE_REFRESH=PASS
+DUPLICATE_CLICK_GATE=PASS
+CONSOLE_ERRORS=0
+HTTP_500_COUNT=0
+PAGE_HORIZONTAL_OVERFLOW=0
+ACCESSIBILITY_BASELINE=PASS
+RESPONSIVE_GATE=PASS
+BROWSER_SECRET_LEAK_GATE=PASS
+PRIVATE_REASONING_LEAK_GATE=PASS
+```
+
+The canonical disposable run `run-mthenxhx-qvim85` was visible in the Control
+Tower and selected as the tracked run. Its ID matched the n8n canonical row;
+the run terminal state was `PLAN_BLOCKED / CONTRACT_FAILURE`, so this is a
+correlation and negative-state proof, not a successful mutating command proof.
+The visible duplicate-click check remained the existing read-only router
+diagnostic and returned one `202`; no `ABORT_RUN` was invoked because the
+canonical run was already terminal and no safe disposable mutation path was
+available.
+
+```text
+CONTROL_TOWER_RUN_CORRELATION=PASS_FOR_DISPLAYED_CANONICAL_RUN
+CANONICAL_N8N_BENCHMARK_CORRELATION=PARTIAL
+CONTROL_TOWER_COMMAND_E2E=READ_ONLY_202_PASS
+MUTATING_COMMAND_E2E=NOT_PROVEN
+CONTROL_TOWER_OPERATIONAL_ACCEPTANCE=AMBER
+```
