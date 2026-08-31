@@ -2,9 +2,10 @@
 """Durable, claim-only guard for canonical project continuations.
 
 This service owns no run state.  It is deliberately a tiny n8n-side control
-plane extension: the only durable invariant is UNIQUE(identity_key).  SQLite
-serializes the short BEGIN IMMEDIATE transaction, so competing processes use
-the same database constraint rather than a process-local lock.
+plane extension: the durable invariants are UNIQUE(identity_key) and
+single-owner run IDs.  SQLite serializes the short BEGIN IMMEDIATE
+transaction, so competing processes use the same durable guard rather than a
+process-local lock.
 """
 
 from __future__ import annotations
@@ -87,6 +88,12 @@ class ClaimStore:
                 (identity["identity_key"],),
             ).fetchone()
             if row is None:
+                owner = connection.execute(
+                    "SELECT identity_key FROM continuation_claims WHERE run_id = ? LIMIT 1",
+                    (identity["run_id"],),
+                ).fetchone()
+                if owner is not None and owner["identity_key"] != identity["identity_key"]:
+                    raise ValueError("continuation run_id ownership conflict")
                 connection.execute(
                     """INSERT INTO continuation_claims
                     (identity_key, run_id, project_id, source_run_id, correlation_id,
