@@ -95,6 +95,11 @@ class ClaimStore:
                     tuple(identity[field] for field in required) + (lease_until, now, now),
                 )
                 return {"claim_acquired": True, "run_id": identity["run_id"], "state": "CLAIMED", "generation": 1}
+            # The identity key is a namespace, not permission to rebind an
+            # existing canonical tuple. Fail closed if a caller presents a
+            # colliding key with different provenance or run identity.
+            if any(row[field] != identity[field] for field in required):
+                raise ValueError("continuation identity ownership conflict")
             if row["state"] == "CLAIMED" and row["lease_until"] <= now:
                 connection.execute(
                     "UPDATE continuation_claims SET lease_until = ?, generation = generation + 1, updated_at = ? WHERE identity_key = ? AND state = 'CLAIMED' AND lease_until <= ?",

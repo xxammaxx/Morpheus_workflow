@@ -72,6 +72,19 @@ def test_same_identity_has_one_claim_and_reuses_run_id(tmp_path):
     assert second["run_id"] == first["run_id"]
 
 
+def test_identity_key_cannot_rebind_canonical_provenance(tmp_path):
+    store = MODULE.ClaimStore(str(tmp_path / "claims.sqlite"), lease_seconds=60)
+    store.claim(identity())
+    conflicting = identity()
+    conflicting["run_id"] = "run-cont-attacker"
+    try:
+        store.claim(conflicting)
+    except ValueError as exc:
+        assert "ownership conflict" in str(exc)
+    else:
+        raise AssertionError("claim identity was rebound")
+
+
 def test_concurrent_pair_acquires_once_across_processes(tmp_path):
     path = str(tmp_path / "claims.sqlite")
     MODULE.ClaimStore(path)
