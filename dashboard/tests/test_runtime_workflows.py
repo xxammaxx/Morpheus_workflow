@@ -49,6 +49,82 @@ class RuntimeWorkflowTests(unittest.TestCase):
             subprocess.run([sys.executable, str(GENERATOR), str(config_path), str(output)], check=True)
             return {path.stem: json.loads(path.read_text(encoding="utf-8")) for path in output.glob("*.json")}
 
+    @staticmethod
+    def _assert_generated_code_node_syntax(workflows):
+        code_nodes = [
+            (workflow_name, node["name"], node["parameters"]["jsCode"])
+            for workflow_name, workflow in workflows.items()
+            for node in workflow.get("nodes", [])
+            if node.get("type") == "n8n-nodes-base.code"
+            and isinstance(node.get("parameters", {}).get("jsCode"), str)
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            for index, (workflow_name, node_name, source) in enumerate(code_nodes):
+                path = Path(directory) / f"code-node-{index}.js"
+                path.write_text(source, encoding="utf-8")
+                result = subprocess.run(
+                    ["node", "--check", str(path)], capture_output=True, text=True
+                )
+                if result.returncode:
+                    raise AssertionError(
+                        "generated Code node failed syntax check: "
+                        f"workflow={workflow_name!r} node={node_name!r}\n"
+                        f"{result.stderr}"
+                    )
+        return len(code_nodes)
+
+    def test_all_generated_code_nodes_pass_node_check(self):
+        count = self._assert_generated_code_node_syntax(self._generate())
+        self.assertGreater(count, 0)
+
+    def test_workflow_08_decision_code_is_valid_and_builds_continuation_request(self):
+        workflow = self._generate()["08 AutoDev Project Reassessment"]
+        decision = next(node for node in workflow["nodes"] if node["name"] == "Decide Canonical Continuation")
+        source = decision["parameters"]["jsCode"]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "workflow-08-decision.js"
+            path.write_text(source, encoding="utf-8")
+            subprocess.run(["node", "--check", str(path)], check=True)
+
+        fixture = {
+            "request": {
+                "project_id": "morpheus-canary-20260831",
+                "source_run_id": "run-canary-source-20260831",
+                "issue_number": "42",
+                "continuation_reason": "resume",
+                "requested_action": "continue",
+                "requested_by": "test",
+                "correlation_id": "ct-syntax-gate",
+                "mode": "MANUAL",
+                "correlation_valid": True,
+            },
+            "project": {"project_id": "morpheus-canary-20260831", "repository_url": "xxammaxx/morpheus"},
+            "source": {"run_id": "run-canary-source-20260831", "project_id": "morpheus-canary-20260831", "state": "PLAN_BLOCKED", "issue_number": "42"},
+            "issues": [{"issue_number": "42", "title": "Continue canonical work", "body": "Continue the project."}],
+        }
+        node_script = (
+            "const vm=require('vm');\n"
+            f"const fixture={json.dumps(fixture)};\n"
+            "const values={'Normalize Continuation Request':{json:fixture.request},"
+            "'Fetch Canonical Project':{json:{data:[fixture.project]}},"
+            "'Fetch Project Runs':{json:{data:[fixture.source]}}};\n"
+            "const $=name=>({first:()=>values[name]});\n"
+            "const $json={data:fixture.issues};\n"
+            "const result=vm.runInNewContext('(function(){\\n' + "
+            + json.dumps(source)
+            + " + '\\n})()', {$,$json,TextEncoder});\n"
+            "console.log(JSON.stringify(result));"
+        )
+        result = subprocess.run(["node", "-e", node_script], check=True, capture_output=True, text=True)
+        payload = json.loads(result.stdout)[0]["json"]
+        self.assertTrue(payload["valid"])
+        self.assertRegex(payload["continuation_run_id"], r"^run-cont-")
+        task = payload["start_request"]["task"]
+        self.assertEqual(task["project_id"], fixture["request"]["project_id"])
+        self.assertEqual(task["source_run_id"], fixture["request"]["source_run_id"])
+        self.assertEqual(task["created_via"], "CONTROL_TOWER_CONTINUATION")
+        self.assertEqual(payload["start_request"]["backend"], "opencode-builder-8001")
+
     def test_runtime_workflows_are_canonical_and_authenticated(self):
         workflows = self._generate()
         self.assertIn("05 AutoDev Control Gateway", workflows)
