@@ -103,3 +103,12 @@ def test_canonical_start_and_continuation_fields_are_in_schema():
     }
     assert written_fields.issubset(required)
     assert all(field in generator for field in written_fields)
+
+
+def test_continuation_uses_atomic_claim_before_run_insert():
+    generator = (ROOT / "workflow" / "v2" / "generate_workflows_v2.py").read_text()
+    assert '"Atomic Continuation Claim"' in generator
+    assert 'cfg.claim + "/claim"' in generator
+    assert '"Continuation Claim Acquired?", "Insert Run Row", 0' in generator
+    assert '"Continuation Claim Acquired?", "Respond Existing Continuation Claim", 1' in generator
+    assert "PRIMARY KEY" not in generator  # uniqueness is owned by the claim service

@@ -26,6 +26,8 @@ BASE = "http://192.168.1.52:5678"
 API_KEY_PATH = "/var/lib/n8n-spec-kit/secrets/ghiw-n8n-api-key"
 HARNESS_TOKEN_PATH = "/var/lib/autodev-harness-v2/token"
 API_TOKEN_PATH = "/var/lib/autodev-harness-v2/api-token"
+CLAIM_TOKEN_PATH = "/var/lib/n8n/morpheus-continuation-claim.token"
+CLAIM_ENV_PATH = "/var/lib/n8n/morpheus-continuation-claim.env"
 REPO_ROOT = sys.argv[1] if len(sys.argv) > 1 else "/tmp"
 EXPORT_DIR = (
     sys.argv[2]
@@ -182,6 +184,15 @@ def main():
         os.chmod(API_TOKEN_PATH, 0o600)
     with open(API_TOKEN_PATH) as f:
         api_token = f.read().strip()
+    if not os.path.exists(CLAIM_TOKEN_PATH):
+        with open(CLAIM_TOKEN_PATH, "w") as f:
+            f.write(secrets.token_urlsafe(48))
+        os.chmod(CLAIM_TOKEN_PATH, 0o600)
+    with open(CLAIM_TOKEN_PATH) as f:
+        claim_token = f.read().strip()
+    with open(CLAIM_ENV_PATH, "w") as f:
+        f.write("MORPHEUS_CLAIM_TOKEN=%s\n" % claim_token)
+    os.chmod(CLAIM_ENV_PATH, 0o600)
 
     runs_id, _ = migrate_runs_schema()
     attempts_id = create_table(
@@ -232,6 +243,9 @@ def main():
     cr_api_id, cr_api_name = create_credential(
         "autodev-api-auth", "X-AutoDev-Token", api_token
     )
+    cr_claim_id, cr_claim_name = create_credential(
+        "morpheus-continuation-claim", "X-Morpheus-Claim-Token", claim_token
+    )
     github_cred = find_credential("GitHub account")
     runner_ssh_cred = find_credential("dev-runner-ssh")
     print("CREDS n8n=%s harness=%s api=%s" % (cr_n8n_id, cr_harn_id, cr_api_id))
@@ -244,12 +258,14 @@ def main():
             "n8n_base": "http://192.168.1.52:5678",
             "adapter_base": "http://192.168.1.136:8081",
             "webhook_base": "http://192.168.1.52:5678",
+            "claim_base": "http://127.0.0.1:8091",
             "tables": {"runs": runs_id, "attempts": attempts_id, "projects": projects_id,
                         "issues": issues_id, "audit": audit_id},
             "creds": {
                 "n8n_api": {"id": cr_n8n_id, "name": cr_n8n_name},
                 "harness_token": {"id": cr_harn_id, "name": cr_harn_name},
                 "api_auth": {"id": cr_api_id, "name": cr_api_name},
+                "claim": {"id": cr_claim_id, "name": cr_claim_name},
                 "github_api": github_cred,
                 "runner_ssh": runner_ssh_cred,
             },

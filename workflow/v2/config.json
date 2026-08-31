@@ -2,6 +2,7 @@
   "n8n_base": "http://192.168.1.52:5678",
   "adapter_base": "http://192.168.1.136:8081",
   "webhook_base": "http://192.168.1.52:5678",
+  "claim_base": "http://127.0.0.1:8091",
   "tables": {
     "runs": "P3Eyck556Y76TC4p",
     "attempts": "5ArfenIk1qhsigL6"
@@ -24,6 +25,10 @@
     "n8n_api": {
       "id": "Qy9ElX1H6XmeXGr9",
       "name": "autodev-n8n-api"
+    },
+    "claim": {
+      "id": "PENDING_morpheus-claim",
+      "name": "morpheus-continuation-claim"
     },
     "harness_token": {
       "id": "Jc8UTFOaP9WCcnIt",
