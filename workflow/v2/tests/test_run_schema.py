@@ -112,3 +112,13 @@ def test_continuation_uses_atomic_claim_before_run_insert():
     assert '"Continuation Claim Acquired?", "Insert Run Row", 0' in generator
     assert '"Continuation Claim Acquired?", "Respond Existing Continuation Claim", 1' in generator
     assert "PRIMARY KEY" not in generator  # uniqueness is owned by the claim service
+
+
+def test_orchestrator_has_durable_idempotent_intake_guard():
+    generator = (ROOT / "workflow" / "v2" / "generate_workflows_v2.py").read_text()
+    assert '"Accept Orchestration Delivery"' in generator
+    assert 'cfg.claim + "/orchestration/accept"' in generator
+    assert '"Orchestration Delivery Accepted?", "Init Run State", 0' in generator
+    assert '"Orchestration Delivery Accepted?", "Return Existing Orchestration", 1' in generator
+    assert "expected_state=\"ACCEPTED\"" in generator
+    assert "condition: 'eq', value: 'ACCEPTED'" in generator

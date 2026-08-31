@@ -320,6 +320,19 @@
     },
     {
       "parameters": {
+        "jsCode": "const s=$json,row=(s.data||[])[0]||{};return[{json:{...s,data:[{...row,run_id:s.claim_result.run_id}],run_id:s.claim_result.run_id}}];"
+      },
+      "id": "replay-continuation-delivery",
+      "name": "Replay Continuation Delivery",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        160
+      ]
+    },
+    {
+      "parameters": {
         "conditions": {
           "combinator": "and",
           "conditions": [
@@ -439,64 +452,6 @@
         1200,
         0
       ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "combinator": "and",
-          "conditions": [
-            {
-              "leftValue": "={{$('Pass Intake').first().json.claim_result && $('Pass Intake').first().json.claim_result.claim_acquired === true}}",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 2
-          }
-        }
-      },
-      "id": "continuation-claim-started?",
-      "name": "Continuation Claim Started?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        1440,
-        0
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=http://127.0.0.1:8091/started",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({identity_key:$('Pass Intake').first().json.claim_request.identity_key,run_id:$('Pass Intake').first().json.claim_request.run_id}) }}",
-        "options": {}
-      },
-      "id": "mark-continuation-started",
-      "name": "Mark Continuation Started",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        1680,
-        0
-      ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "PENDING_morpheus-claim",
-          "name": "morpheus-continuation-claim"
-        }
-      },
-      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -669,6 +624,22 @@
             "node": "Respond Existing Continuation Claim",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Replay Continuation Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replay Continuation Delivery": {
+      "main": [
+        [
+          {
+            "node": "Pass Intake",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -723,28 +694,6 @@
           },
           {
             "node": "Run Orchestrator",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run Orchestrator": {
-      "main": [
-        [
-          {
-            "node": "Continuation Claim Started?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Continuation Claim Started?": {
-      "main": [
-        [
-          {
-            "node": "Mark Continuation Started",
             "type": "main",
             "index": 0
           }
