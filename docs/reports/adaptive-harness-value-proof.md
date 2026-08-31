@@ -167,6 +167,40 @@ ADAPTIVE_RELEASE_DEPLOYED=false
 PRODUCTION_PROVEN=false
 ```
 
+## 13. Superseding recovery and metadata evidence — 2026-08-31
+
+The historical `PLAN_BLOCKED / CONTRACT_FAILURE` was reproduced as a model
+semantic scope mismatch: a target was absent from `build_scope.allowed_files`.
+The contract stayed strict; the planning prompt now states the invariant and
+the same worker receives one bounded correction opportunity. The exact
+failure, regression fixtures, validator equivalence, and live tamper results
+are recorded in [`plan-contract-recovery.md`](plan-contract-recovery.md).
+
+The deployed canonical metadata contract is
+`autodev.adaptive-metadata.v1`. The embedded canonical smoke
+`run-mthmymeg-1z6039` reached `DONE`, and six adapter jobs carried identical
+experiment, factor, policy, config-hash, task-set-hash, and harness-version
+metadata. The requested `opencode/big-pickle` smoke
+`run-mthmq1hw-4gyrdb` reached baseline and research with the same metadata but
+was safely aborted after provider latency; it is not a value result.
+
+```text
+PLAN_CONTRACT=PASS
+PLAN_VALIDATOR_EQUIVALENCE=PASS
+FACTOR_METADATA_CORRELATION=PASS
+CANONICAL_SMOKE_RESULT=DONE_EMBEDDED_CONTRACT_CHAIN
+OPENCODE_BIG_PICKLE_SMOKE=ABORTED_DISPOSABLE_PROVIDER_LATENCY
+A_E_CANONICAL=NOT_RUN
+VALIDATION=NOT_RUN
+CANDIDATE_FREEZE=NOT_RUN
+HOLDOUT=NOT_RUN
+ADAPTIVE_HARNESS_VALUE=NOT_PROVEN
+```
+
+The available `bench/tasks` files still do not contain executable task inputs;
+therefore no A–E, validation, freeze, or holdout numbers are fabricated.
+Evidence: [`canonical-metadata-20260831.json`](../../evidence/adaptive-harness/canonical-metadata-20260831.json).
+
 ## 8. Reality refresh and live evidence — 2026-08-31
 
 This section supersedes the initial blocked snapshot above. Repository, remote

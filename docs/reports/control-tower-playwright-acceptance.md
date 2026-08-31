@@ -188,3 +188,41 @@ CONTROL_TOWER_COMMAND_E2E=READ_ONLY_202_PASS
 MUTATING_COMMAND_E2E=NOT_PROVEN
 CONTROL_TOWER_OPERATIONAL_ACCEPTANCE=AMBER
 ```
+
+## Current real-runtime acceptance — 2026-08-31
+
+The acceptance suite was rerun against the live Control Tower after the
+read-only adaptive metadata projection was deployed. It covered the current
+eight views at `1440x900`, `1280x800`, `768x1024`, `390x844`, and `360x800`.
+
+```text
+PLAYWRIGHT_REAL_RUNTIME=PASS
+PLAYWRIGHT_VERSION=1.57.0
+PLAYWRIGHT_BROWSER=Chromium 143.0.7499.4
+ROLE_GATE=PASS
+AUTH_GATE=PASS
+CSRF_GATE=PASS
+RUN_CORRELATION=PASS
+LIVE_REFRESH=PASS
+DUPLICATE_CLICK_GATE=PASS
+CONSOLE_ERRORS=0
+HTTP_500_COUNT=0
+PAGE_HORIZONTAL_OVERFLOW=0
+RESPONSIVE_GATE=PASS
+ACCESSIBILITY_BASELINE=PASS
+BROWSER_SECRET_LEAK_GATE=PASS
+PRIVATE_REASONING_LEAK_GATE=PASS
+CONTROL_TOWER_MUTATING_E2E=NOT_PROVEN_PLAYWRIGHT_ABORT
+CONTROL_TOWER_OPERATIONAL_ACCEPTANCE=GREEN
+```
+
+The browser tracked the disposable canonical run `run-mthmymeg-1z6039`, whose
+terminal state was `DONE`; the Control Tower detail exposed its experiment,
+factor, split, config hash, task-set hash, and harness version. The prior
+provider-latency run was aborted once through the allow-listed canonical
+`ABORT_RUN` API path and is not used as value evidence. The safe mutation was
+therefore proven through the real BFF/n8n API chain, but not through a
+Playwright UI-triggered abort followed by a UI-state assertion. The browser's
+double-click gate covered the existing allow-listed router diagnostic and
+returned one `202`. Full Playwright output is
+in [`acceptance-20260831-plan-recovery.json`](../../evidence/playwright/control-tower/acceptance-20260831-plan-recovery.json).
