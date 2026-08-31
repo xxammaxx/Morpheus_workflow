@@ -1,0 +1,99 @@
+# Morpheus canonical n8n benchmark proof
+
+Date: 2026-08-31
+
+## Result
+
+One disposable benchmark task was sent through the deployed canonical path:
+
+```text
+benchmark task
+→ POST /webhook/autodev/start
+→ canonical autodev_runs row
+→ 01 AutoDev Orchestrator
+→ 10/20/30 workflows
+→ Adapter v2
+→ opencode/big-pickle
+→ canonical PLAN_BLOCKED state
+→ Control Tower projection
+```
+
+The task was read-only and marked benchmark-only. It used a public disposable
+clone and did not mutate production code, infrastructure, secrets, or model
+weights.
+
+```text
+BENCHMARK_EXPERIMENT_ID=morpheus-benchmark-disposable-canonical-20260831-r2
+BENCHMARK_RUN_ID=run-mthenxhx-qvim85
+N8N_CANONICAL_RUN_ID=run-mthenxhx-qvim85
+AUTODEV_RUN_ID=run-mthenxhx-qvim85
+ADAPTER_RUN_ID=run-mthenxhx-qvim85
+CONTROL_TOWER_RUN_ID=run-mthenxhx-qvim85
+N8N_RUN_STATE=PLAN_BLOCKED
+N8N_RUN_REASON=CONTRACT_FAILURE
+```
+
+## Correlation and provenance
+
+The adapter ledger contained the same `run_id` and deterministic job/attempt
+IDs (`run-mthenxhx-qvim85:<stage>:1`). Adapter evidence recorded
+`selected_provider=opencode`, `selected_model=big-pickle`, and for all three
+research executions `actual_provider=opencode`, `actual_model=big-pickle`,
+`actual_cost=0.0`, `execution_proof=PASS`. The plan execution failed closed at
+the output contract gate, so it has no actual execution proof.
+
+The Control Tower showed the same run in its canonical run projection, with
+the terminal state `PLAN_BLOCKED` and reason `CONTRACT_FAILURE`. This proves
+the run-ID chain but not the stronger full-correlation contract:
+
+```text
+run_id equality                         PASS
+selected provider/model                 PASS
+actual zero-cost research provenance    PASS
+non-empty correlation_id propagation    FAIL / empty in current workflow
+complete terminal task success          FAIL / PLAN_BLOCKED
+CANONICAL_N8N_BENCHMARK_CORRELATION     PARTIAL
+```
+
+The current canonical workflow does not yet propagate the adaptive factor
+policies, `benchmark_experiment_id`, and `correlation_id` into every adapter
+attempt. No equality or value claim is fabricated to compensate for that.
+
+## A–E, validation, and holdout
+
+The direct adapter smoke already recorded `A/B/C` functional success, but it
+was not a canonical n8n execution. Since the canonical run stopped at plan
+contract validation and the adaptive policies are not wired through n8n,
+canonical A–E cannot be attributed or compared:
+
+```text
+A_BASELINE=NOT_RUN_AS_CANONICAL_VALUE_TRIAL
+B_CONTEXT=NOT_RUN
+C_EXPLORER=NOT_RUN
+D_EXPERIENCE_TOP1=NOT_RUN
+E_EXPERIENCE_TOP3=NOT_RUN
+VALIDATION=NOT_RUN
+CANDIDATE_FREEZE=NOT_RUN
+HOLDOUT=NOT_RUN
+GENERALIZATION_PROVEN=NO
+```
+
+This is an honest infrastructure/contract blocker, not evidence that the
+adaptive factors have or do not have value.
+
+## Safety gates
+
+```text
+SAFE_ZERO_COST_ROUTE=PASS
+BENCHMARK_PROVIDER=opencode
+BENCHMARK_MODEL=big-pickle
+PAID_REQUESTS=0
+DEEPSEEK_REQUESTS=0
+AUTOMATIC_PAID_ESCALATION=false
+BENCHMARK_PRODUCTION_STATE_WRITES=0
+N8N_SOLE_CONTROL_PLANE=true
+SECOND_SOR=false
+MODEL_WEIGHTS_CHANGED=false
+AUTO_PROMOTION=false
+RELEASE_CREATED=false
+```

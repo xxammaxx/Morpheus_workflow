@@ -4,14 +4,12 @@ Date: 2026-08-31
 
 ## Final classification
 
-`AMBER_ADAPTIVE_HARNESS_LIVE_EVALUATION_BLOCKED`
+`AMBER_ADAPTIVE_VALUE_NOT_PROVEN_CONTROL_TOWER_OPERATIONAL_AMBER`
 
-The adaptive foundation is isolated and locally tested, but no live
-baseline/candidate evidence is claimed. The first smoke run was not started:
-the only discovered local model endpoint (`LM Studio`,
-`192.168.1.50:1234`) requires an `LM_API_TOKEN` that is not available in the
-approved environment, and Ollama is not listening. No paid or DeepSeek request
-was made.
+The adaptive foundation remains locally tested without a canonical A–E value
+proof. A zero-cost `opencode/big-pickle` route and one disposable canonical
+n8n run were verified; the run reached the real adapter and Control Tower but
+ended at the plan contract gate. No paid or DeepSeek request was made.
 
 ## 1. Reality refresh
 
@@ -176,14 +174,14 @@ PR, deployed runtime, and test evidence were rechecked on 2026-08-31.
 ```text
 DATE=2026-08-31
 START_BRANCH=feat/adaptive-harness-foundation
-START_HEAD=5f7089acfb73d83e92c1451fa37cba25ec1955fa
+START_HEAD=e4bc99a996f227862c1abc14c5be849a060b0066
 ORIGIN_MAIN=cbd96c0d0e8c2c3fa47d12ea1c291975e9c0d7b6
 WORKTREE_CLEAN_AT_START=true
 
 PR60_STATE=OPEN
 PR60_REMOTE_HEAD=9a1d63ccee3a67283060a7040e02c0dad341846f
 PR60_BASE=main
-PR60_MERGEABLE=UNKNOWN_AFTER_PUSH
+PR60_MERGEABLE=true
 PR60_CHANGED_FILES=11
 PR60_ADAPTIVE_FILES=0
 PR60_SCOPE_CLEAN=PASS
@@ -202,7 +200,7 @@ DEB4D20_PUSHED=true
 
 PR61_STATE=OPEN
 ADAPTIVE_BRANCH=feat/adaptive-harness-foundation
-ADAPTIVE_HEAD=5f7089acfb73d83e92c1451fa37cba25ec1955fa
+ADAPTIVE_HEAD=e4bc99a996f227862c1abc14c5be849a060b0066
 ADAPTIVE_POST_PR60_INTEGRATION_GATE=PASS_NO_MAIN_ADVANCEMENT
 ```
 
@@ -210,7 +208,7 @@ ADAPTIVE_POST_PR60_INTEGRATION_GATE=PASS_NO_MAIN_ADVANCEMENT
 store and tests were inspected, and a real rebinding gap was found: a new
 identity could previously claim an existing `run_id`. The follow-up PR60 head
 `9a1d63c` rejects that ownership conflict and adds a regression test. The
-isolated PR60 tree passed 22 targeted continuation tests and `159 passed` in
+isolated PR60 tree passed 22 targeted continuation tests and `153 passed` in
 the full repository suite. Required semantics remain:
 
 ```text
@@ -353,3 +351,88 @@ The negative result is retained: on one matched task, all three direct
 adapter configurations succeeded, with no measurable success improvement and
 longer observed wall-clock time for the added context. This is a valid smoke
 and route proof, not a value proof or generalization claim.
+
+## 12. Current superseding evidence — canonical n8n path
+
+The following is the current result of the requested reality refresh and
+canonical disposable run. Detailed correlation evidence is recorded in
+[`canonical-n8n-benchmark-proof.md`](canonical-n8n-benchmark-proof.md).
+
+```text
+DATE=2026-08-31
+CONTROL_TOWER_URL=http://192.168.1.136:8092
+CONTROL_TOWER_VERSION=1.2.0
+N8N_URL=http://192.168.1.52:5678
+N8N_VERSION=2.26.8
+N8N_REACHABLE=PASS
+ADAPTER_URL=http://192.168.1.136:8081
+ADAPTER_VERSION=2.0.0
+ADAPTER_REACHABLE=PASS
+ZERO_COST_PROVIDER=opencode
+ZERO_COST_MODEL=big-pickle
+ZERO_COST_ROUTE_HEALTH=PASS
+PAID_REQUESTS=0
+DEEPSEEK_REQUESTS=0
+
+CANONICAL_BENCHMARK_RUN_ID=run-mthenxhx-qvim85
+N8N_CANONICAL_RUN_ID=run-mthenxhx-qvim85
+AUTODEV_RUN_ID=run-mthenxhx-qvim85
+ADAPTER_RUN_ID=run-mthenxhx-qvim85
+CONTROL_TOWER_RUN_ID=run-mthenxhx-qvim85
+CANONICAL_RUN_TERMINAL_STATE=PLAN_BLOCKED
+CANONICAL_RUN_REASON=CONTRACT_FAILURE
+CANONICAL_N8N_BENCHMARK_CORRELATION=PARTIAL
+
+SELECTED_PROVIDER=opencode
+SELECTED_MODEL=big-pickle
+ACTUAL_PROVIDER=opencode
+ACTUAL_MODEL=big-pickle
+ACTUAL_COST=0
+RESEARCH_EXECUTION_PROOF=PASS
+PLAN_EXECUTION_PROOF=CONTRACT_FAILURE
+
+MATCHED_SMOKE_A_B_C=PASS_DIRECT_ADAPTER_ONLY
+VALUE_GAIN=NOT_PROVEN
+EXPERIENCE_TOP1=NOT_RUN
+EXPERIENCE_TOP3=NOT_RUN
+VALIDATION=NOT_RUN
+HOLDOUT=NOT_RUN
+CANDIDATE_FREEZE=NOT_RUN
+GENERALIZATION_PROVEN=NO
+```
+
+The run IDs are equal across n8n intake, the canonical `autodev_runs` row,
+adapter jobs, and the Control Tower projection. The stronger full-correlation
+gate remains `PARTIAL`, because the current n8n intake does not propagate a
+non-empty `correlation_id`, and the run terminated before plan/build attempts
+could provide complete end-to-end provenance. The attempted run is retained
+as negative evidence; it is not counted as a successful benchmark task.
+
+The current adaptive implementation exposes local contracts for context,
+exploration, and experience, but the canonical n8n workflow does not yet
+carry factor policies or experiment IDs through the adapter. Therefore A–E,
+validation, candidate freeze, and holdout are intentionally `NOT_RUN` rather
+than inferred from the direct adapter smoke. This is the blocking milestone
+for a future value-proof run.
+
+```text
+ROLE_MAPPING_ROOT_CAUSE=systemd operator_token loaded from viewer-token;
+  legacy role_for_token also treated a token collision as OPERATOR
+ROLE_FIX_IMPLEMENTED=YES_IN_PR62_AND_DEPLOYED
+ROLE_GATE=PASS
+AUTH_GATE=PASS
+CSRF_GATE=PASS
+ARBITRARY_COMMAND_GATE=PASS
+ARBITRARY_TARGET_GATE=PASS
+CONTROL_TOWER_OPERATIONAL_ACCEPTANCE=AMBER
+ARCHITECTURE_GATE=PASS
+SECURITY_GATE=PASS
+MEMORY_POISONING_GATE=PASS_LOCAL_TESTS
+HOLDOUT_ISOLATION=PASS_LOCAL_TESTS
+N8N_SOLE_CONTROL_PLANE=true
+SECOND_SOR=false
+BENCHMARK_PRODUCTION_STATE_WRITES=0
+RELEASE_CREATED=false
+PRODUCTION_DEPLOYED=false
+PRODUCTION_PROVEN=false
+```
