@@ -14,7 +14,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst issue = s.issue || s;\nreturn [{json: {\n  issue: issue, fixture: s.fixture || null,\n  backend: s.backend || 'opencode-builder-8001',\n  provider: s.provider || null,\n  model: s.model || null,\n  model_revision: s.model_revision || null,\n  run_row: {state: 'ACCEPTED', current_job: 'baseline', reason_code: 'INTAKE_OK'},\n  baseline: null, research: null, plan: null, gate: null,\n  build: null, verification: null, review: null, decision: null,\n  attempt_build: 0, attempt_fix: 0,\n  max_attempts: issue.max_attempts || 2\n}}];"
+        "jsCode": "const s = $json;\nconst issue = s.issue || s;\nreturn [{json: {\n  issue: issue, fixture: s.fixture || null,\n  backend: s.backend || 'opencode-builder-8001',\n  provider: s.provider || null,\n  model: s.model || null,\n  model_revision: s.model_revision || null,\n  adaptive_metadata: (issue['x-metadata'] || {}).adaptive_metadata || null,\n  run_row: {state: 'ACCEPTED', project_id: (issue['x-metadata'] || {}).project_id || '', issue_number: (issue['x-metadata'] || {}).issue_number || '', task_ref: issue.task_ref || '', repository_ref: issue.repository_ref || '', current_job: 'baseline', reason_code: 'INTAKE_OK', correlation_id: (issue['x-metadata'] || {}).correlation_id || '', source_run_id: (issue['x-metadata'] || {}).source_run_id || '', continuation_reason: (issue['x-metadata'] || {}).continuation_reason || '', requested_action: (issue['x-metadata'] || {}).requested_action || '', created_via: (issue['x-metadata'] || {}).created_via || 'CONTROL_TOWER_START', requested_by: (issue['x-metadata'] || {}).requested_by || '', experiment_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).experiment_id || '', benchmark_task_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_task_id || '', benchmark_split: ((issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_split || '', candidate_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).candidate_id || '', factor: ((issue['x-metadata'] || {}).adaptive_metadata || {}).factor || '', config_hash: ((issue['x-metadata'] || {}).adaptive_metadata || {}).config_hash || '', task_set_hash: ((issue['x-metadata'] || {}).adaptive_metadata || {}).task_set_hash || '', harness_version: ((issue['x-metadata'] || {}).adaptive_metadata || {}).harness_version || '', context_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).context_policy || '', repo_explorer_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).repo_explorer_policy || '', experience_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).experience_policy || ''},\n  baseline: null, research: null, plan: null, gate: null,\n  build: null, verification: null, review: null, decision: null,\n  attempt_build: 0, attempt_fix: 0,\n  max_attempts: issue.max_attempts || 2\n}}];"
       },
       "id": "init-run-state",
       "name": "Init Run State",
@@ -27,7 +27,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'BASELINING';\nrow.current_job = 'baseline';\nrow.reason_code = 'START_BASELINE';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'BASELINING';\nrow.current_job = 'baseline';\nrow.reason_code = 'START_BASELINE';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "baseline-state-prep",
       "name": "Baseline State Prep",
@@ -40,8 +40,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -62,11 +62,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Baseline State Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Baseline State Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "baseline-state-restore",
       "name": "Baseline State Restore",
@@ -146,7 +147,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'baseline';\nrow.decision = 'BLOCKED'; row.reason_code = 'BASELINE_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'baseline';\nrow.decision = 'BLOCKED'; row.reason_code = 'BASELINE_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "baseline-failed-prep",
       "name": "Baseline Failed Prep",
@@ -159,8 +160,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -181,11 +182,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Baseline Failed Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Baseline Failed Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "baseline-failed-restore",
       "name": "Baseline Failed Restore",
@@ -198,7 +200,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'RESEARCHING';\nrow.current_job = 'research';\nrow.reason_code = 'BASELINE_OK';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'RESEARCHING';\nrow.current_job = 'research';\nrow.reason_code = 'BASELINE_OK';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "research-state-prep",
       "name": "Research State Prep",
@@ -211,8 +213,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -233,11 +235,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Research State Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Research State Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "research-state-restore",
       "name": "Research State Restore",
@@ -317,7 +320,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'research';\nrow.decision = 'BLOCKED'; row.reason_code = 'RESEARCH_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'research';\nrow.decision = 'BLOCKED'; row.reason_code = 'RESEARCH_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "research-failed-prep",
       "name": "Research Failed Prep",
@@ -330,8 +333,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -352,11 +355,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Research Failed Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Research Failed Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "research-failed-restore",
       "name": "Research Failed Restore",
@@ -369,7 +373,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'PLANNING';\nrow.current_job = 'plan';\nrow.reason_code = 'RESEARCH_OK';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'PLANNING';\nrow.current_job = 'plan';\nrow.reason_code = 'RESEARCH_OK';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "plan-state-prep",
       "name": "Plan State Prep",
@@ -382,8 +386,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -404,11 +408,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Plan State Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Plan State Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "plan-state-restore",
       "name": "Plan State Restore",
@@ -488,7 +493,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'PLAN_BLOCKED';\nrow.current_job = 'plan';\nrow.decision = 'BLOCKED'; row.reason_code = $json.gate.reason_code || 'PLAN_REJECTED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'PLAN_BLOCKED';\nrow.current_job = 'plan';\nrow.decision = 'BLOCKED'; row.reason_code = $json.gate.reason_code || 'PLAN_REJECTED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "plan-blocked-prep",
       "name": "Plan Blocked Prep",
@@ -501,8 +506,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -523,11 +528,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Plan Blocked Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Plan Blocked Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "plan-blocked-restore",
       "name": "Plan Blocked Restore",
@@ -579,7 +585,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'BUILDING';\nrow.current_job = 'build';\nrow.reason_code = 'PLAN_GATE_APPROVED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'BUILDING';\nrow.current_job = 'build';\nrow.reason_code = 'PLAN_GATE_APPROVED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "build-state-prep",
       "name": "Build State Prep",
@@ -592,8 +598,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -614,11 +620,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Build State Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Build State Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "build-state-restore",
       "name": "Build State Restore",
@@ -650,7 +657,8 @@
       "position": [
         4320,
         0
-      ]
+      ],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -698,7 +706,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'build';\nrow.decision = 'BLOCKED'; row.reason_code = 'BUILD_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'build';\nrow.decision = 'BLOCKED'; row.reason_code = 'BUILD_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "build-failed-prep",
       "name": "Build Failed Prep",
@@ -711,8 +719,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -733,11 +741,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Build Failed Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Build Failed Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "build-failed-restore",
       "name": "Build Failed Restore",
@@ -802,7 +811,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'VERIFYING';\nrow.current_job = 'verify';\nrow.reason_code = 'BUILD_PASSED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'VERIFYING';\nrow.current_job = 'verify';\nrow.reason_code = 'BUILD_PASSED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "verify-state-prep",
       "name": "Verify State Prep",
@@ -815,8 +824,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -837,11 +846,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Verify State Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Verify State Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "verify-state-restore",
       "name": "Verify State Restore",
@@ -996,7 +1006,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FIX_REQUIRED';\nrow.current_job = 'fix';\nrow.decision = 'FIX'; row.reason_code = $json.retry.reason_code || 'VERIFY_FAILED_WITH_DELTA';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FIX_REQUIRED';\nrow.current_job = 'fix';\nrow.decision = 'FIX'; row.reason_code = $json.retry.reason_code || 'VERIFY_FAILED_WITH_DELTA';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "fix-state-prep",
       "name": "Fix State Prep",
@@ -1009,8 +1019,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -1031,11 +1041,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Fix State Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Fix State Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "fix-state-restore",
       "name": "Fix State Restore",
@@ -1115,7 +1126,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'fix';\nrow.decision = 'BLOCKED'; row.reason_code = 'FIX_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'fix';\nrow.decision = 'BLOCKED'; row.reason_code = 'FIX_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "fix-failed-prep",
       "name": "Fix Failed Prep",
@@ -1128,8 +1139,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -1150,11 +1161,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Fix Failed Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Fix Failed Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "fix-failed-restore",
       "name": "Fix Failed Restore",
@@ -1255,7 +1267,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'SPLIT_REQUIRED';\nrow.current_job = 'split';\nrow.decision = 'SPLIT'; row.reason_code = $json.split.reason_code || 'SPLIT_REQUIRED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'SPLIT_REQUIRED';\nrow.current_job = 'split';\nrow.decision = 'SPLIT'; row.reason_code = $json.split.reason_code || 'SPLIT_REQUIRED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "split-retry-state-prep",
       "name": "Split Retry State Prep",
@@ -1268,8 +1280,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -1290,11 +1302,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Split Retry State Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Split Retry State Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "split-retry-state-restore",
       "name": "Split Retry State Restore",
@@ -1307,7 +1320,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'BLOCKED';\nrow.current_job = 'decision';\nrow.decision = 'BLOCKED'; row.reason_code = $json.retry.reason_code || 'RETRY_DENIED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'BLOCKED';\nrow.current_job = 'decision';\nrow.decision = 'BLOCKED'; row.reason_code = $json.retry.reason_code || 'RETRY_DENIED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "retry-blocked-prep",
       "name": "Retry Blocked Prep",
@@ -1320,8 +1333,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -1342,11 +1355,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Retry Blocked Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Retry Blocked Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "retry-blocked-restore",
       "name": "Retry Blocked Restore",
@@ -1359,7 +1373,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'REVIEWING';\nrow.current_job = 'review';\nrow.reason_code = 'VERIFY_PASSED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'REVIEWING';\nrow.current_job = 'review';\nrow.reason_code = 'VERIFY_PASSED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "review-state-prep",
       "name": "Review State Prep",
@@ -1372,8 +1386,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -1394,11 +1408,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Review State Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Review State Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "review-state-restore",
       "name": "Review State Restore",
@@ -1478,7 +1493,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'BLOCKED';\nrow.current_job = 'review';\nrow.decision = 'BLOCKED'; row.reason_code = 'BLOCKING_HIGH_OR_CRITICAL_FINDING';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'BLOCKED';\nrow.current_job = 'review';\nrow.decision = 'BLOCKED'; row.reason_code = 'BLOCKING_HIGH_OR_CRITICAL_FINDING';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "security-blocked-prep",
       "name": "Security Blocked Prep",
@@ -1491,8 +1506,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -1513,11 +1528,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Security Blocked Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Security Blocked Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "security-blocked-restore",
       "name": "Security Blocked Restore",
@@ -1530,7 +1546,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'DECIDING';\nrow.current_job = 'decision';\nrow.reason_code = 'REVIEW_PASSED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'DECIDING';\nrow.current_job = 'decision';\nrow.reason_code = 'REVIEW_PASSED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "decision-state-prep",
       "name": "Decision State Prep",
@@ -1543,8 +1559,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -1565,11 +1581,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Decision State Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Decision State Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "decision-state-restore",
       "name": "Decision State Restore",
@@ -1724,7 +1741,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'DONE';\nrow.current_job = 'terminal';\nrow.decision = 'DONE'; row.reason_code = 'ALL_HARD_GATES_GREEN'; row.result_ref = $json.decision ? ($json.decision.evidence ? $json.decision.evidence.review_ref : '') : '';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'DONE';\nrow.current_job = 'terminal';\nrow.decision = 'DONE'; row.reason_code = 'ALL_HARD_GATES_GREEN'; row.result_ref = $json.decision ? ($json.decision.evidence ? $json.decision.evidence.review_ref : '') : '';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "done-state-prep",
       "name": "Done State Prep",
@@ -1737,8 +1754,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -1759,11 +1776,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Done State Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Done State Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "done-state-restore",
       "name": "Done State Restore",
@@ -1776,7 +1794,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FIX_REQUIRED';\nrow.current_job = 'fix';\nrow.decision = 'FIX'; row.reason_code = $json.decision.reason_code || 'NON_BLOCKING_REVIEW_FINDINGS';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FIX_REQUIRED';\nrow.current_job = 'fix';\nrow.decision = 'FIX'; row.reason_code = $json.decision.reason_code || 'NON_BLOCKING_REVIEW_FINDINGS';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "decision-fix-state-prep",
       "name": "Decision Fix State Prep",
@@ -1789,8 +1807,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -1811,11 +1829,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Decision Fix State Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Decision Fix State Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "decision-fix-state-restore",
       "name": "Decision Fix State Restore",
@@ -1895,7 +1914,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'fix';\nrow.decision = 'BLOCKED'; row.reason_code = 'FIX_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'fix';\nrow.decision = 'BLOCKED'; row.reason_code = 'FIX_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "decision-fix-failed-prep",
       "name": "Decision Fix Failed Prep",
@@ -1908,8 +1927,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -1930,11 +1949,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Decision Fix Failed Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Decision Fix Failed Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "decision-fix-failed-restore",
       "name": "Decision Fix Failed Restore",
@@ -2035,7 +2055,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'SPLIT_REQUIRED';\nrow.current_job = 'split';\nrow.decision = 'SPLIT'; row.reason_code = $json.split.reason_code || 'SPLIT_REQUIRED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'SPLIT_REQUIRED';\nrow.current_job = 'split';\nrow.decision = 'SPLIT'; row.reason_code = $json.split.reason_code || 'SPLIT_REQUIRED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "split-decision-state-prep",
       "name": "Split Decision State Prep",
@@ -2048,8 +2068,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -2070,11 +2090,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Split Decision State Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Split Decision State Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "split-decision-state-restore",
       "name": "Split Decision State Restore",
@@ -2087,7 +2108,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'BLOCKED';\nrow.current_job = 'terminal';\nrow.decision = 'BLOCKED'; row.reason_code = $json.decision.reason_code || 'DECISION_BLOCKED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}]}, data: row, returnData: true, state: s}}];"
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'BLOCKED';\nrow.current_job = 'terminal';\nrow.decision = 'BLOCKED'; row.reason_code = $json.decision.reason_code || 'DECISION_BLOCKED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
       },
       "id": "decision-blocked-prep",
       "name": "Decision Blocked Prep",
@@ -2100,8 +2121,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/upsert",
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -2122,11 +2143,12 @@
           "id": "Qy9ElX1H6XmeXGr9",
           "name": "autodev-n8n-api"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "const s = $('Decision Blocked Prep').first().json.state || {};\nreturn [{json: s}];"
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Decision Blocked Prep').first().json.state || {};\nreturn [{json: s}];"
       },
       "id": "decision-blocked-restore",
       "name": "Decision Blocked Restore",
@@ -2136,6 +2158,32 @@
         8642,
         640
       ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/webhook/autodev/project/reassess",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({project_id: (($json.issue || {})['x-metadata'] || {}).project_id || '', project_mode: (($json.issue || {})['x-metadata'] || {}).project_mode || 'MANUAL', repository_url: ($json.issue || {}).repository_ref || '', run_id: ($json.issue || {}).run_id || ''}) }}",
+        "options": {}
+      },
+      "id": "project-reassessment",
+      "name": "Project Reassessment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        8640,
+        320
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "bNrV3DszwdD7hXuY",
+          "name": "autodev-api-auth"
+        }
+      }
     }
   ],
   "connections": {
@@ -3115,6 +3163,17 @@
         [
           {
             "node": "Decision Blocked Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Done State Restore": {
+      "main": [
+        [
+          {
+            "node": "Project Reassessment",
             "type": "main",
             "index": 0
           }

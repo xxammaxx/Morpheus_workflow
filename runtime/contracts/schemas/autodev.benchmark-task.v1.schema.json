@@ -1,0 +1,30 @@
+{
+  "$id": "autodev.benchmark-task.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MorpheusBench executable task contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "version", "task_id", "split", "task_class", "instruction", "input", "setup", "execution_mode", "allowed_tools", "forbidden_actions", "acceptance_criteria", "verifier", "timeout_seconds", "max_attempts", "mutation_policy", "cleanup", "expected_failure_classes", "fixture_hash", "task_hash"],
+  "properties": {
+    "contract": {"const": "autodev.benchmark-task.v1"},
+    "version": {"const": "v1"},
+    "task_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "split": {"enum": ["development", "validation", "holdout"]},
+    "task_class": {"enum": ["STRUCTURED_OUTPUT", "REPOSITORY_NAVIGATION", "READ_ONLY_ANALYSIS", "TOOL_SELECTION", "SMALL_CODE_CHANGE", "FAILURE_RECOVERY"]},
+    "instruction": {"type": "string", "minLength": 20, "maxLength": 4000},
+    "input": {"type": "object", "additionalProperties": true},
+    "setup": {"type": "object", "additionalProperties": false, "required": ["type", "fixture_ref"], "properties": {"type": {"const": "materialize_fixture"}, "fixture_ref": {"type": "string", "pattern": "^repos/[A-Za-z0-9._/-]+$"}, "network": {"const": "disabled"}}},
+    "execution_mode": {"enum": ["read_only", "fixture_mutation"]},
+    "allowed_tools": {"type": "array", "items": {"enum": ["read", "search", "test", "edit"]}},
+    "forbidden_actions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 3, "maxLength": 256}},
+    "acceptance_criteria": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 4, "maxLength": 512}},
+    "verifier": {"type": "object", "additionalProperties": false, "required": ["type"], "properties": {"type": {"enum": ["canonical_run", "plan_contract", "repository_evidence", "fixture_diff"]}, "required_state": {"enum": ["DONE", "PLAN_BLOCKED", "FAILED"]}, "required_files": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9._/-]+$"}}, "required_symbols": {"type": "array", "items": {"type": "string", "maxLength": 128}}, "expected_output": {"type": "object", "additionalProperties": true}, "expected_files": {"type": "object", "additionalProperties": {"type": "string"}}}},
+    "timeout_seconds": {"type": "integer", "minimum": 30, "maximum": 1800},
+    "max_attempts": {"type": "integer", "minimum": 1, "maximum": 3},
+    "mutation_policy": {"type": "object", "additionalProperties": false, "required": ["scope", "production_mutation"], "properties": {"scope": {"enum": ["none", "fixture_only"]}, "production_mutation": {"const": false}, "allowed_paths": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9._/-]+$"}}}},
+    "cleanup": {"type": "object", "additionalProperties": false, "required": ["type", "required"], "properties": {"type": {"const": "destroy_temporary_fixture"}, "required": {"const": true}}},
+    "expected_failure_classes": {"type": "array", "items": {"type": "string", "maxLength": 128}},
+    "fixture_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "task_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}
