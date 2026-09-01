@@ -1168,11 +1168,15 @@ return [{json: {artifact: {contract: 'autodev.decision.v1', version: 'v1',
         P(16, 0),
     )
     wf.add("Plan Gate?", c, 0)
-    wf.add_node(
-        execute_wf_node(
-            cfg, "Run Build", "40 AutoDev Build", P(18, 0), {"executeOnce": True}
-        )
+    build_runner = execute_wf_node(
+        cfg, "Run Build", "40 AutoDev Build", P(18, 0), {"executeOnce": True}
     )
+    # A rejected adapter dispatch is a terminal build failure, not a reason
+    # to leave the canonical run stuck in BUILDING.  Continue with the
+    # existing Post-Build -> Build Failed state transition so the adapter
+    # error remains visible in n8n execution data while the run is terminal.
+    build_runner["onError"] = "continueRegularOutput"
+    wf.add_node(build_runner)
     wf.add(r, "Run Build")
     wf.add("Run Build", "Post-Build")
     wf.add_node(
