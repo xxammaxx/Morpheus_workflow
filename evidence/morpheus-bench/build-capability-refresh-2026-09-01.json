@@ -52,6 +52,6 @@
     "failure_signature": "BUILD_NO_CHANGES",
     "actual_cost": 0
   },
-  "context_smoke": "NOT_RUN_BASELINE_PIPELINE_GATE"
+  "context_smoke": "NOT_RUN_BASELINE_PIPELINE_GATE",
   "actual_cost": 0
 }
