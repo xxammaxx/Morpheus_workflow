@@ -1479,17 +1479,20 @@ def _opencode_script(
     )
     sandbox_command = (
         "bwrap --ro-bind / / --tmpfs %s --bind %s %s --proc /proc --dev /dev "
-        "--chdir %s /bin/sh -c %s"
+        "--bind %s /root/.local/share/opencode "
+        "--ro-bind /root/.local/share/opencode/auth.json "
+        "/root/.local/share/opencode/auth.json --chdir %s /bin/sh -c %s"
     ) % (
         shlex.quote(BUILDER_WS_ROOT),
         shlex.quote(ws),
         shlex.quote(ws),
+        shlex.quote(os.path.join(ws, ".opencode/runtime-state")),
         shlex.quote(ws),
         shlex.quote(opencode_command),
     )
     return (
         "set -e; cd %s; "
-        "mkdir -p .opencode/agents; "
+        "mkdir -p .opencode/agents .opencode/runtime-state; "
         "cat > .opencode/agents/%s.md << 'EOFAGENT'\n%s\nEOFAGENT\n"
         "export OPENCODE_CONFIG_CONTENT='%s'; "
         "export PATH='/opt/dev-fabric/opencode:/usr/local/bin:/usr/bin:/bin'; "

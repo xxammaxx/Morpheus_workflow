@@ -21,3 +21,5 @@ def test_opencode_command_uses_builder_sandbox_and_workspace_only(tmp_path, monk
     assert "bwrap --ro-bind / /" in script
     assert "--tmpfs /var/lib/ghiw/workspaces" in script
     assert "--bind /var/lib/ghiw/workspaces/autodev-v2-run-a" in script
+    assert "--bind /var/lib/ghiw/workspaces/autodev-v2-run-a/.opencode/runtime-state /root/.local/share/opencode" in script
+    assert "--ro-bind /root/.local/share/opencode/auth.json" in script
