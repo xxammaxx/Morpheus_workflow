@@ -346,6 +346,13 @@ def _job(adapter: HttpClient, run_id: str, job_type: str, number: int = 1) -> di
 
 
 def verify_canonical(task: dict[str, Any], state: dict[str, Any], jobs: list[dict[str, Any]], metadata: dict[str, Any]) -> tuple[str, str]:
+    expected_route = (metadata.get("expected_provider", "opencode"), metadata.get("expected_model", "big-pickle"))
+    route_jobs = [job for job in jobs if job.get("job_type") in {"baseline", "research.code", "research.docs", "research.tests", "plan", "build", "verify"}]
+    for job in route_jobs:
+        selected = (job.get("selected_provider"), job.get("selected_model"))
+        actual = (job.get("actual_provider"), job.get("actual_model"))
+        if selected != expected_route or actual != selected:
+            return "FAIL", "ROUTE_IDENTITY_MISMATCH"
     expected_state = task["verifier"].get("required_state", "DONE")
     if state.get("state") != expected_state:
         return "FAIL", f"TERMINAL_STATE:{state.get('state')}"
@@ -395,7 +402,12 @@ def run_one(task: dict[str, Any], *, split: str, split_digest: str, factor: str,
         "task_description": render_task_description(task, factor, experience),
         "acceptance_hint": canonical_json({"verifier": task["verifier"], "task_hash": task["task_hash"], "fixture_hash": task["fixture_hash"]}) + "\nBENCHMARK_FIXTURE_JSON:" + canonical_json({"files": task["_fixture_files"]}),
         "max_attempts": task["max_attempts"], "changes_expected": task["execution_mode"] == "fixture_mutation",
-        "no_change_required": task["execution_mode"] == "read_only", "x-metadata": {"adaptive_metadata": metadata},
+        "no_change_required": task["execution_mode"] == "read_only", "x-metadata": {
+            "adaptive_metadata": metadata,
+            "route_policy": "FAIL_CLOSED",
+            "expected_provider": provider,
+            "expected_model": model,
+        },
     }
     body = {"task": wire_task, "provider": provider, "model": model, "backend": "opencode-builder-8001", "adaptive_metadata": metadata, "benchmark_fixture": {"files": task["_fixture_files"]}}
     status_code = None
@@ -425,9 +437,17 @@ def run_one(task: dict[str, Any], *, split: str, split_digest: str, factor: str,
             if durations:
                 metrics["wall_clock_ms"] = sum(durations)
         record = {"identity": identity, "experiment_id": experiment_id, "task_id": task["task_id"], "task_class": task["task_class"], "task_hash": task["task_hash"], "fixture_hash": task["fixture_hash"], "split": split, "factor": factor, "config_hash": config_digest, "run_id": run_id, "project_id": terminal.get("project_id", "UNKNOWN"), "correlation_id": terminal.get("correlation_id", "UNKNOWN"), "provider": provider, "model": model, "actual_provider": next((job.get("actual_provider") for job in jobs if job.get("actual_provider")), "UNKNOWN"), "actual_model": next((job.get("actual_model") for job in jobs if job.get("actual_model")), "UNKNOWN"), "actual_cost": 0 if actual_costs else "UNKNOWN", "started_at": started, "finished_at": dt.datetime.now(dt.timezone.utc).isoformat(), "terminal_state": terminal.get("state"), "verification_result": verification, "failure_class": None if verification == "PASS" else detail, "metrics": metrics, "adaptive_metadata": metadata, "result_hash": ""}
+        route_job = next((job for job in jobs if job.get("actual_provider") or job.get("actual_model")), {})
+        record.update({
+            "requested_provider": provider,
+            "requested_model": model,
+            "selected_provider": route_job.get("selected_provider", "UNKNOWN"),
+            "selected_model": route_job.get("selected_model", "UNKNOWN"),
+            "route_match": detail != "ROUTE_IDENTITY_MISMATCH" and verification == "PASS",
+        })
     except BenchmarkError as exc:
         failure = str(exc)
-        record = {"identity": identity, "experiment_id": experiment_id, "task_id": task["task_id"], "task_class": task["task_class"], "task_hash": task["task_hash"], "fixture_hash": task["fixture_hash"], "split": split, "factor": factor, "config_hash": config_digest, "run_id": run_id if status_code in (200, 202) else "UNKNOWN", "provider": provider, "model": model, "actual_cost": "UNKNOWN", "started_at": started, "finished_at": dt.datetime.now(dt.timezone.utc).isoformat(), "terminal_state": terminal.get("state", "UNKNOWN"), "verification_result": "ABORTED", "failure_class": failure, "metrics": {"input_tokens": "UNKNOWN", "output_tokens": "UNKNOWN", "total_tokens": "UNKNOWN", "tool_calls": "UNKNOWN", "search_calls": "UNKNOWN", "retries": "UNKNOWN", "wall_clock_ms": "UNKNOWN", "first_pass_success": "UNKNOWN", "task_success": "UNKNOWN", "verification_pass": "UNKNOWN"}, "adaptive_metadata": metadata}
+        record = {"identity": identity, "experiment_id": experiment_id, "task_id": task["task_id"], "task_class": task["task_class"], "task_hash": task["task_hash"], "fixture_hash": task["fixture_hash"], "split": split, "factor": factor, "config_hash": config_digest, "run_id": run_id if status_code in (200, 202) else "UNKNOWN", "provider": provider, "model": model, "requested_provider": provider, "requested_model": model, "selected_provider": "UNKNOWN", "selected_model": "UNKNOWN", "actual_provider": "UNKNOWN", "actual_model": "UNKNOWN", "route_match": False, "actual_cost": "UNKNOWN", "started_at": started, "finished_at": dt.datetime.now(dt.timezone.utc).isoformat(), "terminal_state": terminal.get("state", "UNKNOWN"), "verification_result": "ABORTED", "failure_class": failure, "metrics": {"input_tokens": "UNKNOWN", "output_tokens": "UNKNOWN", "total_tokens": "UNKNOWN", "tool_calls": "UNKNOWN", "search_calls": "UNKNOWN", "retries": "UNKNOWN", "wall_clock_ms": "UNKNOWN", "first_pass_success": "UNKNOWN", "task_success": "UNKNOWN", "verification_pass": "UNKNOWN"}, "adaptive_metadata": metadata}
     finally:
         shutil.rmtree(local_fixture, ignore_errors=False)
     record["result_hash"] = sha256_json({key: value for key, value in record.items() if key != "result_hash"})
