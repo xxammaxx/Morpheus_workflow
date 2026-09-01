@@ -2011,11 +2011,13 @@ def _materialize_benchmark_fixture(ws, fixture):
     with open(marker, "w", encoding="utf-8") as stream:
         stream.write("morpheus-benchmark-fixture-v1\n")
     qws = shlex.quote(ws)
-    pct_exec(
+    result = pct_exec(
         "set -e; cd %s; git init -q; git config user.email harness@local; "
         "git config user.name harness; git add -A; git commit -qm benchmark-fixture"
         % qws
     )
+    if result.returncode != 0:
+        raise RuntimeError("BENCHMARK_FIXTURE_GIT_INIT_FAILED")
     return ws
 
 

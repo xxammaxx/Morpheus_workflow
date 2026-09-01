@@ -4,7 +4,7 @@ Date: 2026-08-31
 
 ## Final classification
 
-`AMBER_ADAPTIVE_VALUE_NOT_PROVEN_CONTROL_TOWER_OPERATIONAL_AMBER`
+`AMBER_MORPHEUSBENCH_EXECUTION_PIPELINE_BLOCKED_CONTROL_TOWER_GREEN`
 
 The adaptive foundation remains locally tested without a canonical A–E value
 proof. A zero-cost `opencode/big-pickle` route and one disposable canonical
