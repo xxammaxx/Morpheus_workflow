@@ -20,6 +20,7 @@ from bench.runner.runner import (
     task_hash,
     task_set_hash,
     validate_task_security,
+    verify_canonical,
 )
 os.environ.setdefault("AUTODEV_V2_STATE", tempfile.mkdtemp(prefix="morpheus-bench-adapter-test-"))
 import adapter.harness_adapter_v2 as adapter
@@ -45,7 +46,7 @@ class FakeAdapter:
             return 200, {"status": "ok"}
         if path == "/v1/status/runtime":
             return 200, {"automatic_paid_agent_escalation": False, "providers": [{"provider": "opencode", "model": "big-pickle", "free_eligible": True, "actual_cost_proof": True}]}
-        return 200, {"data": {"job_type": "plan", "adaptive_metadata": self.metadata, "duration_ms": 1, "result": {"contract": "autodev.plan.v1", "targets": {"files": ["src/config.py"], "symbols": ["parse_mode"]}}}}
+        return 200, {"data": {"job_type": "plan", "adaptive_metadata": self.metadata, "duration_ms": 1, "selected_provider": "opencode", "selected_model": "big-pickle", "actual_provider": "opencode", "actual_model": "big-pickle", "result": {"contract": "autodev.plan.v1", "targets": {"files": ["src/config.py"], "symbols": ["parse_mode"]}}}}
 
 
 def test_all_task_sets_are_executable_and_frozen():
@@ -120,6 +121,13 @@ def test_runner_uses_canonical_n8n_and_persists_idempotent_result(tmp_path):
 
 def test_factor_policy_is_closed():
     assert FACTORS == ("BASELINE", "CONTEXT_COMPILER", "CONTEXT_PLUS_EXPLORER", "EXPERIENCE_TOP1", "EXPERIENCE_TOP3")
+
+
+def test_route_drift_invalidates_benchmark_result():
+    task = load_task_set("development")[0]
+    metadata = {"expected_provider": "opencode", "expected_model": "big-pickle"}
+    jobs = [{"job_type": "plan", "selected_provider": "opencode", "selected_model": "big-pickle", "actual_provider": "openrouter", "actual_model": "openrouter/free"}]
+    assert verify_canonical(task, {"state": "DONE"}, jobs, metadata) == ("FAIL", "ROUTE_IDENTITY_MISMATCH")
 
 
 @pytest.mark.parametrize(
