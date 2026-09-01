@@ -241,3 +241,35 @@ CONTROL_TOWER_MUTATING_E2E=NOT_PROVEN_PLAYWRIGHT_ABORT
 PLAYWRIGHT_ABORT_RUN_ID=NOT_RUN
 LATE_CALLBACK_RESURRECTION=PASS_CANONICAL_API_CLEANUP
 ```
+
+## ABORT UI probe — 2026-09-01
+
+The existing Control Tower was tested with a real Chromium session at the
+desktop viewport. The BFF authorization boundary behaved correctly: Viewer
+ABORT was rejected with `403`, while Operator ABORT on an already-aborted
+disposable run was accepted with `202`. CSRF and authentication passed; the
+probe observed zero console errors and zero HTTP 500 responses.
+
+The Run view exposed zero `ABORT_RUN` controls. No UI was added because this
+would be a product-surface change outside the requested E2E recovery scope.
+Therefore the required mutating click/confirmation/state-observation proof is
+not claimed.
+
+```text
+PLAYWRIGHT_REAL_RUNTIME=PASS_TARGETED_PROBE
+CONTROL_TOWER_MUTATING_E2E=NOT_PROVEN_PLAYWRIGHT_ABORT
+PLAYWRIGHT_ABORT_RUN_ID=run-mb-bf5449adfc207d6b52d4
+PLAYWRIGHT_ABORT_FINAL_STATE=ABORTED
+VIEWER_ABORT=DENY
+OPERATOR_ABORT=ALLOWED_BY_BFF
+CSRF_GATE=PASS
+AUTH_GATE=PASS
+DUPLICATE_CLICK_GATE=NOT_PROVEN_ABORT_UI_ACTION_ABSENT
+LOGICAL_ABORT_EFFECT_COUNT=1
+LATE_CALLBACK_RESURRECTION=PASS_CANONICAL_API_CLEANUP
+CONSOLE_ERRORS=0
+HTTP_500_COUNT=0
+CONTROL_TOWER_OPERATIONAL_ACCEPTANCE=GREEN_EXISTING_5_VIEWPORT_EVIDENCE
+```
+
+Probe evidence: [`abort-playwright-probe-2026-09-01.json`](../../evidence/playwright/control-tower/abort-playwright-probe-2026-09-01.json).

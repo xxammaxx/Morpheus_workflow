@@ -1,0 +1,108 @@
+{
+  "evidence_contract": "morpheus.bench.build-callback-recovery.v1",
+  "date": "2026-09-01",
+  "reproduction_run_id": "run-mb-bf5449adfc207d6b52d4",
+  "terminality_fix_run_id": "run-mb-4f2c8594725a8849db5d",
+  "n8n_execution_reproduction": "16679",
+  "n8n_execution_terminality_fix": "16849",
+  "timeline": [
+    {
+      "event": "PLAN_COMPLETED",
+      "source": "adapter",
+      "destination": "n8n",
+      "timestamp": "2026-09-01T06:26:28Z",
+      "run_id": "run-mb-bf5449adfc207d6b52d4",
+      "attempt_id": "run-mb-bf5449adfc207d6b52d4:plan:1",
+      "state_before": "PLANNING",
+      "state_after": "PLANNING",
+      "http_status": 200,
+      "contract": "autodev.plan.v1",
+      "result": "completed; PLAN_GATE_APPROVED"
+    },
+    {
+      "event": "BUILD_STATE_UPDATE",
+      "source": "n8n Build State Update",
+      "destination": "n8n autodev_runs",
+      "timestamp": "2026-09-01T06:26:28.401Z",
+      "run_id": "run-mb-bf5449adfc207d6b52d4",
+      "attempt_id": "run-mb-bf5449adfc207d6b52d4:build:1",
+      "state_before": "PLANNING",
+      "state_after": "BUILDING",
+      "http_status": 200,
+      "contract": "autodev.run-row.v1",
+      "result": "persisted row id 312"
+    },
+    {
+      "event": "BUILD_DISPATCH_REJECTED",
+      "source": "n8n Run Build / 40 AutoDev Build",
+      "destination": "adapter POST /v1/jobs",
+      "timestamp": "2026-09-01T06:26:32.607Z",
+      "run_id": "run-mb-bf5449adfc207d6b52d4",
+      "attempt_id": "run-mb-bf5449adfc207d6b52d4:build:1",
+      "state_before": "BUILDING",
+      "state_after": "BUILDING",
+      "http_status": 400,
+      "contract": "autodev.build-input.v1",
+      "result": "NO_ELIGIBLE_FREE_MODEL; no current zero-cost model satisfies task capabilities"
+    },
+    {
+      "event": "BUILD_FAILURE_TRANSITION",
+      "source": "n8n Build Failed Update",
+      "destination": "n8n autodev_runs",
+      "timestamp": "2026-09-01T08:34:04.979Z",
+      "run_id": "run-mb-4f2c8594725a8849db5d",
+      "attempt_id": "run-mb-4f2c8594725a8849db5d:build:1",
+      "state_before": "BUILDING",
+      "state_after": "FAILED",
+      "http_status": 200,
+      "contract": "autodev.run-row.v1",
+      "result": "decision=BLOCKED; reason_code=BUILD_FAILED"
+    }
+  ],
+  "failure_class": [
+    "BUILD_CALLBACK_NOT_SENT",
+    "BUILD_STATE_TRANSITION_MISSING",
+    "NO_ELIGIBLE_FREE_MODEL"
+  ],
+  "root_cause": {
+    "first_broken_edge": "adapter capability gate during n8n Build dispatch",
+    "provider_request_started": false,
+    "provider_response_received": false,
+    "adapter_terminal_result_available": false,
+    "callback_sent": false,
+    "callback_accepted": false,
+    "n8n_state_advanced": false,
+    "details": "The deployed opencode/big-pickle catalog entry is healthy and free, but BUILD_CAPABLE=false and no tool-probe PASS is present. The adapter rejects the build before creating build:1. The parent previously left BUILDING on that error; the minimal parent fix now persists FAILED."
+  },
+  "callback_contract": {
+    "implementation": "adapter resume_url envelope; no standalone versioned callback schema",
+    "fields": ["run_id", "job_id", "attempt_id", "job_type", "status", "result", "error"],
+    "canonical_path": "polling via GET /v1/jobs/{job_id}; no resume_url supplied by 40 AutoDev Build"
+  },
+  "workflow_provenance": {
+    "source_workflow_file_sha256": "5c472e8a827b7b8886ed9047ca65362cf195b15f2d34709be7bac3a3aed0c234",
+    "generated_workflow_canonical_sha256": "298ecce704e4cac8e0bb7102040a74648d4bde88b5cc5fa66565d64b067155f0",
+    "deployed_workflow_normalized_sha256": "298ecce704e4cac8e0bb7102040a74648d4bde88b5cc5fa66565d64b067155f0",
+    "workflow_drift": false,
+    "fix_head": "bfb4ba6",
+    "runtime_deployed": true
+  },
+  "runtime": {
+    "n8n_workflow_id": "qU9xIrDwQzKQqyjY",
+    "n8n_active": true,
+    "adapter_version": "2.0.0",
+    "n8n_version": "2.26.8",
+    "provider": "opencode",
+    "model": "big-pickle",
+    "actual_cost": 0.0,
+    "paid_requests": 0,
+    "deepseek_requests": 0
+  },
+  "regression": {
+    "before_fix": "failed: generated Run Build had no onError terminal-failure path",
+    "after_fix": "passed: Run Build continued to existing Build Failed transition",
+    "terminal_state": "FAILED",
+    "verification_result": "FAIL; expected because build capability is not eligible"
+  },
+  "holdout_execution_count": 0
+}

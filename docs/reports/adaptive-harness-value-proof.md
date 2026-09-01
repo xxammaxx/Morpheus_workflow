@@ -115,6 +115,31 @@ IMPROVEMENT_ATTRIBUTABLE=NO_EVIDENCE
 GENERALIZATION_PROVEN=NO
 ```
 
+## BUILD boundary recovery — 2026-09-01
+
+The current live trace supersedes the earlier generic timeout wording. n8n
+completed intake, baseline, research, and plan on the fixed free route
+`opencode/big-pickle`. At the Build boundary the adapter rejected the request
+with `NO_ELIGIBLE_FREE_MODEL` because its live catalog reports
+`BUILD_CAPABLE=false` and no tool-probe PASS. No build job or callback was
+created. The newly deployed parent error path terminalized the run as
+`FAILED`/`BUILD_FAILED`; it did not make the benchmark successful.
+
+```text
+BUILD_CALLBACK_ROOT_CAUSE=NO_ELIGIBLE_FREE_MODEL_BEFORE_JOB_CREATION
+BUILD_PARENT_TERMINALITY_FIX=DEPLOYED_AND_PROVEN
+RUNNER_SMOKE_BASELINE=FAILED_TERMINAL_CAPABILITY_GATE
+RUNNER_SMOKE_CONTEXT=NOT_RUN
+A_E=NOT_RUN
+VALIDATION=NOT_RUN
+HOLDOUT=NOT_RUN
+HOLDOUT_EXECUTION_COUNT=0
+ADAPTIVE_HARNESS_VALUE=NOT_PROVEN
+```
+
+No routing redesign, taskset change, paid request, DeepSeek request, model
+override, or weight change was made.
+
 Therefore the following gates are intentionally unanswered rather than
 green: Context Value, Explorer Value, Experience Value, and Small-Model
 Improvement. No claim is made that TOP-1 or TOP-3 is beneficial.
