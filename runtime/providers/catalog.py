@@ -8,7 +8,11 @@ import tempfile
 import urllib.parse
 
 from .adapters import build_adapters
-from .capabilities import CapabilityRegistry, normalize_live_capabilities
+from .capabilities import (
+    CapabilityRegistry,
+    merge_empirical_capabilities,
+    normalize_live_capabilities,
+)
 from .opencode import authenticated_api_key_providers, discover_auth_file, load_auth_file, refresh_catalog
 from .protocol import (
     FREE_EVIDENCE_STAGES,
@@ -168,6 +172,8 @@ class ProviderCatalog:
             for entry in self.entries:
                 if is_deepseek_identifier(entry.get("provider"), entry.get("model")):
                     apply_policy(entry, entry.get("provider"), entry.get("account_class", "unknown"))
+                normalize_live_capabilities(entry)
+                self._merge_empirical_evidence(entry)
                 free_eligibility(entry)
         except (OSError, ValueError, TypeError):
             self.entries = []
@@ -248,6 +254,14 @@ class ProviderCatalog:
         ]
         self.entries.append(copy.deepcopy(entry))
 
+    def _merge_empirical_evidence(self, entry):
+        evidence = self.capability_registry.get(
+            entry.get("provider"), entry.get("model")
+        )
+        if evidence:
+            merge_empirical_capabilities(entry, evidence)
+        return entry
+
     def refresh(self, providers=None, authenticated_providers=None):
         if authenticated_providers is not None:
             self.authenticated_providers = set(authenticated_providers)
@@ -289,10 +303,9 @@ class ProviderCatalog:
                     or provider in LOCAL_PROVIDERS
                 )
                 capability = self.capability_registry.get(provider, entry.get("model"))
-                if capability:
-                    entry["capabilities"] = capability.get("capabilities", {})
                 normalize_live_capabilities(entry)
                 self.add_entry(entry)
+                self._merge_empirical_evidence(self.entries[-1])
             if discovered:
                 changed.append(
                     {
@@ -341,6 +354,12 @@ class ProviderCatalog:
             )
             report = {"refresh": "PASS", "catalog_entries": len(live["entries"])}
             self.catalog_version = now_utc()
+            # A successful authoritative refresh makes omitted models
+            # unavailable. Their evidence remains persisted for a later
+            # rediscovery, but it cannot make a missing model routable.
+            for existing in self.entries:
+                if existing.get("provider") == "opencode":
+                    existing["availability"] = False
             for raw in live["entries"]:
                 provider = raw.get("provider")
                 if provider not in self.adapters or is_deepseek_identifier(provider, raw.get("model")):
@@ -383,6 +402,7 @@ class ProviderCatalog:
                     free_eligibility(entry, require_execution=False)
                 normalize_live_capabilities(entry)
                 self.add_entry(entry)
+                self._merge_empirical_evidence(self.entries[-1])
             # OpenCode's global catalog may omit local providers even when
             # the configured local adapter exposes a current authoritative
             # model list. Reconcile those providers separately.
