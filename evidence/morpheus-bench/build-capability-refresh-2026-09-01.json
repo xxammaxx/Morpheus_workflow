@@ -1,0 +1,19 @@
+{
+  "provider": "opencode",
+  "model": "big-pickle",
+  "probe_result": "PENDING_DEPLOYED_REPROBE",
+  "verified_at": null,
+  "ttl": 604800,
+  "expires_at": null,
+  "identity": {
+    "provider": "opencode",
+    "model": "big-pickle",
+    "probe_version": "morpheus-build-capability-v1",
+    "tool_contract_version": "morpheus-tool-contract-v1"
+  },
+  "before_refresh": null,
+  "after_refresh": null,
+  "router_eligible_before": null,
+  "router_eligible_after": null,
+  "actual_cost": 0
+}

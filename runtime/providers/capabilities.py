@@ -5,6 +5,8 @@ import json
 import os
 import tempfile
 import re
+import datetime as dt
+import fcntl
 
 from .protocol import now_utc
 
@@ -18,6 +20,14 @@ CAPABILITY_NAMES = (
     "STRUCTURED_OUTPUT_CAPABLE",
     "LONG_CONTEXT_CAPABLE",
 )
+
+DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60
+TOOL_CONTRACT_VERSION = "morpheus-tool-contract-v1"
+EMPIRICAL_CAPABILITY_FIELDS = {
+    "BUILD_CAPABLE",
+    "TOOL_CAPABLE",
+    "STRUCTURED_OUTPUT_CAPABLE",
+}
 
 
 def _contains_visual_input(value):
@@ -124,6 +134,79 @@ def normalize_live_capabilities(entry):
     return entry
 
 
+def _parse_timestamp(value):
+    try:
+        return dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+def evidence_identity(provider, model, evidence, expected_probe_version=None):
+    identity = evidence.get("identity") or {}
+    return {
+        "provider": identity.get("provider", evidence.get("provider")),
+        "model": identity.get("model", evidence.get("model")),
+        "probe_version": evidence.get("probe_version"),
+        "tool_contract_version": identity.get(
+            "tool_contract_version", evidence.get("tool_contract_version")
+        ),
+    } == {
+        "provider": provider,
+        "model": model,
+        "probe_version": expected_probe_version or evidence.get("probe_version"),
+        "tool_contract_version": TOOL_CONTRACT_VERSION,
+    }
+
+
+def merge_empirical_capabilities(entry, evidence, now=None, ttl_seconds=None,
+                                 expected_probe_version=None):
+    """Merge only fresh, identity-matching probe evidence into a live entry."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    ttl_seconds = int(ttl_seconds or os.environ.get(
+        "AUTODEV_PROVIDER_CAPABILITY_TTL_SECONDS", DEFAULT_TTL_SECONDS
+    ))
+    verified_at = evidence.get("verified_at")
+    verified = _parse_timestamp(verified_at)
+    age = (now - verified).total_seconds() if verified else None
+    identity_match = evidence_identity(
+        entry.get("provider"), entry.get("model"), evidence, expected_probe_version
+    )
+    fresh = age is not None and age >= 0 and age < ttl_seconds
+    passed = evidence.get("probe_status", evidence.get("passed")) == "PASS"
+    valid = bool(identity_match and fresh and passed)
+    if valid:
+        for name, value in (evidence.get("capabilities") or {}).items():
+            if name in EMPIRICAL_CAPABILITY_FIELDS and value is True:
+                entry.setdefault("capabilities", {})[name] = True
+        entry["capability_evidence"] = {
+            "provider": entry.get("provider"),
+            "model": entry.get("model"),
+            "probe_version": evidence.get("probe_version"),
+            "tool_contract_version": TOOL_CONTRACT_VERSION,
+            "verified_at": verified_at,
+            "expires_at": (verified + dt.timedelta(seconds=ttl_seconds)).isoformat(),
+            "evidence_hash": evidence.get("evidence_hash"),
+        }
+        entry["capability_status"] = "PROVEN"
+        entry["capability_needs_reprobe"] = False
+    else:
+        entry["capability_status"] = "NEEDS_REPROBE"
+        entry["capability_needs_reprobe"] = True
+        entry["capability_invalidation_reason"] = (
+            "IDENTITY_MISMATCH" if not identity_match else
+            "EXPIRED" if not fresh else "PROBE_NOT_PASS"
+        )
+        for name in EMPIRICAL_CAPABILITY_FIELDS:
+            entry.setdefault("capabilities", {})[name] = False
+    return {
+        "valid": valid,
+        "identity_match": identity_match,
+        "fresh": fresh,
+        "needs_reprobe": not valid,
+        "ttl_seconds": ttl_seconds,
+    }
+
+
 class CapabilityRegistry:
     def __init__(self, path=None):
         self.path = path or os.environ.get(
@@ -136,31 +219,50 @@ class CapabilityRegistry:
     def _load(self):
         try:
             with open(self.path) as stream:
-                self.entries = json.load(stream).get("entries", {})
-        except (OSError, ValueError):
+                document = json.load(stream)
+            entries = document.get("entries", {})
+            self.entries = entries if isinstance(entries, dict) else {}
+        except (OSError, ValueError, TypeError, AttributeError):
             self.entries = {}
 
     def save(self):
         directory = os.path.dirname(self.path) or "."
         os.makedirs(directory, exist_ok=True)
-        fd, temp = tempfile.mkstemp(prefix="provider-capabilities-", dir=directory)
-        try:
-            with os.fdopen(fd, "w") as stream:
-                json.dump(
-                    {
-                        "contract": "provider.model-capability.v1",
-                        "version": "v1",
-                        "entries": self.entries,
-                    },
-                    stream,
-                    sort_keys=True,
-                )
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temp, self.path)
-        finally:
-            if os.path.exists(temp):
-                os.unlink(temp)
+        lock_path = self.path + ".lock"
+        with open(lock_path, "a+") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                # Preserve entries written by a concurrent probe/refresh.
+                try:
+                    with open(self.path) as stream:
+                        document = json.load(stream)
+                    existing = document.get("entries", {})
+                    if isinstance(existing, dict):
+                        for key, value in existing.items():
+                            if key not in self.entries:
+                                self.entries[key] = value
+                except (OSError, ValueError, TypeError, AttributeError):
+                    pass
+                fd, temp = tempfile.mkstemp(prefix="provider-capabilities-", dir=directory)
+                try:
+                    with os.fdopen(fd, "w") as stream:
+                        json.dump(
+                            {
+                                "contract": "provider.model-capability.v1",
+                                "version": "v1",
+                                "entries": self.entries,
+                            },
+                            stream,
+                            sort_keys=True,
+                        )
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    os.replace(temp, self.path)
+                finally:
+                    if os.path.exists(temp):
+                        os.unlink(temp)
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
     def record(self, provider, model, capabilities, stage, passed, evidence=""):
         key = "%s/%s" % (provider, model)
@@ -181,6 +283,50 @@ class CapabilityRegistry:
         for name, value in capabilities.items():
             if name in CAPABILITY_NAMES:
                 current["capabilities"][name] = bool(value) and bool(passed)
+        self.save()
+        return current
+
+    def record_probe(self, provider, model, capabilities, probe_version,
+                     tool_contract_version=TOOL_CONTRACT_VERSION,
+                     passed=True, evidence_hash="", verified_at=None):
+        verified_at = verified_at or now_utc()
+        payload = {
+            "provider": provider,
+            "model": model,
+            "capabilities": {
+                name: bool(value) for name, value in capabilities.items()
+                if name in EMPIRICAL_CAPABILITY_FIELDS
+            },
+            "probe_status": "PASS" if passed else "FAIL",
+            "probe_version": probe_version,
+            "tool_contract_version": tool_contract_version,
+            "verified_at": verified_at,
+            "evidence_hash": evidence_hash,
+            "identity": {
+                "provider": provider,
+                "model": model,
+                "tool_contract_version": tool_contract_version,
+            },
+        }
+        current = self.entries.setdefault(
+            "%s/%s" % (provider, model),
+            {"provider": provider, "model": model, "capabilities": {}, "stages": {}},
+        )
+        current["provider"] = provider
+        current["model"] = model
+        current["capabilities"] = {
+            **(current.get("capabilities") or {}), **payload["capabilities"]
+        }
+        current["probe_version"] = probe_version
+        current["tool_contract_version"] = tool_contract_version
+        current["probe_status"] = payload["probe_status"]
+        current["verified_at"] = verified_at
+        current["evidence_hash"] = evidence_hash
+        current["identity"] = payload["identity"]
+        current["stages"]["BUILD_TOOL_PROBE"] = {
+            "passed": bool(passed), "evidence": evidence_hash[:200],
+            "verified_at": verified_at,
+        }
         self.save()
         return current
 
