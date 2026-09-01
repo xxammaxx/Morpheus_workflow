@@ -188,3 +188,10 @@ HOLDOUT_EXECUTION_COUNT=0
 ```
 
 No model capability was overridden and no paid or DeepSeek route was used.
+
+## Capability refresh recovery — 2026-09-01
+
+The post-fix BASELINE `run-mb-722b6de824551f771150` accepted Build, created
+`build:1`, and reached Big-Pickle. It terminalized with
+`CONTRACT_FAILURE / BUILD_NO_CHANGES`; the verifier did not execute on that
+failure path. `BASELINE_PIPELINE_READY=NO`, so CONTEXT_COMPILER was not run.

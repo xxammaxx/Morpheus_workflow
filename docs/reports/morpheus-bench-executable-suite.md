@@ -86,3 +86,26 @@ DEEPSEEK_REQUESTS=0
 ```
 
 Evidence: [`build-callback-recovery-2026-09-01.json`](../../evidence/morpheus-bench/build-callback-recovery-2026-09-01.json).
+
+## Capability-refresh recovery smoke — 2026-09-01
+
+After the capability refresh fix, the exactly-one-task BASELINE smoke reached
+the real Build boundary with `opencode/big-pickle`. The Build job was created,
+the provider was reached, and the job terminalized as a bounded task contract
+failure (`BUILD_NO_CHANGES`) at zero cost. The verifier did not execute on this
+Build-failure path, so the pipeline-readiness gate is intentionally not green
+and CONTEXT_COMPILER was not started.
+
+```text
+RUN_ID=run-mb-722b6de824551f771150
+TASK_ID=d-001
+FACTOR=BASELINE
+BUILD_DISPATCH_ACCEPTED=true
+BUILD_JOB_CREATED=true
+PROVIDER_REACHED=true
+TERMINAL_STATE=FAILED
+VERIFIER_EXECUTED=false
+TASK_SUCCESS=false
+BASELINE_PIPELINE_READY=NO
+CONTEXT_SMOKE=NOT_RUN_BASELINE_GATE
+```

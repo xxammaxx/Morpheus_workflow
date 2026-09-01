@@ -219,6 +219,15 @@ VALIDATION=NOT_RUN
 CANDIDATE_FREEZE=NOT_RUN
 HOLDOUT=NOT_RUN
 ADAPTIVE_HARNESS_VALUE=NOT_PROVEN
+
+## Capability refresh recovery — 2026-09-01
+
+The separate capability fix preserved fresh Build and Structured Output
+evidence across a real live catalog refresh, with health, zero-cost, and
+policy gates intact. The single-task BASELINE then created `build:1` and
+reached Big-Pickle, but terminalized with `CONTRACT_FAILURE / BUILD_NO_CHANGES`
+before verifier execution. `BASELINE_PIPELINE_READY=NO`; CONTEXT_COMPILER and
+any value claim remain deferred.
 ```
 
 ## 13. Superseding recovery and metadata evidence — 2026-08-31
