@@ -134,6 +134,8 @@ _provider_runtime = ProviderRuntime() if ProviderRuntime is not None else None
 # ------------------------------------------------------------------ config --
 BUILDER_CTID = "8001"
 BUILDER_WS_ROOT = "/var/lib/ghiw/workspaces"
+BUILDER_HOST_UID = int(os.environ.get("AUTODEV_BUILDER_HOST_UID", "101000"))
+BUILDER_HOST_GID = int(os.environ.get("AUTODEV_BUILDER_HOST_GID", "101000"))
 LOCAL_LLM_SRC = "/var/lib/ghiw/workspaces/provider-smoke-v3/local_llm"
 OPENCODE_BIN = os.environ.get("OPENCODE_BIN", "opencode")
 MORPHEUS_MODEL_ALIAS = "morpheus-dynamic-free"
@@ -1471,19 +1473,10 @@ def _opencode_script(
             }
         }
     }, separators=(",", ":"))
-    return (
-        "set -e; cd '%s'; "
-        "mkdir -p .opencode/agents; "
-        "cat > .opencode/agents/%s.md << 'EOFAGENT'\n%s\nEOFAGENT\n"
-        "export OPENCODE_CONFIG_CONTENT='%s'; "
-        "export PATH='/opt/dev-fabric/opencode:/usr/local/bin:/usr/bin:/bin'; "
+    opencode_command = (
         "timeout --kill-after=5s %ss %s run --agent %s --model '%s/%s' --format json %s "
         "> %s 2> %s"
     ) % (
-        ws,
-        agent_name,
-        agent_md,
-        config,
         attempt_timeout_s,
         OPENCODE_BIN,
         agent_name,
@@ -1492,6 +1485,30 @@ def _opencode_script(
         json.dumps(prompt),
         output_name,
         stderr_name,
+    )
+    sandbox_command = (
+        "bwrap --ro-bind / / --tmpfs %s --bind %s %s --proc /proc --dev /dev "
+        "--chdir %s /bin/sh -c %s"
+    ) % (
+        shlex.quote(BUILDER_WS_ROOT),
+        shlex.quote(ws),
+        shlex.quote(ws),
+        shlex.quote(ws),
+        shlex.quote(opencode_command),
+    )
+    return (
+        "set -e; cd %s; "
+        "mkdir -p .opencode/agents; "
+        "cat > .opencode/agents/%s.md << 'EOFAGENT'\n%s\nEOFAGENT\n"
+        "export OPENCODE_CONFIG_CONTENT='%s'; "
+        "export PATH='/opt/dev-fabric/opencode:/usr/local/bin:/usr/bin:/bin'; "
+        "%s"
+    ) % (
+        shlex.quote(ws),
+        agent_name,
+        agent_md,
+        config,
+        shlex.quote(sandbox_command),
     )
 
 
@@ -2018,6 +2035,11 @@ def _materialize_benchmark_fixture(ws, fixture):
     )
     if result.returncode != 0:
         raise RuntimeError("BENCHMARK_FIXTURE_GIT_INIT_FAILED")
+    ownership = pct_exec(
+        "chown -R %d:%d -- %s" % (BUILDER_HOST_UID, BUILDER_HOST_GID, qws)
+    )
+    if ownership.returncode != 0:
+        raise RuntimeError("BENCHMARK_FIXTURE_OWNERSHIP_FAILED")
     return ws
 
 
