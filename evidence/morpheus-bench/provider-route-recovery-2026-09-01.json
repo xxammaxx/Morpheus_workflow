@@ -1,0 +1,69 @@
+{
+  "date": "2026-09-01",
+  "run_id": "run-mb-0fb2aa3d13f9c5da0412",
+  "disposable_probe_run_id": "route-probe-fixture-20260901",
+  "stage_evidence": [
+    {
+      "stage": "research.code",
+      "requested_provider": "opencode",
+      "requested_model": "big-pickle",
+      "selected_provider": "opencode",
+      "selected_model": "big-pickle",
+      "actual_provider": null,
+      "actual_model": null,
+      "transport_result": "OPENCODE_PRE_REQUEST_FAILURE",
+      "fallback_triggered": true,
+      "fallback_reason": "transport failure treated as production failover",
+      "fallback_target_provider": "openrouter",
+      "fallback_target_model": "z-ai/glm-5.2:free",
+      "retry_count": 2,
+      "actual_cost": "UNKNOWN"
+    },
+    {
+      "stage": "research.docs",
+      "requested_provider": "opencode",
+      "requested_model": "big-pickle",
+      "selected_provider": "opencode",
+      "selected_model": "big-pickle",
+      "actual_provider": null,
+      "actual_model": null,
+      "transport_result": "OPENCODE_PRE_REQUEST_FAILURE",
+      "fallback_triggered": false,
+      "fallback_reason": "no eligible route remained after run-scoped exclusions",
+      "retry_count": 2,
+      "actual_cost": "UNKNOWN"
+    },
+    {
+      "stage": "research.tests",
+      "requested_provider": "opencode",
+      "requested_model": "big-pickle",
+      "selected_provider": "opencode",
+      "selected_model": "big-pickle",
+      "actual_provider": null,
+      "actual_model": null,
+      "transport_result": "OPENCODE_PRE_REQUEST_FAILURE",
+      "fallback_triggered": false,
+      "fallback_reason": "no eligible route remained after run-scoped exclusions",
+      "retry_count": 2,
+      "actual_cost": "UNKNOWN"
+    }
+  ],
+  "precheck": {
+    "provider": "opencode",
+    "model": "big-pickle",
+    "result": "PASS",
+    "meaning": "catalog/capability/zero-cost eligibility only"
+  },
+  "first_broken_route_edge": "adapter OpenCode invocation -> OpenCode writable runtime state",
+  "provider_route_root_cause": "bwrap ro-binds /, making /root/.local/share/opencode/opencode.log and opencode.db read-only; OpenCode exits before provider transport",
+  "fallback_policy_before_fix": "production failover enabled for opencode-builder transport failures",
+  "benchmark_policy_after_fix": "FAIL_CLOSED; bounded same-route retry only",
+  "opencode_version": "1.18.22",
+  "direct_forensic_result": "OpenCode failed with FileSystem.open(opencode.log), then PRAGMA wal_checkpoint(PASSIVE) when only the log directory was writable",
+  "paid_requests": 0,
+  "deepseek_requests": 0,
+  "actual_cost": "UNKNOWN",
+  "fix_head": "b0d649559c61b1c9a0ee7b2c0a48b18b636820da",
+  "deployment_status": "NOT_DEPLOYED_STACK_GATE",
+  "benchmark_valid": false
+}

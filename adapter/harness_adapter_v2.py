@@ -718,6 +718,14 @@ def _is_opencode_transport_failure(exc):
     ))
 
 
+def _benchmark_route_locked(payload):
+    metadata = payload.get("x-metadata") or {}
+    return bool(
+        isinstance(metadata.get("adaptive_metadata"), dict)
+        and metadata.get("route_policy") == "FAIL_CLOSED"
+    )
+
+
 def _select_next_opencode_route(run_id, job_id, job_type, payload):
     if _provider_runtime is None:
         raise NoEligibleProvider("NO_ELIGIBLE_FREE_MODEL")
@@ -847,6 +855,15 @@ def run_job_thread(
                             if not fatal and route_attempt == 1:
                                 route_attempt = 2
                                 continue
+                            if _benchmark_route_locked(payload):
+                                finalize_job(
+                                    job_id,
+                                    "failed",
+                                    error="benchmark route failed; fallback disabled",
+                                    failure_class="ROUTE_IDENTITY_MISMATCH",
+                                    failure_signature="BENCHMARK_ROUTE_FAIL_CLOSED",
+                                )
+                                return
                             next_route = _select_next_opencode_route(run_id, job_id, job_type, payload)
                             assert_runtime_model_allowed(
                                 next_route.get("selected_provider"),
@@ -1591,7 +1608,7 @@ def _opencode_observed_identity(ws, output_name="build.jsonl"):
     }
 
 
-def _opencode_proof(ws, expected_provider=None, expected_model=None, output_name="build.jsonl"):
+def _opencode_proof(ws, expected_provider=None, expected_model=None, output_name="build.jsonl", require_observed_identity=False):
     identity = _opencode_observed_identity(ws, output_name)
     identity_source = "EVENT"
     if expected_provider and identity["provider"] and identity["provider"] != expected_provider:
@@ -1605,7 +1622,7 @@ def _opencode_proof(ws, expected_provider=None, expected_model=None, output_name
         # CLI. Preserve provenance from that bounded invocation instead of
         # discarding a valid response and triggering a false transport
         # failover.
-        if expected_provider and expected_model:
+        if expected_provider and expected_model and not require_observed_identity:
             identity = {"provider": expected_provider, "model": expected_model}
             identity_source = "SELECTED_INVOCATION"
         else:
@@ -2180,7 +2197,10 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
     if execution.returncode != 0:
         raise ProviderFailure("opencode execution failure", retryable=True)
     text, events = _parse_opencode_jsonl(ws, output_name)
-    cloud_proof = _opencode_proof(ws, route_provider, route_model, output_name)
+    cloud_proof = _opencode_proof(
+        ws, route_provider, route_model, output_name,
+        require_observed_identity=_benchmark_route_locked(payload),
+    )
     note = text.strip()
     obj = _extract_json(text)
     if isinstance(obj, dict) and isinstance(obj.get("note"), str):
@@ -2374,7 +2394,10 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         return
     plan["x-metadata"].update({
         "model_alias": MORPHEUS_MODEL_ALIAS,
-        "provider_execution": _opencode_proof(ws, route_provider, route_model),
+        "provider_execution": _opencode_proof(
+            ws, route_provider, route_model,
+            require_observed_identity=_benchmark_route_locked(payload),
+        ),
     })
     finalize_job(
         job_id,
@@ -2517,7 +2540,10 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         raise ProviderFailure("opencode execution failure", retryable=True)
     build_ended_at = _now()
     text, events = _parse_opencode_jsonl(ws)
-    cloud_proof = _opencode_proof(ws, route_provider, route_model)
+    cloud_proof = _opencode_proof(
+        ws, route_provider, route_model,
+        require_observed_identity=_benchmark_route_locked(payload),
+    )
     obj = _extract_json(text)
     after = _git_snapshot(ws)
     files = _build_manifest(ws, after["entries"])
