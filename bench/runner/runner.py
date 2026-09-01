@@ -16,6 +16,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -40,6 +41,15 @@ FACTORS = (
     "EXPERIENCE_TOP3",
 )
 SPLITS = ("development", "validation", "holdout")
+TASK_SECURITY_PATTERNS = (
+    ("TASK_POLICY_OVERRIDE", r"\bignore\s+(?:all\s+)?(?:previous|prior|system)\b"),
+    ("TASK_HTML_PAYLOAD", r"<\s*(?:script|iframe|img|svg)\b|\bjavascript:|\bon\w+\s*="),
+    ("TASK_MERMAID_PAYLOAD", r"\b(?:flowchart|sequenceDiagram|classDiagram|graph\s+(?:TD|LR))\b"),
+    ("TASK_ROUTE_POLICY", r"\bdeepseek\b|\bpaid\b|\bbillable\b|automatic[_ -]?paid"),
+    ("TASK_ARBITRARY_SHELL", r"\$\(|`[^`]+`|\b(?:bash|sh|powershell|cmd)\s+-c\b|\b(?:subprocess|os\.system)\b"),
+    ("TASK_NETWORK_POLICY", r"\b(?:https?|ssh|curl|wget|socket)://|\b(?:network|internet)\b"),
+    ("TASK_SECRET_READ", r"(?:/etc/|/proc/|/var/run/|\.env\b|\b(?:secret|password|token|private key|ssh key)\b)"),
+)
 TERMINAL_STATES = {"DONE", "PLAN_BLOCKED", "BLOCKED", "FAILED", "SPLIT_REQUIRED", "ABORTED"}
 POLICIES = {
     "BASELINE": ("disabled", "disabled", "disabled"),
@@ -108,6 +118,17 @@ def task_hash(task: dict[str, Any]) -> str:
     return sha256_json(unsigned)
 
 
+def validate_task_security(task: dict[str, Any]) -> None:
+    """Reject hostile task content before it can reach a canonical run."""
+    content = canonical_json({
+        key: task.get(key)
+        for key in ("instruction", "input", "acceptance_criteria", "verifier")
+    })
+    for code, pattern in TASK_SECURITY_PATTERNS:
+        if re.search(pattern, content, re.IGNORECASE):
+            raise BenchmarkError(code)
+
+
 def load_task(path: Path, split: str) -> dict[str, Any]:
     try:
         task = json.loads(path.read_text(encoding="utf-8"))
@@ -134,6 +155,7 @@ def load_task(path: Path, split: str) -> dict[str, Any]:
         raise BenchmarkError(f"TASK_PRODUCTION_MUTATION:{path.name}")
     if task["cleanup"].get("required") is not True:
         raise BenchmarkError(f"TASK_CLEANUP_REQUIRED:{path.name}")
+    validate_task_security(task)
     files, fixture_digest = load_fixture(task["setup"]["fixture_ref"])
     if task["fixture_hash"] != fixture_digest:
         raise BenchmarkError(f"FIXTURE_HASH_MISMATCH:{path.name}")
