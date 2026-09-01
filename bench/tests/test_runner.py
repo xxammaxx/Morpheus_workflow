@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -122,6 +123,13 @@ def test_factor_policy_is_closed():
 
 def test_adapter_fixture_materialization_is_bounded(monkeypatch, tmp_path):
     monkeypatch.setattr(adapter, "BUILDER_WS_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        adapter,
+        "pct_exec",
+        lambda command, timeout=adapter.DEFAULT_TIMEOUT_S: subprocess.run(
+            ["bash", "-c", command], capture_output=True, text=True, timeout=timeout
+        ),
+    )
     workspace = tmp_path / "run-1"
     assert adapter._materialize_benchmark_fixture(str(workspace), {"files": {"src/a.py": "VALUE = 1\n"}}) == str(workspace)
     assert (workspace / "src/a.py").read_text(encoding="utf-8") == "VALUE = 1\n"
