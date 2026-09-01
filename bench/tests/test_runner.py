@@ -130,6 +130,12 @@ def test_route_drift_invalidates_benchmark_result():
     assert verify_canonical(task, {"state": "DONE"}, jobs, metadata) == ("FAIL", "ROUTE_IDENTITY_MISMATCH")
 
 
+def test_benchmark_route_lock_is_scoped_to_benchmark_metadata():
+    assert adapter._benchmark_route_locked({"x-metadata": {"adaptive_metadata": {}, "route_policy": "FAIL_CLOSED"}})
+    assert not adapter._benchmark_route_locked({"x-metadata": {"route_policy": "FAIL_CLOSED"}})
+    assert not adapter._benchmark_route_locked({"x-metadata": {"adaptive_metadata": {}}})
+
+
 @pytest.mark.parametrize(
     ("value", "code"),
     [
