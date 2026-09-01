@@ -19,6 +19,12 @@ bounded fixture path is a disposable workspace. No task can name an absolute
 path, parent traversal, symlink escape, shell command, paid provider, or
 DeepSeek route.
 
+The loader also fails closed on untrusted instruction/input content: policy
+override attempts, HTML/JavaScript, Mermaid payloads, paid or DeepSeek route
+requests, shell construction, network access, and secret-file access are
+covered by negative tests. The task security gate is `20 passed` in the
+benchmark test module.
+
 ## Frozen splits
 
 ```text
