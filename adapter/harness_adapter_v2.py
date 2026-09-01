@@ -134,8 +134,13 @@ _provider_runtime = ProviderRuntime() if ProviderRuntime is not None else None
 # ------------------------------------------------------------------ config --
 BUILDER_CTID = "8001"
 BUILDER_WS_ROOT = "/var/lib/ghiw/workspaces"
-BUILDER_HOST_UID = int(os.environ.get("AUTODEV_BUILDER_HOST_UID", "101000"))
-BUILDER_HOST_GID = int(os.environ.get("AUTODEV_BUILDER_HOST_GID", "101000"))
+# OpenCode is launched as container-root inside bwrap.  In unprivileged CT
+# 8001 that identity is mapped to host 100000:100000; using the container's
+# ``builder`` identity (101000:101000) leaves a 0700 run tree inaccessible
+# once bwrap drops the host-side DAC override.  Keep overrides explicit for
+# deployments with a different narrow idmap.
+BUILDER_HOST_UID = int(os.environ.get("AUTODEV_BUILDER_HOST_UID", "100000"))
+BUILDER_HOST_GID = int(os.environ.get("AUTODEV_BUILDER_HOST_GID", "100000"))
 LOCAL_LLM_SRC = "/var/lib/ghiw/workspaces/provider-smoke-v3/local_llm"
 OPENCODE_BIN = os.environ.get("OPENCODE_BIN", "opencode")
 MORPHEUS_MODEL_ALIAS = "morpheus-dynamic-free"

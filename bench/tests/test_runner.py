@@ -157,6 +157,10 @@ def test_untrusted_task_content_fails_closed(value, code):
 
 def test_adapter_fixture_materialization_is_bounded(monkeypatch, tmp_path):
     monkeypatch.setattr(adapter, "BUILDER_WS_ROOT", str(tmp_path))
+    # The live materializer chowns through pct to the mapped bwrap identity;
+    # this local unit test runs without a CT and therefore uses the test user.
+    monkeypatch.setattr(adapter, "BUILDER_HOST_UID", os.getuid())
+    monkeypatch.setattr(adapter, "BUILDER_HOST_GID", os.getgid())
     monkeypatch.setattr(
         adapter,
         "pct_exec",
