@@ -247,6 +247,20 @@ class ProviderCatalog:
             ):
                 if key in previous:
                     entry[key] = previous[key]
+            # Preserve previously proven policy evidence across a metadata
+            # refresh, but only while the refreshed route remains explicitly
+            # zero-priced. Health, availability, and current pricing remain
+            # authoritative live fields and are never copied here.
+            if previous.get("free_eligible") and entry.get("route_cost_proven") is True:
+                for key in (
+                    "usage_terms_permit",
+                    "privacy_class",
+                    "privacy_policy",
+                    "account_class_evidence",
+                    "zero_cost_verified",
+                ):
+                    if key in previous:
+                        entry[key] = previous[key]
         self.entries = [
             old
             for old in self.entries
