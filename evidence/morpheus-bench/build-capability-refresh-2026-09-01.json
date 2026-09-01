@@ -1,0 +1,57 @@
+{
+  "provider": "opencode",
+  "model": "big-pickle",
+  "probe_result": "PASS",
+  "verified_at": "2026-09-01T09:47:19+00:00",
+  "ttl": 604800,
+  "expires_at": "2026-09-08T09:47:19+00:00",
+  "identity": {
+    "provider": "opencode",
+    "model": "big-pickle",
+    "probe_version": "morpheus-build-capability-v1",
+    "tool_contract_version": "morpheus-tool-contract-v1"
+  },
+  "before_refresh": {
+    "build_capable": true,
+    "structured_output_capable": true,
+    "tool_capable": true,
+    "health": "HEALTHY",
+    "zero_cost": true,
+    "available": true
+  },
+  "after_refresh": {
+    "build_capable": true,
+    "structured_output_capable": true,
+    "tool_capable": true,
+    "health": "HEALTHY",
+    "zero_cost": true,
+    "available": true
+  },
+  "router_eligible_before": true,
+  "router_eligible_after": true,
+  "identity_match": true,
+  "fresh": true,
+  "needs_reprobe": false,
+  "refresh_report": {"refresh": "PASS", "catalog_entries": 1038},
+  "deployed_source_head": "12bd4e9907a6ebb4269ba7af58acf42b6dfdee51",
+  "evidence_hash": "4de1f02a2d68a7acd59321ef2182ef8573716827be99fd9e5f09b5a4498849bd",
+  "baseline_smoke": {
+    "run_id": "run-mb-722b6de824551f771150",
+    "task_id": "d-001",
+    "factor": "BASELINE",
+    "task_hash": "1d4adbcb595596a40e31ef84f938c12d3f396fe5d11f06e8f65a3fea57ee46f6",
+    "fixture_hash": "3c31b7cda4be588d4aa11a1c052a3b089e751f847d8c333c029006e6814f62c3",
+    "build_dispatch_accepted": true,
+    "build_job_created": true,
+    "provider_reached": true,
+    "terminal_state": "FAILED",
+    "verifier_executed": false,
+    "task_success": false,
+    "pipeline_ready": false,
+    "failure_class": "CONTRACT_FAILURE",
+    "failure_signature": "BUILD_NO_CHANGES",
+    "actual_cost": 0
+  },
+  "context_smoke": "NOT_RUN_BASELINE_PIPELINE_GATE",
+  "actual_cost": 0
+}

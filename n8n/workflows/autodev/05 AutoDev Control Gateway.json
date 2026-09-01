@@ -1,0 +1,1733 @@
+{
+  "name": "05 AutoDev Control Gateway",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "autodev/control",
+        "responseMode": "responseNode",
+        "options": {},
+        "authentication": "headerAuth"
+      },
+      "id": "control-webhook",
+      "name": "Control Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "bNrV3DszwdD7hXuY",
+          "name": "autodev-api-auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw=$json.body||$json, e=raw&&typeof raw==='object'?raw:{}, p=e.payload;\nconst op=new Set(['START_PROJECT','START_ISSUE','START_REPO_ANALYSIS','START_BLUEPRINT_PROJECT','PAUSE_RUN','RESUME_RUN','ABORT_RUN','RETRY_STAGE','RETRY_RUN','EXCLUDE_MODEL_FOR_RUN','EXCLUDE_PROVIDER_FOR_RUN','APPROVE_HUMAN_GATE']);\nconst adm=new Set(['RUN_ROUTER_TEST','RUN_MCP_TEST','RUN_SYSTEM_TEST','REFRESH_CATALOG','SYNC_CREDENTIALS']);\nconst errors=[]; const command=e.command, role=e.actor&&e.actor.role;\nif(e.contract!=='autodev.control-command.v1'||e.version!=='v1')errors.push('CONTRACT_INVALID');\nif(!op.has(command)&&!adm.has(command))errors.push('COMMAND_NOT_ALLOWED');\nif(!['OPERATOR','ADMIN'].includes(role))errors.push('ROLE_INVALID');\nif(adm.has(command)&&role!=='ADMIN')errors.push('ROLE_FORBIDDEN');\nif(!/^[A-Za-z0-9_.:-]{3,96}$/.test(String(e.correlation_id||'')))errors.push('CORRELATION_ID_INVALID');\nif(!e.target||typeof e.target!=='object'||Array.isArray(e.target))errors.push('TARGET_INVALID');\nconst targetKeys=new Set(['run_id','project_id','issue_number']);\nif(Object.keys(e.target||{}).some(k=>!targetKeys.has(k)))errors.push('TARGET_KEY_NOT_ALLOWED');\nif(Object.values(e.target||{}).some(v=>(typeof v!=='string'&&typeof v!=='number')||typeof v==='boolean'||!/^[A-Za-z0-9_.:#-]{1,96}$/.test(String(v))))errors.push('TARGET_VALUE_INVALID');\nif(!p||typeof p!=='object'||Array.isArray(p))errors.push('PAYLOAD_INVALID');\nif(['PAUSE_RUN','ABORT_RUN','RETRY_STAGE','RETRY_RUN','EXCLUDE_MODEL_FOR_RUN','EXCLUDE_PROVIDER_FOR_RUN','APPROVE_HUMAN_GATE'].includes(command)&&!/^run-[A-Za-z0-9_-]{6,60}$/.test(String(p&&p.run_id||'')))errors.push('RUN_ID_INVALID');\nif(command==='RESUME_RUN'){\n  const continuationKeys=new Set(['project_id','source_run_id','run_id','issue_number','continuation_reason','requested_action']);\n  if(Object.keys(p||{}).some(k=>!continuationKeys.has(k)))errors.push('CONTINUATION_FIELD_NOT_ALLOWED');\n  if(!/^[A-Za-z0-9_.:#-]{1,96}$/.test(String(p&&p.project_id||'')))errors.push('PROJECT_ID_INVALID');\n  if(!/^run-[A-Za-z0-9_-]{1,60}$/.test(String(p&&p.source_run_id||p&&p.run_id||'')))errors.push('SOURCE_RUN_ID_INVALID');\n  if(p&&p.issue_number!==undefined&&!/^[A-Za-z0-9_.:#-]{1,96}$/.test(String(p.issue_number)))errors.push('ISSUE_NUMBER_INVALID');\n  if(!String(p&&p.continuation_reason||'').trim()||String(p.continuation_reason).length>240)errors.push('CONTINUATION_REASON_INVALID');\n  if(!String(p&&p.requested_action||'').trim()||String(p.requested_action).length>240)errors.push('REQUESTED_ACTION_INVALID');\n}\nconst repo=String(p&&p.repository_url||''); let parts=[];\nif(repo){const match=repo.match(/^https:\\/\\/github\\.com\\/([^/]+)\\/([^/?#]+)$/);if(!match)errors.push('REPOSITORY_URL_INVALID');else parts=[match[1],match[2]]}\nif(['START_ISSUE','START_REPO_ANALYSIS'].includes(command)&&!repo)errors.push('REPOSITORY_REQUIRED');\nif(command==='START_ISSUE'&&!(/^#?[1-9][0-9]{0,8}$/.test(String(p&&p.issue||''))||/^https:\\/\\/github\\.com\\/[^/]+\\/[^/]+\\/issues\\/[1-9][0-9]{0,8}$/.test(String(p&&p.issue||''))))errors.push('ISSUE_INVALID');\nif(['START_PROJECT','START_BLUEPRINT_PROJECT'].includes(command)&&typeof(p&&p.blueprint_md)!=='string')errors.push('BLUEPRINT_REQUIRED');\nif(typeof(p&&p.blueprint_md)==='string'&&p.blueprint_md.length>512000)errors.push('BLUEPRINT_TOO_LARGE');\nif(Object.keys(p||{}).some(k=>/authorization|cookie|token|secret|password|api[_-]?key|private[_-]?key|reasoning|chain.?of.?thought/i.test(k)))errors.push('SECRET_FIELD_REJECTED');\nif(/deepseek/i.test(String(p&&p.model||'')+' '+String(p&&p.provider||'')))errors.push('DEEPSEEK_RETIRED');\nconst issueRaw=String(p&&p.issue||''), issue=parts.length===2?(issueRaw.match(/\\/issues\\/([1-9][0-9]{0,8})$/)||[])[1]||issueRaw.replace(/^#/,''):'';\nreturn [{json:{valid:!errors.length,errors,envelope:e,command,role,payload:p||{},github_owner:parts[0]||'',github_repo:parts[1]||'',issue_url:parts.length===2&&issue?`https://api.github.com/repos/${parts[0]}/${parts[1]}/issues/${issue}`:'',route:command,audit_row:{timestamp:new Date().toISOString(),actor:'control-tower',role,command,target:JSON.stringify(e.target||{}),project_id:p&&p.project_id||'',run_id:p&&p.run_id||'',result:errors.length?'REJECTED':'ACCEPTED',correlation_id:String(e.correlation_id||'')}}}];"
+      },
+      "id": "validate-control-command",
+      "name": "Validate Control Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.valid === true}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "command-valid?",
+      "name": "Command Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({status: 'error', code: 'COMMAND_REJECTED', errors: $json.errors || []}) }}"
+      },
+      "id": "reject-command",
+      "name": "Reject Command",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        780,
+        -170
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables//rows",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({data: [$json.audit_row], returnType: 'all'}) }}",
+        "options": {}
+      },
+      "id": "persist-command-audit",
+      "name": "Persist Command Audit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        780,
+        170
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const v=$('Validate Control Command').first().json; return [{json:v}];"
+      },
+      "id": "restore-valid-command",
+      "name": "Restore Valid Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        170
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.route}}",
+              "rightValue": "=START_ISSUE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "is-issue-start?",
+      "name": "Is Issue Start?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        170
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.issue_url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "sendBody": false,
+        "specifyBody": "json",
+        "jsonBody": "={{ {} }}",
+        "options": {}
+      },
+      "id": "fetch-github-issue",
+      "name": "Fetch GitHub Issue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1560,
+        170
+      ],
+      "credentials": {
+        "githubApi": null
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const v=$('Restore Valid Command').first().json,i=$json||{},p=v.payload,n=Number(p.issue||i.number||0),repositoryRef=String(p.repository_url||'').replace(/^https:\\/\\/github\\.com\\//,'').replace(/\\/$/,''); const task={task_ref:`github:${v.github_owner}/${v.github_repo}#${n}`,repository_ref:repositoryRef,workspace:p.workspace||`${v.github_owner}-${v.github_repo}`,task_description:[i.title,i.body,p.additional_instruction].filter(Boolean).join('\\n\\n'),acceptance_hint:p.acceptance_hint||'',max_attempts:Number(p.max_attempts||2),'x-metadata':{project_id:p.project_id||'',project_mode:p.project_mode||'MANUAL',issue_number:n,correlation_id:v.envelope.correlation_id}}; return [{json:{start_request:{task,backend:p.backend||'opencode-builder-8001',fixture:p.fixture||null}}}];"
+      },
+      "id": "prepare-canonical-issue-start",
+      "name": "Prepare Canonical Issue Start",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        170
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/webhook/autodev/start",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.start_request) }}",
+        "options": {}
+      },
+      "id": "start-canonical-run",
+      "name": "Start Canonical Run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2080,
+        170
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "bNrV3DszwdD7hXuY",
+          "name": "autodev-api-auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const v=$('Restore Valid Command').first().json; return [{json:{status:'ACCEPTED',command:v.command,correlation_id:v.envelope.correlation_id,result:$json,source:'n8n-control-gateway'}}];"
+      },
+      "id": "issue-start-result",
+      "name": "Issue Start Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2340,
+        170
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-issue-start",
+      "name": "Respond Issue Start",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        170
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.route}}",
+              "rightValue": "=RUN_ROUTER_TEST",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "is-router-test?",
+      "name": "Is Router Test?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://192.168.1.136:8081/v1/status/runtime",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": false,
+        "specifyBody": "json",
+        "jsonBody": "={{ {} }}",
+        "options": {}
+      },
+      "id": "read-router-runtime",
+      "name": "Read Router Runtime",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1560,
+        340
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Jc8UTFOaP9WCcnIt",
+          "name": "autodev-harness-token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=$json.data||$json;\nconst providers=Array.isArray(r.providers)?r.providers:[];\nconst p=$('Restore Valid Command').first().json.payload||{};\nconst name=String(p.test||'Dynamischer Router');\nconst deep=providers.some(x=>/deepseek/i.test(String(x.provider||'')+' '+String(x.model||'')));\nconst free=providers.filter(x=>x.free_eligible===true&&x.catalog_eligible!==false&&x.router_eligible!==false);\nconst tools=free.filter(x=>x.capabilities&&x.capabilities.TOOL_CAPABLE===true);\nconst vision=free.filter(x=>x.capabilities&&x.capabilities.VISION_CAPABLE===true);\nconst structured=free.filter(x=>x.capabilities&&x.capabilities.STRUCTURED_OUTPUT_CAPABLE===true);\nconst healthy=providers.filter(x=>x.health==='HEALTHY');\nconst checksByTest={\n  'Dynamischer Router':{free_first_enabled:r.free_first_enabled===true,eligible_free_route:free.length>0,paid_fallback_disabled:r.automatic_paid_agent_escalation===false,deepseek_excluded:!deep},\n  'Modellkatalog':{catalog_observed:Boolean(r.checked_at),providers_observed:providers.length>0,deepseek_excluded:!deep},\n  'Free Pool':{catalog_refreshed:Boolean(r.checked_at),eligible_zero_cost_count:free.length},\n  'Credential-Erkennung':{provider_health_observed:healthy.length>0,credential_values_not_exposed:providers.every(x=>!('key' in x)&&!('token' in x)&&!('secret' in x))},\n  'Capability Filter':{capabilities_observed:providers.some(x=>x.capabilities&&typeof x.capabilities==='object'),eligible_pool_bounded:free.length<=providers.length,deepseek_excluded:!deep},\n  'Tool Routing':{tool_capable_zero_cost_selected:tools.length>0,free_route_available:free.length>0},\n  'Vision Routing':{vision_capable_zero_cost_selected:vision.length>0,free_route_available:free.length>0},\n  'Structured Output':{structured_output_zero_cost_available:structured.length>0,free_route_available:free.length>0},\n  'Transport Failover':{free_route_available:free.length>0,lease_state_observed:Boolean(r.provider_lease_state),paid_fallback_disabled:r.automatic_paid_agent_escalation===false},\n  'Semantic Failover':{free_route_available:free.length>0,lease_state_observed:Boolean(r.provider_lease_state),deepseek_excluded:!deep},\n  'Run Blacklist':{quarantined_routes_excluded:free.every(x=>x.quarantined!==true),free_route_available:free.length>0},\n  'Paid Fallback Sperre':{paid_fallback_unavailable:r.automatic_paid_agent_escalation===false,free_first_enabled:r.free_first_enabled===true},\n  'DeepSeek Sperre':{catalog_ineligible:!deep,explicit_request_rejected:true,provider_contact:false},\n};\nconst checks=checksByTest[name]||checksByTest['Dynamischer Router'];\nconst ok=name==='DeepSeek Sperre'?checks.catalog_ineligible&&checks.explicit_request_rejected&&!checks.provider_contact:Object.values(checks).every(x=>x===true||typeof x==='number'&&x>0);\nreturn [{json:{status:ok?'OK':'NICHT_OK',module:'router',test:name,source:'adapter',checks,details:{diagnostic:name,provider_count:providers.length,healthy_provider_count:healthy.length,eligible_zero_cost:free.length,tool_capable_zero_cost:tools.length,vision_capable_zero_cost:vision.length,structured_output_zero_cost:structured.length,lease_state_observed:Boolean(r.provider_lease_state)}}}];"
+      },
+      "id": "router-test-result",
+      "name": "Router Test Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-router-test",
+      "name": "Respond Router Test",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.route}}",
+              "rightValue": "=RUN_MCP_TEST",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "is-mcp-test?",
+      "name": "Is MCP Test?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        510
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{status:'BLOCKIERT_EXTERN',module:'mcp',test:String(($('Restore Valid Command').first().json.payload||{}).test||''),checks:{server_configured:false},safe_error_message:'Runner SSH credential unavailable'}}];"
+      },
+      "id": "mcp-test-result",
+      "name": "MCP Test Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        510
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-mcp-test",
+      "name": "Respond MCP Test",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        510
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.route}}",
+              "rightValue": "=RUN_SYSTEM_TEST",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "is-system-test?",
+      "name": "Is System Test?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://192.168.1.52:5678/api/v1/workflows?limit=1",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": false,
+        "specifyBody": "json",
+        "jsonBody": "={{ {} }}",
+        "options": {}
+      },
+      "id": "read-n8n-system-status",
+      "name": "Read n8n System Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1560,
+        680
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://192.168.1.136:8081/v1/status/runtime",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": false,
+        "specifyBody": "json",
+        "jsonBody": "={{ {} }}",
+        "options": {}
+      },
+      "id": "read-adapter-runtime",
+      "name": "Read Adapter Runtime",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1820,
+        680
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Jc8UTFOaP9WCcnIt",
+          "name": "autodev-harness-token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const n=$('Read n8n System Status').first().json.data||$('Read n8n System Status').first().json,a=$json.data||$json,n8nOk=Array.isArray(n)||Array.isArray(n.data),adapterOk=Boolean(a)&&a.free_first_enabled===true&&a.automatic_paid_agent_escalation===false,deepseekOk=a.deepseek_policy&&Object.values(a.deepseek_policy).every(v=>v===false),opencodeOk=a.ct8001_reachable===true&&a.opencode_binary_present===true&&/^\\d+\\.\\d+\\.\\d+/.test(String(a.opencode_version||'')),routerOk=adapterOk&&deepseekOk&&Array.isArray(a.providers)&&a.providers.some(p=>p.free_eligible===true),modules={n8n:n8nOk?'OK':'NICHT_OK',adapter:adapterOk?'OK':'NICHT_OK',opencode:opencodeOk?'OK':'NICHT_OK',router:routerOk?'OK':'NICHT_OK',mcp:'BLOCKIERT_EXTERN'},ok=n8nOk&&adapterOk&&opencodeOk&&routerOk;return[{json:{status:ok?'OK':'NICHT_OK',overall:ok?'OK':'NICHT_OK',modules,optional_modules:['MCP'],source:'n8n-diagnostic-workflow',details:{n8n:n8nOk?'workflow API reachable':'workflow API unavailable',adapter:adapterOk?'runtime reachable':'runtime policy or adapter unavailable',opencode:opencodeOk?'CT8001 and OpenCode executable reachable':'OpenCode worker unavailable',router:routerOk?'eligible free route and deny policy valid':'router policy invalid or no eligible free route',mcp:'SSH diagnostic unavailable'}}}];"
+      },
+      "id": "system-test-result",
+      "name": "System Test Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2340,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-system-test",
+      "name": "Respond System Test",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.route}}",
+              "rightValue": "=REFRESH_CATALOG",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "is-catalog-refresh?",
+      "name": "Is Catalog Refresh?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        850
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.136:8081/v1/catalog/refresh",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({correlation_id:$json.envelope.correlation_id}) }}",
+        "options": {}
+      },
+      "id": "refresh-provider-catalog",
+      "name": "Refresh Provider Catalog",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1560,
+        850
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Jc8UTFOaP9WCcnIt",
+          "name": "autodev-harness-token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const v=$('Restore Valid Command').first().json;return[{json:{status:$json.status||'NICHT_OK',module:'catalog',test:'REFRESH_CATALOG',command:v.command,correlation_id:v.envelope.correlation_id,result:$json,source:'n8n-control-gateway'}}];"
+      },
+      "id": "catalog-refresh-result",
+      "name": "Catalog Refresh Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        850
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-catalog-refresh",
+      "name": "Respond Catalog Refresh",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        850
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.route}}",
+              "rightValue": "=SYNC_CREDENTIALS",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "is-credential-sync?",
+      "name": "Is Credential Sync?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        1020
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.136:8081/v1/credentials/sync",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({correlation_id:$json.envelope.correlation_id}) }}",
+        "options": {}
+      },
+      "id": "sync-provider-credentials",
+      "name": "Sync Provider Credentials",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1560,
+        1020
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Jc8UTFOaP9WCcnIt",
+          "name": "autodev-harness-token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const v=$('Restore Valid Command').first().json;return[{json:{status:$json.status||'NICHT_OK',module:'credentials',test:'SYNC_CREDENTIALS',command:v.command,correlation_id:v.envelope.correlation_id,result:$json,source:'n8n-control-gateway'}}];"
+      },
+      "id": "credential-sync-result",
+      "name": "Credential Sync Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        1020
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-credential-sync",
+      "name": "Respond Credential Sync",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        1020
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.route}}",
+              "rightValue": "=START_REPO_ANALYSIS",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "is-repo-analysis?",
+      "name": "Is Repo Analysis?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        850
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.github.com/repos/{{ $json.github_owner }}/{{ $json.github_repo }}/issues?state=open&per_page=100",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "sendBody": false,
+        "specifyBody": "json",
+        "jsonBody": "={{ {} }}",
+        "options": {}
+      },
+      "id": "fetch-repository-issues",
+      "name": "Fetch Repository Issues",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1560,
+        850
+      ],
+      "credentials": {
+        "githubApi": null
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items=$input.all();return[{json:{issues:items.map(item=>item.json)}}];"
+      },
+      "id": "pack-repository-issues",
+      "name": "Pack Repository Issues",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        850
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/webhook/autodev/project/analyse",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({envelope: $('Restore Valid Command').first().json.envelope, issues: $json.issues}) }}",
+        "options": {}
+      },
+      "id": "run-project-analysis",
+      "name": "Run Project Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2080,
+        850
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "bNrV3DszwdD7hXuY",
+          "name": "autodev-api-auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-repo-analysis",
+      "name": "Respond Repo Analysis",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        2340,
+        850
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.route === 'START_BLUEPRINT_PROJECT' || $json.route === 'START_PROJECT'}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "is-blueprint-start?",
+      "name": "Is Blueprint Start?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        1020
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/webhook/autodev/project/blueprint",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Restore Valid Command').first().json.envelope) }}",
+        "options": {}
+      },
+      "id": "run-blueprint-bootstrap",
+      "name": "Run Blueprint Bootstrap",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1560,
+        1020
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "bNrV3DszwdD7hXuY",
+          "name": "autodev-api-auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.route}}",
+              "rightValue": "=RESUME_RUN",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "is-project-resume?",
+      "name": "Is Project Resume?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        1190
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/webhook/autodev/project/reassess",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(Object.assign({}, $('Restore Valid Command').first().json.envelope.payload, {command: 'RESUME_RUN', correlation_id: $('Restore Valid Command').first().json.envelope.correlation_id, requested_by: $('Restore Valid Command').first().json.role})) }}",
+        "options": {}
+      },
+      "id": "reassess-project",
+      "name": "Reassess Project",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1560,
+        1190
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "bNrV3DszwdD7hXuY",
+          "name": "autodev-api-auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const v=$('Restore Valid Command').first().json;return[{json:{status:$json.status||'ACCEPTED',command:v.command,correlation_id:v.envelope.correlation_id,result:$json,source:'n8n-project-reassessment'}}];"
+      },
+      "id": "project-resume-result",
+      "name": "Project Resume Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        1190
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-project-resume",
+      "name": "Respond Project Resume",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        1190
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{['PAUSE_RUN','RESUME_RUN','ABORT_RUN','RETRY_STAGE','RETRY_RUN','EXCLUDE_MODEL_FOR_RUN','EXCLUDE_PROVIDER_FOR_RUN','APPROVE_HUMAN_GATE'].includes($json.route)}}",
+              "rightValue": "=true",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "is-canonical-run-action?",
+      "name": "Is Canonical Run Action?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const v=$('Restore Valid Command').first().json,p=v.payload||{},runId=String(p.run_id||''),filter={type:'and',filters:[{columnName:'run_id',condition:'eq',value:runId}]};return[{json:{command:v.command,correlation_id:v.envelope.correlation_id,run_id:runId,payload:p,filter,requested_at:new Date().toISOString()}}];"
+      },
+      "id": "prepare-canonical-run-action",
+      "name": "Prepare Canonical Run Action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": false,
+        "specifyBody": "json",
+        "jsonBody": "={{ {} }}",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filter",
+              "value": "={{ JSON.stringify($json.filter) }}"
+            }
+          ]
+        }
+      },
+      "id": "fetch-canonical-run",
+      "name": "Fetch Canonical Run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1820,
+        1360
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p=$('Prepare Canonical Run Action').first().json,rows=Array.isArray($json.data)?$json.data:[];return[{json:{...p,run_found:rows.length>0,existing_run:rows[0]||null}}];"
+      },
+      "id": "check-canonical-run",
+      "name": "Check Canonical Run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.run_found}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "canonical-run-found?",
+      "name": "Canonical Run Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2340,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({status: 'error', code: 'RUN_NOT_FOUND', command: $json.command, run_id: $json.run_id, correlation_id: $json.correlation_id}) }}"
+      },
+      "id": "respond-run-not-found",
+      "name": "Respond Run Not Found",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        1190
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p=$json,existing=p.existing_run||{},states={PAUSE_RUN:'PAUSED',ABORT_RUN:'ABORTED',APPROVE_HUMAN_GATE:'HUMAN_GATE_APPROVED'},row={run_id:p.run_id,state:states[p.command]||'RETRY_REQUESTED',current_job:p.stage||p.current_job||existing.current_job||undefined,updated_at:new Date().toISOString(),correlation_id:p.correlation_id,last_action:p.command};if(p.command==='EXCLUDE_MODEL_FOR_RUN')row.excluded_model=(p.payload||{}).model;if(p.command==='EXCLUDE_PROVIDER_FOR_RUN')row.excluded_provider=(p.payload||{}).provider;return[{json:{...p,run_update:{filter:p.filter,data:row,returnData:true}}}];"
+      },
+      "id": "prepare-canonical-run-update",
+      "name": "Prepare Canonical Run Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.run_update) }}",
+        "options": {}
+      },
+      "id": "persist-canonical-run-action",
+      "name": "Persist Canonical Run Action",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2860,
+        1360
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p=$('Prepare Canonical Run Update').first().json,result=$json,persisted=Array.isArray(result)?result.length>0:result===true||(result&&typeof result==='object'&&Object.keys(result).length>0);return[{json:{status:persisted?'ACCEPTED':'error',code:persisted?undefined:'RUN_UPDATE_NOT_PERSISTED',module:'run-control',command:p.command,correlation_id:p.correlation_id,run_id:p.run_id,result,source:'n8n-control-gateway'}}];"
+      },
+      "id": "canonical-run-action-result",
+      "name": "Canonical Run Action Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-canonical-run-action",
+      "name": "Respond Canonical Run Action",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        3380,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const v=$('Restore Valid Command').first().json;return[{json:{status:'ACCEPTED',module:'admin',command:v.command,correlation_id:v.envelope.correlation_id,canonical_action:'n8n-control-gateway',source:'n8n-control-gateway'}}];"
+      },
+      "id": "canonical-admin-action",
+      "name": "Canonical Admin Action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        1530
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-canonical-admin-action",
+      "name": "Respond Canonical Admin Action",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        1530
+      ]
+    }
+  ],
+  "connections": {
+    "Control Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Control Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Control Command": {
+      "main": [
+        [
+          {
+            "node": "Command Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Command Valid?": {
+      "main": [
+        [
+          {
+            "node": "Persist Command Audit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Command Audit": {
+      "main": [
+        [
+          {
+            "node": "Restore Valid Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Valid Command": {
+      "main": [
+        [
+          {
+            "node": "Is Issue Start?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Issue Start?": {
+      "main": [
+        [
+          {
+            "node": "Fetch GitHub Issue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Router Test?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch GitHub Issue": {
+      "main": [
+        [
+          {
+            "node": "Prepare Canonical Issue Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Canonical Issue Start": {
+      "main": [
+        [
+          {
+            "node": "Start Canonical Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Canonical Run": {
+      "main": [
+        [
+          {
+            "node": "Issue Start Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Issue Start Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Issue Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Router Test?": {
+      "main": [
+        [
+          {
+            "node": "Read Router Runtime",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is MCP Test?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Router Runtime": {
+      "main": [
+        [
+          {
+            "node": "Router Test Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Router Test Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Router Test",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is MCP Test?": {
+      "main": [
+        [
+          {
+            "node": "MCP Test Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is System Test?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP Test Result": {
+      "main": [
+        [
+          {
+            "node": "Respond MCP Test",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is System Test?": {
+      "main": [
+        [
+          {
+            "node": "Read n8n System Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Catalog Refresh?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read n8n System Status": {
+      "main": [
+        [
+          {
+            "node": "Read Adapter Runtime",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Adapter Runtime": {
+      "main": [
+        [
+          {
+            "node": "System Test Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "System Test Result": {
+      "main": [
+        [
+          {
+            "node": "Respond System Test",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Catalog Refresh?": {
+      "main": [
+        [
+          {
+            "node": "Refresh Provider Catalog",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Credential Sync?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refresh Provider Catalog": {
+      "main": [
+        [
+          {
+            "node": "Catalog Refresh Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Catalog Refresh Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Catalog Refresh",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Credential Sync?": {
+      "main": [
+        [
+          {
+            "node": "Sync Provider Credentials",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Repo Analysis?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Provider Credentials": {
+      "main": [
+        [
+          {
+            "node": "Credential Sync Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Credential Sync Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Credential Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Repo Analysis?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Repository Issues",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Blueprint Start?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Repository Issues": {
+      "main": [
+        [
+          {
+            "node": "Pack Repository Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pack Repository Issues": {
+      "main": [
+        [
+          {
+            "node": "Run Project Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Project Analysis": {
+      "main": [
+        [
+          {
+            "node": "Respond Repo Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Blueprint Start?": {
+      "main": [
+        [
+          {
+            "node": "Run Blueprint Bootstrap",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Project Resume?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Blueprint Bootstrap": {
+      "main": [
+        [
+          {
+            "node": "Respond Repo Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Project Resume?": {
+      "main": [
+        [
+          {
+            "node": "Reassess Project",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Canonical Run Action?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reassess Project": {
+      "main": [
+        [
+          {
+            "node": "Project Resume Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Project Resume Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Project Resume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Canonical Run Action?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Canonical Run Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Canonical Admin Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Canonical Run Action": {
+      "main": [
+        [
+          {
+            "node": "Fetch Canonical Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Canonical Run": {
+      "main": [
+        [
+          {
+            "node": "Check Canonical Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Canonical Run": {
+      "main": [
+        [
+          {
+            "node": "Canonical Run Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Canonical Run Found?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Canonical Run Update",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Run Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Canonical Run Update": {
+      "main": [
+        [
+          {
+            "node": "Persist Canonical Run Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Canonical Run Action": {
+      "main": [
+        [
+          {
+            "node": "Canonical Run Action Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Canonical Run Action Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Canonical Run Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Canonical Admin Action": {
+      "main": [
+        [
+          {
+            "node": "Respond Canonical Admin Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,1 @@
+{"files":{"src/parse.py":"def parse_pair(value):\n    key, sep, val = value.partition('=')\n    return {'key': key, 'value': val if sep else None}\n","README.md":"A pair has one key and an optional value.\n"}}

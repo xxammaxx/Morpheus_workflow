@@ -1,0 +1,20 @@
+{
+  "config_hashes": [
+    "f82cca1a02c18981d9b9d724d75178140cbeee7581230187144ee8fb9279ffb2"
+  ],
+  "experiment_id": "morpheus-build-capability-refresh-20260901",
+  "factor": "BASELINE",
+  "finished_at": "2026-09-01T09:53:27.619419+00:00",
+  "head": "12bd4e9907a6ebb4269ba7af58acf42b6dfdee51",
+  "model": "big-pickle",
+  "provider": "opencode",
+  "result_hash": "4b0f0e5d0a8a2e0e56fba6b240655fc0c59fb6da1b999a3084575dc14edb5784",
+  "runtime_versions": {
+    "adapter": "UNKNOWN",
+    "control_tower": "UNKNOWN",
+    "n8n": "UNKNOWN"
+  },
+  "split": "development",
+  "started_at": "2026-09-01T09:49:10.642479+00:00",
+  "task_set_hash": "6e1d9cb88d5ab46bc99f4c6d0e85c69633e411af48490d2cae90848653c2b962"
+}

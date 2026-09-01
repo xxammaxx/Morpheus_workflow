@@ -1,0 +1,1 @@
+{"files":{"src/report.py":"def summarize(records):\n    return {'count': len(records), 'ids': [r['id'] for r in records]}\n","tests/test_report.py":"def test_summary_shape():\n    assert summarize([]) == {'count': 0, 'ids': []}\n"}}

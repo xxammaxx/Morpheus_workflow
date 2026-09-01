@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autodev.adaptive-metadata.v1",
+  "title": "AutoDev Adaptive Metadata Contract v1",
+  "description": "Immutable benchmark provenance carried through the canonical n8n path.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "version", "experiment_id", "benchmark_task_id", "benchmark_split", "factor", "config_hash", "task_set_hash", "harness_version"],
+  "properties": {
+    "contract": {"const": "autodev.adaptive-metadata.v1"},
+    "version": {"const": "v1"},
+    "experiment_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+    "benchmark_task_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "benchmark_split": {"enum": ["development", "validation", "holdout"]},
+    "candidate_id": {"type": ["string", "null"], "maxLength": 128},
+    "factor": {"enum": ["BASELINE", "CONTEXT_COMPILER", "CONTEXT_PLUS_EXPLORER", "EXPERIENCE_TOP1", "EXPERIENCE_TOP3"]},
+    "context_policy": {"type": ["string", "null"], "maxLength": 128},
+    "repo_explorer_policy": {"type": ["string", "null"], "maxLength": 128},
+    "experience_policy": {"type": ["string", "null"], "maxLength": 128},
+    "config_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "task_set_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "harness_version": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"}
+  }
+}

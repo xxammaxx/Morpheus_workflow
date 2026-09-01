@@ -1,0 +1,8 @@
+{
+  "contract": "autodev.benchmark-task-set.v1",
+  "version": "v1",
+  "split": "holdout",
+  "frozen_before_value_trial": true,
+  "task_set_hash": "302ab5d75e8e32bc805dc69ced4af8886207394e7fae2e145002320cc0f5cef1",
+  "tasks": ["h-001:ab18818841e8a95d063fc0d00acf2125961d4e167b8badc7ce76087b133d04e4", "h-002:5513eca7e6825ab14cef3e98b3dbf1b3e5b9086807b780ac8c838cf7b5877a08"]
+}

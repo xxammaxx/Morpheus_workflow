@@ -14,7 +14,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst runId = s.issue.run_id;\nconst backend = s.backend || 'opencode-builder-8001';\nconst jobs = ['code', 'docs', 'tests'].map((area) => ({\n  job_id: runId + ':research.' + area + ':1',\n  job_type: 'research.' + area,\n  attempt_id: runId + ':research.' + area + ':1',\n  input_contract: 'autodev.issue.v1',\n  input: s.issue,\n  backend: backend,\n  fixture: s.fixture || null,\n  provider: s.provider || null,\n  model: s.model || null,\n  model_revision: s.model_revision || null,\n  task_class: 'research',\n  timeout_s: 600\n}));\nreturn [{json: {\n  run_id: runId, batch_id: runId + ':research-batch',\n  jobs: jobs, barrier: 'all'\n}}];"
+        "jsCode": "const s = $json;\nconst runId = s.issue.run_id;\nconst backend = s.backend || 'opencode-builder-8001';\nconst jobs = ['code', 'docs', 'tests'].map((area) => ({\n  job_id: runId + ':research.' + area + ':1',\n  job_type: 'research.' + area,\n  attempt_id: runId + ':research.' + area + ':1',\n  input_contract: 'autodev.issue.v1',\n  input: s.issue,\n  backend: backend,\n  fixture: s.fixture || null,\n  provider: s.provider || null,\n  model: s.model || null,\n  model_revision: s.model_revision || null,\n  adaptive_metadata: (s.issue['x-metadata'] || {}).adaptive_metadata || null,\n  task_class: 'research',\n  timeout_s: 600\n}));\nreturn [{json: {\n  run_id: runId, batch_id: runId + ':research-batch',\n  jobs: jobs, barrier: 'all'\n}}];"
       },
       "id": "prep-research-batch",
       "name": "Prep Research Batch",

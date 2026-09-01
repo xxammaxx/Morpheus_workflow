@@ -1,0 +1,1 @@
+{"files":{"src/config.py":"DEFAULT_MODE = 'safe'\n\ndef parse_mode(value):\n    return value.strip().lower()\n","tests/test_config.py":"def test_parse_mode():\n    assert parse_mode(' SAFE ') == 'safe'\n"}}

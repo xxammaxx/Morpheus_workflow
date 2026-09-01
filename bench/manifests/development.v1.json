@@ -1,0 +1,8 @@
+{
+  "contract": "autodev.benchmark-task-set.v1",
+  "version": "v1",
+  "split": "development",
+  "frozen_before_value_trial": true,
+  "task_set_hash": "6e1d9cb88d5ab46bc99f4c6d0e85c69633e411af48490d2cae90848653c2b962",
+  "tasks": ["d-001:1d4adbcb595596a40e31ef84f938c12d3f396fe5d11f06e8f65a3fea57ee46f6", "d-002:f5458ad9074044e703e7f434a214b7d180c754e9fbedc33b18ae50b6d470315c", "d-003:c555bcc88384b211e044432b3b025c8757a9ebdd454c3e5b20e43ec150951c4d", "d-004:3db94e78336c64b403f2586abc52a258fa73b5342e0a950bbcd7420bc9dbe6c5"]
+}

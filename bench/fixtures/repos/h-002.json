@@ -1,0 +1,1 @@
+{"files":{"src/window.py":"def window(values, size):\n    return [values[i:i + size] for i in range(0, len(values), size)]\n","tests/test_window.py":"def test_window_keeps_tail():\n    assert window([1, 2, 3], 2) == [[1, 2], [3]]\n"}}
