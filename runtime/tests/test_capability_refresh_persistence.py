@@ -82,6 +82,7 @@ def test_empirical_build_capability_survives_live_refresh(tmp_path, monkeypatch)
     item = catalog.entries[0]
     assert item["capabilities"]["BUILD_CAPABLE"] is True
     assert item["capability_status"] == "PROVEN"
+    assert ProviderRouter(catalog).select(RouteRequest(provider="opencode", model="big-pickle", task_class="build", task_profile={"requires_code": True, "requires_repository_tools": True}))
 
 
 def test_fresh_empirical_capability_survives_refresh(tmp_path):
