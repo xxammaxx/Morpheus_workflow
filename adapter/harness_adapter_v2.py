@@ -134,6 +134,8 @@ _provider_runtime = ProviderRuntime() if ProviderRuntime is not None else None
 # ------------------------------------------------------------------ config --
 BUILDER_CTID = "8001"
 BUILDER_WS_ROOT = "/var/lib/ghiw/workspaces"
+BUILDER_HOST_UID = int(os.environ.get("AUTODEV_BUILDER_HOST_UID", "101000"))
+BUILDER_HOST_GID = int(os.environ.get("AUTODEV_BUILDER_HOST_GID", "101000"))
 LOCAL_LLM_SRC = "/var/lib/ghiw/workspaces/provider-smoke-v3/local_llm"
 OPENCODE_BIN = os.environ.get("OPENCODE_BIN", "opencode")
 MORPHEUS_MODEL_ALIAS = "morpheus-dynamic-free"
@@ -1471,19 +1473,10 @@ def _opencode_script(
             }
         }
     }, separators=(",", ":"))
-    return (
-        "set -e; cd '%s'; "
-        "mkdir -p .opencode/agents; "
-        "cat > .opencode/agents/%s.md << 'EOFAGENT'\n%s\nEOFAGENT\n"
-        "export OPENCODE_CONFIG_CONTENT='%s'; "
-        "export PATH='/opt/dev-fabric/opencode:/usr/local/bin:/usr/bin:/bin'; "
+    opencode_command = (
         "timeout --kill-after=5s %ss %s run --agent %s --model '%s/%s' --format json %s "
         "> %s 2> %s"
     ) % (
-        ws,
-        agent_name,
-        agent_md,
-        config,
         attempt_timeout_s,
         OPENCODE_BIN,
         agent_name,
@@ -1492,6 +1485,34 @@ def _opencode_script(
         json.dumps(prompt),
         output_name,
         stderr_name,
+    )
+    # The host-side adapter materializes the fixture, while OpenCode must run
+    # as the unprivileged builder inside a per-workspace filesystem view.  The
+    # narrow tmpfs masks sibling run directories even though the persistent
+    # Proxmox bind mount exposes the workspace root to CT 8001.
+    sandbox_command = (
+        "bwrap --ro-bind / / --tmpfs %s --bind %s %s --proc /proc --dev /dev "
+        "--chdir %s /bin/sh -c %s"
+    ) % (
+        shlex.quote(BUILDER_WS_ROOT),
+        shlex.quote(ws),
+        shlex.quote(ws),
+        shlex.quote(ws),
+        shlex.quote(opencode_command),
+    )
+    return (
+        "set -e; cd %s; "
+        "mkdir -p .opencode/agents; "
+        "cat > .opencode/agents/%s.md << 'EOFAGENT'\n%s\nEOFAGENT\n"
+        "export OPENCODE_CONFIG_CONTENT='%s'; "
+        "export PATH='/opt/dev-fabric/opencode:/usr/local/bin:/usr/bin:/bin'; "
+        "%s"
+    ) % (
+        shlex.quote(ws),
+        agent_name,
+        agent_md,
+        config,
+        shlex.quote(sandbox_command),
     )
 
 
@@ -2010,14 +2031,34 @@ def _materialize_benchmark_fixture(ws, fixture):
             stream.write(content)
     with open(marker, "w", encoding="utf-8") as stream:
         stream.write("morpheus-benchmark-fixture-v1\n")
-    qws = shlex.quote(ws)
-    result = pct_exec(
-        "set -e; cd %s; git init -q; git config user.email harness@local; "
-        "git config user.name harness; git add -A; git commit -qm benchmark-fixture"
-        % qws
-    )
+    # The workspace is a host-created bind mount.  In an unprivileged LXC,
+    # CT-root cannot write host-root-owned files (they appear as nobody), so
+    # initialize the disposable git tree before handing it to CT 8001.
+    result = run_cmd(["git", "init", "-q"], cwd=ws)
+    if result.returncode == 0:
+        result = run_cmd(
+            ["git", "config", "user.email", "harness@local"], cwd=ws
+        )
+    if result.returncode == 0:
+        result = run_cmd(
+            ["git", "config", "user.name", "harness"], cwd=ws
+        )
+    if result.returncode == 0:
+        result = run_cmd(["git", "add", "-A"], cwd=ws)
+    if result.returncode == 0:
+        result = run_cmd(["git", "commit", "-qm", "benchmark-fixture"], cwd=ws)
     if result.returncode != 0:
         raise RuntimeError("BENCHMARK_FIXTURE_GIT_INIT_FAILED")
+    # UID 1000 in the unprivileged CT maps to 101000 on the host.  Prepare
+    # the disposable tree from the adapter (host root); CT-root cannot chown
+    # a host-root-owned bind mount back to the builder user.
+    for current, directories, filenames in os.walk(ws):
+        os.chown(current, BUILDER_HOST_UID, BUILDER_HOST_GID)
+        os.chmod(current, 0o700)
+        for filename in filenames:
+            path = os.path.join(current, filename)
+            os.chown(path, BUILDER_HOST_UID, BUILDER_HOST_GID)
+            os.chmod(path, 0o600)
     return ws
 
 
