@@ -1,0 +1,33 @@
+{
+  "run_id": "run-mb-65ffb9f909c9f5aaf9c5",
+  "task_id": "d-001",
+  "fixture_id": "repos/d-001.json",
+  "host_workspace": "/var/lib/ghiw/workspaces/autodev-v2-run-mb-65ffb9f909c9f5aaf9c5",
+  "builder_workspace": "/var/lib/ghiw/workspaces/autodev-v2-run-mb-65ffb9f909c9f5aaf9c5",
+  "mount_source": "/var/lib/ghiw/workspaces",
+  "mount_target": "/var/lib/ghiw/workspaces",
+  "mount_mode": "rw",
+  "builder_user": "builder",
+  "builder_uid_gid": "1000:1000",
+  "host_mapped_uid_gid": "101000:101000",
+  "host_fixture_hash": "3c31b7cda4be588d4aa11a1c052a3b089e751f847d8c333c029006e6814f62c3",
+  "builder_fixture_hash": "3c31b7cda4be588d4aa11a1c052a3b089e751f847d8c333c029006e6814f62c3",
+  "marker_hash": "b62a7af82bd05f640b494539b8a4d5d8a72a2b40afe35564002f8e6bda7cfe86",
+  "fixture_hash_match": true,
+  "read_test": "PASS",
+  "write_test": "PASS_DISPOSABLE_BUILDER_SCOPE",
+  "containment_gate": "PASS_BWRAP_CURRENT_RUN_ONLY",
+  "symlink_gate": "PASS",
+  "cross_run_gate": "PASS_BWRAP_CURRENT_RUN_ONLY",
+  "direct_mount_cross_run_visibility": "MASKED_BY_BWRAP",
+  "builder_direct_holdout_access": false,
+  "failure_reproduction": {
+    "class": "MOUNT_MISSING",
+    "first_broken_edge": "HOST_WORKSPACE_CREATED_TO_CT_MOUNT_NAMESPACE",
+    "observed": "host path existed; pct exec returned ENOENT"
+  },
+  "fix_head": "a3e23c19a2a3dec2fc92fe308e1396128103f16f",
+  "deployment_status": "PASS",
+  "ct_config_diff": "mp0: /var/lib/ghiw/workspaces,mp=/var/lib/ghiw/workspaces",
+  "ct_config_snapshot_sha256": "bf3b5accba6a066d491b64e4b83ee80faf7b635f96e1c80e99508da548f8b557"
+}

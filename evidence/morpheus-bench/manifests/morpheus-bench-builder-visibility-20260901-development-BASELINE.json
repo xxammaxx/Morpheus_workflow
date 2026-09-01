@@ -1,0 +1,20 @@
+{
+  "config_hashes": [
+    "f82cca1a02c18981d9b9d724d75178140cbeee7581230187144ee8fb9279ffb2"
+  ],
+  "experiment_id": "morpheus-bench-builder-visibility-20260901",
+  "factor": "BASELINE",
+  "finished_at": "2026-09-01T17:11:08.715075+00:00",
+  "head": "UNKNOWN",
+  "model": "big-pickle",
+  "provider": "opencode",
+  "result_hash": "302647c2259cd9824f0c5d74aab1ff1980f0ceec8dc972abbd12dab47fd32f2a",
+  "runtime_versions": {
+    "adapter": "UNKNOWN",
+    "control_tower": "UNKNOWN",
+    "n8n": "UNKNOWN"
+  },
+  "split": "development",
+  "started_at": "2026-09-01T17:10:51.273232+00:00",
+  "task_set_hash": "6e1d9cb88d5ab46bc99f4c6d0e85c69633e411af48490d2cae90848653c2b962"
+}
