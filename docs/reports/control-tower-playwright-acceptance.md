@@ -226,3 +226,18 @@ Playwright UI-triggered abort followed by a UI-state assertion. The browser's
 double-click gate covered the existing allow-listed router diagnostic and
 returned one `202`. Full Playwright output is
 in [`acceptance-20260831-plan-recovery.json`](../../evidence/playwright/control-tower/acceptance-20260831-plan-recovery.json).
+
+## 2026-09-01 benchmark cleanup evidence
+
+The two disposable benchmark smoke runs were aborted through the canonical
+n8n control gateway after their bounded runner windows expired:
+`run-mb-bf5449adfc207d6b52d4` and `run-mb-7df82a34c3e43aceb2a9`. Five follow-up
+status cycles for the first run remained `ABORTED`; this proves late-callback
+non-resurrection for that cleanup, but it is not the missing Playwright click
+proof.
+
+```text
+CONTROL_TOWER_MUTATING_E2E=NOT_PROVEN_PLAYWRIGHT_ABORT
+PLAYWRIGHT_ABORT_RUN_ID=NOT_RUN
+LATE_CALLBACK_RESURRECTION=PASS_CANONICAL_API_CLEANUP
+```

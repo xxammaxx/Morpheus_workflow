@@ -1,0 +1,1 @@
+{"files":{"src/catalog.py":"CATALOG = {'adapter': '8081', 'tower': '8092'}\n\ndef endpoint(name):\n    return CATALOG[name]\n","README.md":"The catalog maps service names to local ports.\n"}}

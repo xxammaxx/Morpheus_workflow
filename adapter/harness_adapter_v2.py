@@ -1973,7 +1973,69 @@ def _runtime_dashboard_scope_denied(payload, allowed):
     return any(term in task_text for term in DASHBOARD_RUNTIME_DENY_TERMS)
 
 
-def _ensure_workspace(run_id, repository_ref=None):
+def _materialize_benchmark_fixture(ws, fixture):
+    """Materialize only controller-supplied benchmark files in a new workspace.
+
+    The fixture is data, not a command.  Paths are validated before any file
+    is opened and the workspace is committed as an isolated disposable git
+    tree, so benchmark mutation can never target the adapter or product tree.
+    """
+    if not isinstance(fixture, dict) or not isinstance(fixture.get("files"), dict):
+        raise RuntimeError("BENCHMARK_FIXTURE_INVALID")
+    files = fixture["files"]
+    if not files or len(files) > 64:
+        raise RuntimeError("BENCHMARK_FIXTURE_INVALID")
+    root = os.path.realpath(ws)
+    builder_root = os.path.realpath(BUILDER_WS_ROOT)
+    if os.path.commonpath((root, builder_root)) != builder_root:
+        raise RuntimeError("BENCHMARK_FIXTURE_ROOT_ESCAPE")
+    marker = os.path.join(ws, ".morpheus-benchmark-fixture")
+    if os.path.exists(marker):
+        return ws
+    if os.path.exists(ws) and os.listdir(ws):
+        raise RuntimeError("BENCHMARK_FIXTURE_WORKSPACE_NOT_EMPTY")
+    os.makedirs(ws, exist_ok=True)
+    for relative, content in sorted(files.items()):
+        if (not isinstance(relative, str) or not relative or relative.startswith(("/", "\\"))
+                or "\\" in relative or "\x00" in relative
+                or any(part in ("", ".", "..", ".git") for part in relative.split("/"))):
+            raise RuntimeError("BENCHMARK_FIXTURE_PATH_INVALID")
+        if not isinstance(content, str) or len(content.encode("utf-8")) > 128 * 1024:
+            raise RuntimeError("BENCHMARK_FIXTURE_CONTENT_INVALID")
+        destination = os.path.realpath(os.path.join(ws, relative))
+        if os.path.commonpath((destination, root)) != root:
+            raise RuntimeError("BENCHMARK_FIXTURE_PATH_ESCAPE")
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
+        with open(destination, "w", encoding="utf-8", newline="") as stream:
+            stream.write(content)
+    with open(marker, "w", encoding="utf-8") as stream:
+        stream.write("morpheus-benchmark-fixture-v1\n")
+    qws = shlex.quote(ws)
+    pct_exec(
+        "set -e; cd %s; git init -q; git config user.email harness@local; "
+        "git config user.name harness; git add -A; git commit -qm benchmark-fixture"
+        % qws
+    )
+    return ws
+
+
+def _benchmark_fixture_from_payload(payload):
+    metadata = (payload.get("x-metadata") or {}) if isinstance(payload, dict) else {}
+    fixture = metadata.get("benchmark_fixture")
+    if fixture is not None:
+        return fixture
+    hint = str(payload.get("acceptance_hint") or "") if isinstance(payload, dict) else ""
+    marker = "BENCHMARK_FIXTURE_JSON:"
+    if marker not in hint:
+        return None
+    encoded = hint.split(marker, 1)[1].split("\n", 1)[0].strip()
+    try:
+        return json.loads(encoded)
+    except (TypeError, ValueError):
+        raise RuntimeError("BENCHMARK_FIXTURE_INVALID")
+
+
+def _ensure_workspace(run_id, repository_ref=None, benchmark_fixture=None):
     """Create a clean worker workspace, materializing the requested repo.
 
     External acceptance jobs must inspect the target repository, not the
@@ -1981,6 +2043,8 @@ def _ensure_workspace(run_id, repository_ref=None):
     default branch, so repositories using ``master`` remain supported.
     """
     ws = _ws(run_id)
+    if benchmark_fixture is not None:
+        return _materialize_benchmark_fixture(ws, benchmark_fixture)
     if repository_ref:
         if not REPOSITORY_REF_RE.fullmatch(repository_ref):
             raise RuntimeError("invalid repository_ref")
@@ -2013,7 +2077,7 @@ def _ensure_workspace(run_id, repository_ref=None):
 
 
 def job_baseline(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"), _benchmark_fixture_from_payload(payload))
     head, status, branch = _git_state(ws)
     if len(head) < 7:
         head = "workspace-" + str(run_id)[:48]
@@ -2070,7 +2134,7 @@ def job_baseline(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
 
 
 def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"), _benchmark_fixture_from_payload(payload))
     route_provider, route_model = _opencode_worker_identity(payload)
     area = job_type.split(".")[1]
     prompt = (
@@ -2163,7 +2227,7 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
 
 
 def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"), _benchmark_fixture_from_payload(payload))
     route_provider, route_model = _opencode_worker_identity(payload)
     head_before, status_before, _ = _git_state(ws)
     explicit_plan = _explicit_scoped_plan(payload, run_id, head_before)
@@ -2321,7 +2385,7 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
 
 
 def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"), _benchmark_fixture_from_payload(payload))
     route_provider, route_model = _opencode_worker_identity(payload)
     dashboard_error = _dashboard_scope_error(payload)
     if dashboard_error:
@@ -2535,7 +2599,7 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
 
 
 def job_verify(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"), _benchmark_fixture_from_payload(payload))
     changes_expected = _changes_expected(
         payload,
         payload.get("build_scope", {}).get("allowed_files", [])
@@ -2720,7 +2784,7 @@ def _changed_file_contents(ws, paths):
 
 
 def job_review(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"), _benchmark_fixture_from_payload(payload))
     area = job_type.split(".")[1]
     changed = payload.get("changed_files") or []
     contents = _changed_file_contents(ws, [c.get("path", "") for c in changed])
