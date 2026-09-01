@@ -167,6 +167,35 @@ ADAPTIVE_RELEASE_DEPLOYED=false
 PRODUCTION_PROVEN=false
 ```
 
+## Reality refresh — 2026-09-01
+
+The local adaptive head was pushed normally to PR #61 as `2e04ecae`. The
+previous task placeholders were replaced by the versioned executable
+`autodev.benchmark-task.v1` contract, frozen synthetic fixtures, and a
+canonical-only runner. The task suite is now locally valid, but the live
+value trial is not complete: the first baseline smoke reached `BUILDING` and
+timed out; the second context smoke reached the canonical path and was
+aborted as a disposable timeout. Neither is a value result.
+
+```text
+EXECUTABLE_TASK_SUITE=PASS_LOCAL
+TASKSET_FROZEN_BEFORE_VALUE_TRIAL=true
+DEV_TASK_COUNT=4
+VALIDATION_TASK_COUNT=2
+HOLDOUT_TASK_COUNT=2
+DEV_SET_HASH=6e1d9cb88d5ab46bc99f4c6d0e85c69633e411af48490d2cae90848653c2b962
+VALIDATION_SET_HASH=95e039c3c0688fba9fd6b54709ed21904ea034887e022c41166b2157f6c59ca9
+HOLDOUT_SET_HASH=302ab5d75e8e32bc805dc69ced4af8886207394e7fae2e145002320cc0f5cef1
+RUNNER=PASS_LOCAL;N8N_SOLE_CONTROL_PLANE=true
+RUNNER_SMOKE_BASELINE=CANONICAL_RUN_TIMEOUT;run-mb-bf5449adfc207d6b52d4
+RUNNER_SMOKE_CONTEXT=CANONICAL_RUN_TIMEOUT;run-mb-7df82a34c3e43aceb2a9
+A_E_CANONICAL=NOT_RUN
+VALIDATION=NOT_RUN
+CANDIDATE_FREEZE=NOT_RUN
+HOLDOUT=NOT_RUN
+ADAPTIVE_HARNESS_VALUE=NOT_PROVEN
+```
+
 ## 13. Superseding recovery and metadata evidence — 2026-08-31
 
 The historical `PLAN_BLOCKED / CONTRACT_FAILURE` was reproduced as a model

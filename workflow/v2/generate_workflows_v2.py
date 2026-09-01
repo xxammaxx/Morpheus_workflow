@@ -665,6 +665,9 @@ const issue = {
   created_at: now.toISOString(),
   trace_id: 'trace-' + runId, source: 'autodev-start-api',
   'x-metadata': {project_id: task.project_id || '', project_mode: task.project_mode || 'MANUAL',
+    changes_expected: typeof task.changes_expected === 'boolean' ? task.changes_expected : undefined,
+    no_change_required: task.no_change_required === true,
+    benchmark_fixture: task.benchmark_fixture || (task['x-metadata'] && task['x-metadata'].benchmark_fixture) || null,
     issue_number: task.issue_number || '', correlation_id: task.correlation_id ||
       (task['x-metadata'] && task['x-metadata'].correlation_id) || '',
     source_run_id: task.source_run_id || (task['x-metadata'] && task['x-metadata'].source_run_id) || '',

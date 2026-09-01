@@ -127,3 +127,31 @@ executable repository/task payloads. Running A–E would require inventing task
 content, so the value proof remains open. See
 [`plan-contract-recovery.md`](plan-contract-recovery.md) and
 [`canonical-metadata-20260831.json`](../../evidence/adaptive-harness/canonical-metadata-20260831.json).
+
+## Executable suite implementation — 2026-09-01
+
+The former hash-only placeholders are now executable task definitions with
+bounded setup, tools, mutation policy, verifier, timeout, cleanup, and
+immutable fixture/task hashes. The runner starts runs only through the
+canonical n8n start webhook and persists idempotent evidence keyed by
+experiment, task, factor, and config hash. Development and validation
+loaders cannot open holdout; experience selection accepts only verified prior
+development records and excludes the same task.
+
+The live baseline smoke `run-mb-bf5449adfc207d6b52d4` and context smoke
+`run-mb-7df82a34c3e43aceb2a9` both reached the real n8n/adapter chain, but the
+deployed orchestration remained non-terminal at the build/research boundary.
+They were recorded as timeouts and safely aborted. Consequently no A–E,
+validation, candidate freeze, or holdout claim is made.
+
+```text
+TASK_SCHEMA_GATE=PASS_LOCAL
+TASK_FIXTURE_GATE=PASS_LOCAL
+TASK_PATH_SECURITY_GATE=PASS_LOCAL
+HOLDOUT_ISOLATION=PASS_LOCAL
+HOLDOUT_EXPERIENCE_LEAKAGE=PASS_LOCAL
+RUNNER_CANONICAL_N8N_PATH=PASS_INTAKE;FAIL_TERMINAL_COMPLETION
+RUNNER_RESULT_PERSISTENCE=PASS_TIMEOUT_EVIDENCE
+PAID_REQUESTS=0
+DEEPSEEK_REQUESTS=0
+```
