@@ -155,3 +155,36 @@ RUNNER_RESULT_PERSISTENCE=PASS_TIMEOUT_EVIDENCE
 PAID_REQUESTS=0
 DEEPSEEK_REQUESTS=0
 ```
+
+## BUILD recovery — 2026-09-01
+
+The forensic trace is recorded in
+[`build-callback-recovery-2026-09-01.json`](../../evidence/morpheus-bench/build-callback-recovery-2026-09-01.json).
+The first broken edge was the adapter's capability gate during the n8n Build
+dispatch. The live `opencode/big-pickle` entry was healthy and zero-cost, but
+did not carry `BUILD_CAPABLE` or a passing tool-probe record. The adapter
+returned HTTP 400 before creating `run_id:build:1`; consequently no provider
+request, worker result, or callback existed to consume. This is not provider
+latency and not callback transport loss.
+
+The parent workflow had a separate terminality defect: an Execute Workflow
+error stopped the branch while the row remained `BUILDING`. Commit `bfb4ba6`
+sets `Run Build.onError=continueRegularOutput`, allowing the existing
+`Post-Build -> Build Failed` path to persist `FAILED / BLOCKED / BUILD_FAILED`.
+The fix was deployed to the active orchestrator, and run
+`run-mb-4f2c8594725a8849db5d` proved the terminal failure transition.
+
+```text
+BUILD_FAILURE_CLASS=NO_ELIGIBLE_FREE_MODEL;BUILD_STATE_TRANSITION_MISSING
+BUILD_CALLBACK_SENT=false
+BUILD_CALLBACK_ACCEPTED=false
+BUILD_FIX_DEPLOYED=true
+BUILD_FIX_RUNTIME_PROOF=FAILED_RUN_TERMINAL
+RUNNER_SMOKE_BASELINE=FAILED_TERMINAL_CAPABILITY_GATE
+RUNNER_SMOKE_CONTEXT=NOT_RUN
+A_E=NOT_RUN
+VALIDATION=NOT_RUN
+HOLDOUT_EXECUTION_COUNT=0
+```
+
+No model capability was overridden and no paid or DeepSeek route was used.

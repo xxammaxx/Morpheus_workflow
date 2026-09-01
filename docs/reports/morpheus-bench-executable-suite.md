@@ -60,3 +60,29 @@ non-terminal smokes. The current result is an operationally valid local suite
 and a truthful live-pipeline blocker, not a harness value proof. No release,
 promotion, model-weight change, LoRA, fine-tuning, or production mutation was
 made.
+
+## Runtime recovery attempt — 2026-09-01
+
+The deployed parent-terminality fix was exercised with exactly one new
+development task (`d-001`, `BASELINE`). The run reached terminal `FAILED`
+instead of hanging in `BUILDING`; the adapter rejected Build before creating a
+build job because the fixed `opencode/big-pickle` route has no live
+`BUILD_CAPABLE`/tool-probe evidence. This is a real failure, not a valid smoke.
+
+```text
+RUN_ID=run-mb-4f2c8594725a8849db5d
+TASK_ID=d-001
+FACTOR=BASELINE
+TASK_HASH=1d4adbcb595596a40e31ef84f938c12d3f396fe5d11f06e8f65a3fea57ee46f6
+FIXTURE_HASH=3c31b7cda4be588d4aa11a1c052a3b089e751f847d8c333c029006e6814f62c3
+TERMINAL_STATE=FAILED
+VERIFICATION=FAIL
+RUNNER_SMOKE_BASELINE=NOT_VALID_TERMINAL_CAPABILITY_GATE
+RUNNER_SMOKE_CONTEXT=NOT_RUN
+A_E_EXECUTION_READY=false
+HOLDOUT_EXECUTION_COUNT=0
+PAID_REQUESTS=0
+DEEPSEEK_REQUESTS=0
+```
+
+Evidence: [`build-callback-recovery-2026-09-01.json`](../../evidence/morpheus-bench/build-callback-recovery-2026-09-01.json).
