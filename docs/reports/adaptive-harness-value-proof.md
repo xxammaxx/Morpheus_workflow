@@ -190,6 +190,16 @@ RELEASE_CREATED=false
 PRODUCTION_DEPLOYED=ROLE_FIX_ONLY_REAL_RUNTIME
 ADAPTIVE_RELEASE_DEPLOYED=false
 PRODUCTION_PROVEN=false
+
+## Exact-route qualification probe — 2026-09-01
+
+The `BAD_TASK_CLASS` result was an invalid probe-envelope value, not evidence
+against OpenCode or `big-pickle`. The corrected envelope used the existing
+HAMH `plan` class and passed route selection, but failed before OpenCode
+because the builder workspace directory could not be created. Therefore
+`EXACT_ROUTE_PROBE=FAIL`, no BASELINE or CONTEXT run was authorized, and no
+adaptive value or readiness claim is made. Writable OpenCode runtime state was
+not observed because the provider process was not reached.
 ```
 
 ## Reality refresh — 2026-09-01
@@ -526,3 +536,11 @@ PRODUCTION_DEPLOYED=ROLE_FIX_ONLY_REAL_RUNTIME
 ADAPTIVE_RELEASE_DEPLOYED=false
 PRODUCTION_PROVEN=false
 ```
+
+## Builder creation-order recovery — 2026-09-02
+
+The provider-free CT8001 reproduction confirmed the workspace ordering defect
+(`host 0:0:0700` before `pct exec`, resulting in `EACCES`). The minimal adapter
+correction establishes mapped ownership and `0700`, verifies mapped access,
+and then initializes Git. Capability, route, task-set, holdout, and value-trial
+policies are unchanged.

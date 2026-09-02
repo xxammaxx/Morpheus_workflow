@@ -173,3 +173,40 @@ def test_adapter_fixture_materialization_is_bounded(monkeypatch, tmp_path):
     assert (workspace / "src/a.py").read_text(encoding="utf-8") == "VALUE = 1\n"
     with pytest.raises(RuntimeError, match="BENCHMARK_FIXTURE_PATH_INVALID"):
         adapter._materialize_benchmark_fixture(str(tmp_path / "run-2"), {"files": {"../escape": "x"}})
+
+
+def test_git_init_follows_precreation_ownership_and_access_preflight(monkeypatch, tmp_path):
+    monkeypatch.setattr(adapter, "BUILDER_WS_ROOT", str(tmp_path))
+    monkeypatch.setattr(adapter, "BUILDER_HOST_UID", os.getuid())
+    monkeypatch.setattr(adapter, "BUILDER_HOST_GID", os.getgid())
+    commands = []
+
+    def fake_pct_exec(command, timeout=adapter.DEFAULT_TIMEOUT_S):
+        commands.append(command)
+        return subprocess.run(["bash", "-c", command], capture_output=True, text=True, timeout=timeout)
+
+    monkeypatch.setattr(adapter, "pct_exec", fake_pct_exec)
+    workspace = tmp_path / "run-order"
+    adapter._materialize_benchmark_fixture(str(workspace), {"files": {"src/a.py": "VALUE = 1\n"}})
+    preflight = next(i for i, command in enumerate(commands) if "test -x" in command)
+    git_init = next(i for i, command in enumerate(commands) if "git init" in command)
+    assert preflight < git_init
+    assert adapter._workspace_permission_snapshot(str(workspace)) == {
+        "uid": os.getuid(), "gid": os.getgid(), "mode": 0o700
+    }
+
+
+def test_git_init_is_not_attempted_when_access_preflight_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(adapter, "BUILDER_WS_ROOT", str(tmp_path))
+    monkeypatch.setattr(adapter, "BUILDER_HOST_UID", os.getuid())
+    monkeypatch.setattr(adapter, "BUILDER_HOST_GID", os.getgid())
+    commands = []
+
+    def failing_pct_exec(command, timeout=adapter.DEFAULT_TIMEOUT_S):
+        commands.append(command)
+        return type("Result", (), {"returncode": 1, "stdout": "", "stderr": "EACCES"})()
+
+    monkeypatch.setattr(adapter, "pct_exec", failing_pct_exec)
+    with pytest.raises(RuntimeError, match="ACCESS_PREFLIGHT"):
+        adapter._materialize_benchmark_fixture(str(tmp_path / "run-preflight"), {"files": {"a": "b"}})
+    assert not any("git init" in command for command in commands)

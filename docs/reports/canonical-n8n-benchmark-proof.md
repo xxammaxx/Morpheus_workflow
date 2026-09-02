@@ -188,3 +188,21 @@ HOLDOUT_EXECUTION_COUNT=0
 ```
 
 No model capability was overridden and no paid or DeepSeek route was used.
+
+## Exact-route probe qualification — 2026-09-01
+
+The prior `BAD_TASK_CLASS` was an invalid probe envelope. The corrected
+existing HAMH task class was `plan`; no runtime code changed. The probe
+selected `opencode/big-pickle` and remained fail-closed, but the builder could
+not materialize its run-local workspace. OpenCode was never started, so
+provider identity, response, and writable log/SQLite/WAL state remain
+unobserved. `EXACT_ROUTE_PROBE=FAIL`; BASELINE, CONTEXT, A–E, validation, and
+holdout remain not run.
+
+## Builder creation-order recovery — 2026-09-02
+
+The provider-free PVE reproduction confirmed `git init` failed with `EACCES`
+when a host-root-owned `0700` workspace was handed to unprivileged CT8001.
+The adapter now applies mapped ownership/mode and runs an explicit access
+preflight before `git init`. No benchmark smoke is claimed until the exact
+deployed head and fresh gates are recorded.

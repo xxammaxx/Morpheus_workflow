@@ -134,13 +134,46 @@ _provider_runtime = ProviderRuntime() if ProviderRuntime is not None else None
 # ------------------------------------------------------------------ config --
 BUILDER_CTID = "8001"
 BUILDER_WS_ROOT = "/var/lib/ghiw/workspaces"
+
+
+def _mapped_host_id(kind):
+    """Resolve container-root's host id from deployment mapping when present."""
+    env_name = "AUTODEV_BUILDER_HOST_%s" % kind.upper()
+    configured = os.environ.get(env_name)
+    if configured is not None:
+        return int(configured)
+    config_path = "/etc/pve/lxc/%s.conf" % BUILDER_CTID
+    prefix = "u" if kind == "uid" else "g"
+    try:
+        with open(config_path, encoding="utf-8") as config:
+            for line in config:
+                fields = line.split()
+                if len(fields) >= 5 and fields[0] == "lxc.idmap:" and fields[1] == prefix and fields[2] == "0":
+                    return int(fields[3])
+    except (OSError, ValueError):
+        pass
+    subid_path = "/etc/sub%s" % kind
+    try:
+        with open(subid_path, encoding="utf-8") as subids:
+            for line in subids:
+                owner, start, _count = line.strip().split(":")
+                if owner == "root":
+                    return int(start)
+    except (OSError, ValueError):
+        pass
+    # CT8001 is intentionally pinned to the standard Proxmox unprivileged
+    # root mapping when the host exposes neither config nor subid metadata.
+    return 100000
+
+
 # OpenCode is launched as container-root inside bwrap.  In unprivileged CT
 # 8001 that identity is mapped to host 100000:100000; using the container's
 # ``builder`` identity (101000:101000) leaves a 0700 run tree inaccessible
 # once bwrap drops the host-side DAC override.  Keep overrides explicit for
 # deployments with a different narrow idmap.
-BUILDER_HOST_UID = int(os.environ.get("AUTODEV_BUILDER_HOST_UID", "100000"))
-BUILDER_HOST_GID = int(os.environ.get("AUTODEV_BUILDER_HOST_GID", "100000"))
+BUILDER_HOST_UID = _mapped_host_id("uid")
+BUILDER_HOST_GID = _mapped_host_id("gid")
+BUILDER_WORKSPACE_MODE = 0o700
 LOCAL_LLM_SRC = "/var/lib/ghiw/workspaces/provider-smoke-v3/local_llm"
 OPENCODE_BIN = os.environ.get("OPENCODE_BIN", "opencode")
 MORPHEUS_MODEL_ALIAS = "morpheus-dynamic-free"
@@ -1355,6 +1388,44 @@ def _ws(run_id):
     return os.path.join(BUILDER_WS_ROOT, "autodev-v2-%s" % run_id)
 
 
+def _workspace_permission_snapshot(ws):
+    stat_result = os.stat(ws)
+    return {
+        "uid": stat_result.st_uid,
+        "gid": stat_result.st_gid,
+        "mode": stat_result.st_mode & 0o777,
+    }
+
+
+def _prepare_builder_workspace(ws):
+    """Make a host-created run directory usable by container-root in CT8001.
+
+    The unprivileged CT maps container uid/gid 0 to the host ids supplied by
+    deployment configuration.  This must happen before the first pct command
+    that traverses the run directory; otherwise git init sees an inaccessible
+    host-root-owned directory.
+    """
+    root = os.path.realpath(ws)
+    builder_root = os.path.realpath(BUILDER_WS_ROOT)
+    if os.path.commonpath((root, builder_root)) != builder_root:
+        raise RuntimeError("BUILDER_WORKSPACE_ROOT_ESCAPE")
+    os.makedirs(ws, exist_ok=True)
+    os.chown(ws, BUILDER_HOST_UID, BUILDER_HOST_GID)
+    os.chmod(ws, BUILDER_WORKSPACE_MODE)
+    snapshot = _workspace_permission_snapshot(ws)
+    if (snapshot["uid"], snapshot["gid"], snapshot["mode"]) != (
+        BUILDER_HOST_UID, BUILDER_HOST_GID, BUILDER_WORKSPACE_MODE
+    ):
+        raise RuntimeError("BUILDER_WORKSPACE_PERMISSION_PREFLIGHT_FAILED")
+    access = pct_exec(
+        "test -x %s && test -r %s && test -w %s"
+        % (shlex.quote(ws), shlex.quote(ws), shlex.quote(ws))
+    )
+    if access.returncode != 0:
+        raise RuntimeError("BUILDER_WORKSPACE_ACCESS_PREFLIGHT_FAILED")
+    return snapshot
+
+
 def _agent_md(name, tools, permissions, blurb, model=None):
     worker_ref = model or MORPHEUS_MODEL_ALIAS
     return (
@@ -2031,12 +2102,12 @@ def _materialize_benchmark_fixture(ws, fixture):
     builder_root = os.path.realpath(BUILDER_WS_ROOT)
     if os.path.commonpath((root, builder_root)) != builder_root:
         raise RuntimeError("BENCHMARK_FIXTURE_ROOT_ESCAPE")
+    _prepare_builder_workspace(ws)
     marker = os.path.join(ws, ".morpheus-benchmark-fixture")
     if os.path.exists(marker):
         return ws
     if os.path.exists(ws) and os.listdir(ws):
         raise RuntimeError("BENCHMARK_FIXTURE_WORKSPACE_NOT_EMPTY")
-    os.makedirs(ws, exist_ok=True)
     for relative, content in sorted(files.items()):
         if (not isinstance(relative, str) or not relative or relative.startswith(("/", "\\"))
                 or "\\" in relative or "\x00" in relative
@@ -2052,7 +2123,26 @@ def _materialize_benchmark_fixture(ws, fixture):
             stream.write(content)
     with open(marker, "w", encoding="utf-8") as stream:
         stream.write("morpheus-benchmark-fixture-v1\n")
+    # Host-side fixture writes create root-owned descendants. Normalize the
+    # complete tree before the first CT filesystem access (git init).
+    os.chown(ws, BUILDER_HOST_UID, BUILDER_HOST_GID)
+    for directory, directories, filenames in os.walk(ws):
+        os.chown(directory, BUILDER_HOST_UID, BUILDER_HOST_GID)
+        os.chmod(directory, BUILDER_WORKSPACE_MODE if directory == ws else 0o755)
+        for filename in filenames:
+            os.chown(os.path.join(directory, filename), BUILDER_HOST_UID, BUILDER_HOST_GID)
+    snapshot = _workspace_permission_snapshot(ws)
+    if (snapshot["uid"], snapshot["gid"], snapshot["mode"]) != (
+        BUILDER_HOST_UID, BUILDER_HOST_GID, BUILDER_WORKSPACE_MODE
+    ):
+        raise RuntimeError("BUILDER_WORKSPACE_PERMISSION_PREFLIGHT_FAILED")
     qws = shlex.quote(ws)
+    access = pct_exec(
+        "test -x %s && test -r %s && test -w %s"
+        % (qws, qws, qws)
+    )
+    if access.returncode != 0:
+        raise RuntimeError("BUILDER_WORKSPACE_ACCESS_PREFLIGHT_FAILED")
     result = pct_exec(
         "set -e; cd %s; git init -q; git config user.email harness@local; "
         "git config user.name harness; git add -A; git commit -qm benchmark-fixture"
@@ -2060,11 +2150,6 @@ def _materialize_benchmark_fixture(ws, fixture):
     )
     if result.returncode != 0:
         raise RuntimeError("BENCHMARK_FIXTURE_GIT_INIT_FAILED")
-    ownership = pct_exec(
-        "chown -R %d:%d -- %s" % (BUILDER_HOST_UID, BUILDER_HOST_GID, qws)
-    )
-    if ownership.returncode != 0:
-        raise RuntimeError("BENCHMARK_FIXTURE_OWNERSHIP_FAILED")
     return ws
 
 
@@ -2092,6 +2177,7 @@ def _ensure_workspace(run_id, repository_ref=None, benchmark_fixture=None):
     default branch, so repositories using ``master`` remain supported.
     """
     ws = _ws(run_id)
+    _prepare_builder_workspace(ws)
     if benchmark_fixture is not None:
         return _materialize_benchmark_fixture(ws, benchmark_fixture)
     if repository_ref:
@@ -2102,6 +2188,8 @@ def _ensure_workspace(run_id, repository_ref=None, benchmark_fixture=None):
         expected_url = "https://github.com/%s.git" % repository_ref
         if current.rstrip("/") != expected_url.rstrip("/"):
             tmp = ws + ".checkout"
+            # ws is already mapped and traversable; the checkout temp path is
+            # created by the mapped CT identity under that directory.
             pct_exec("rm -rf '%s' '%s'" % (tmp, ws))
             clone = (
                 "set -e; branch=$(git ls-remote --symref '%s' HEAD | "
@@ -2114,7 +2202,7 @@ def _ensure_workspace(run_id, repository_ref=None, benchmark_fixture=None):
             pct_exec("mv '%s' '%s'" % (tmp, ws))
         return ws
     pct_exec(
-        "mkdir -p '%s' && cd '%s' && "
+        "cd '%s' && "
         "git init -q 2>/dev/null; git config user.email harness@local; "
         "git config user.name harness; "
         "mkdir -p src tests; "

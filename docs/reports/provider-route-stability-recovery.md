@@ -38,3 +38,22 @@ fallback remains unchanged outside benchmark metadata.
 
 No BASELINE or CONTEXT smoke is valid until these exact heads are deployed
 together and a live exact-route probe passes.
+
+## Exact-route qualification probe — 2026-09-01
+
+`BAD_TASK_CLASS` was a probe-envelope blocker, not provider or route evidence.
+The authoritative HAMH v1 enum is `research|plan|build|review|verify|baseline`;
+the corrected probe used the existing `plan` value and required no runtime
+code change. It selected `opencode/big-pickle` with `FAIL_CLOSED`, but failed
+before the OpenCode process while creating the builder workspace (`Permission
+denied`). No provider request/response or writable OpenCode-state proof exists.
+`EXACT_ROUTE_PROBE=FAIL`; BASELINE and CONTEXT were not started.
+
+See [`exact-route-probe-2026-09-01.json`](../../evidence/morpheus-bench/exact-route-probe-2026-09-01.json).
+
+## Creation-order recovery — 2026-09-02
+
+The builder permission blocker was isolated to host workspace creation before
+the first CT filesystem operation. The adapter now establishes mapped CT8001
+ownership and restrictive `0700`, verifies mapped access, and only then runs
+`git init`. Route policy and provider selection are unchanged.
