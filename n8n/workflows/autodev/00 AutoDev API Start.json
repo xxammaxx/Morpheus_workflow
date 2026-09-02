@@ -264,7 +264,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ run_id: $json.run_id, status: 'ACCEPTED', status_url: 'http://192.168.1.52:5678/webhook/autodev/status?run_id=' + $json.run_id }) }}"
+        "responseBody": "={{ JSON.stringify({ run_id: $('Prepare Run Row').first().json.data[0].run_id, status: 'ACCEPTED', status_url: 'http://192.168.1.52:5678/webhook/autodev/status?run_id=' + $('Prepare Run Row').first().json.data[0].run_id }) }}"
       },
       "id": "respond-202",
       "name": "Respond 202",
@@ -439,6 +439,11 @@
       "main": [
         [
           {
+            "node": "Respond 202",
+            "type": "main",
+            "index": 0
+          },
+          {
             "node": "Restore Intake Carrier",
             "type": "main",
             "index": 0
@@ -460,11 +465,6 @@
     "Pass Intake": {
       "main": [
         [
-          {
-            "node": "Respond 202",
-            "type": "main",
-            "index": 0
-          },
           {
             "node": "Run Orchestrator",
             "type": "main",

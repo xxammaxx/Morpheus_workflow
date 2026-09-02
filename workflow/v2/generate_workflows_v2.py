@@ -795,9 +795,9 @@ return[{json:{...carrier,existing_run:existing,...requestedRunOwnership(proposed
         respond_node(
             "Respond 202",
             P(4, 0),
-            "={{ JSON.stringify({ run_id: $json.run_id, status: 'ACCEPTED', status_url: '"
+            "={{ JSON.stringify({ run_id: $('Prepare Run Row').first().json.data[0].run_id, status: 'ACCEPTED', status_url: '"
             + cfg.webhook
-            + "/webhook/autodev/status?run_id=' + $json.run_id }) }}",
+            + "/webhook/autodev/status?run_id=' + $('Prepare Run Row').first().json.data[0].run_id }) }}",
         )
     )
     wf.add_node(
@@ -838,9 +838,9 @@ return [{json: Object.assign({}, intake, {run_row: row,
     wf.add("Requested Run Ownership Allowed?", "Continuation Intake Replay?", 0)
     wf.add("Continuation Intake Replay?", "Respond Existing Continuation", 0)
     wf.add("Continuation Intake Replay?", "Insert Run Row", 1)
+    wf.add("Insert Run Row", "Respond 202")
     wf.add("Insert Run Row", "Restore Intake Carrier")
     wf.add("Restore Intake Carrier", "Pass Intake")
-    wf.add("Pass Intake", "Respond 202")
     wf.add("Pass Intake", "Run Orchestrator")
     return wf
 
