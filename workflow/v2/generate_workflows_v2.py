@@ -229,11 +229,14 @@ def webhook_node(name, path, method, auth_cred, pos, response_mode="responseNode
     )
 
 
-def respond_node(name, pos, response_body="={{ JSON.stringify($json) }}", tv=2):
+def respond_node(name, pos, response_body="={{ JSON.stringify($json) }}", tv=2, response_code=None):
+    parameters = {"respondWith": "json", "responseBody": response_body}
+    if response_code is not None:
+        parameters["options"] = {"responseCode": response_code}
     return node(
         name,
         "n8n-nodes-base.respondToWebhook",
-        {"respondWith": "json", "responseBody": response_body},
+        parameters,
         pos,
         tv,
     )
@@ -696,14 +699,49 @@ if (adaptiveValidation.ok && adaptiveMetadata !== null) {
 }
 const fixture = (raw.fixture && ['invalid_plan','verify_fail_delta','verify_fail_no_delta','no_signature','attempt_limit','security_critical_blocking','review_fix','review_split'].includes(raw.fixture)) ? raw.fixture : null;
 const backend = (raw.backend === 'embedded' || raw.backend === 'opencode-builder-8001') ? raw.backend : 'opencode-builder-8001';
-const provider = (typeof raw.provider === 'string' && ['embedded','lmstudio','groq','openrouter','ollama'].includes(raw.provider)) ? raw.provider : null;
-const model = (typeof raw.model === 'string' && raw.model.length <= 64) ? raw.model : null;
-const modelRevision = (typeof raw.model_revision === 'string' && raw.model_revision.length <= 64) ? raw.model_revision : null;
-const deepseekRequested = /deepseek/i.test(String(raw.provider || '')) || /deepseek/i.test(String(raw.model || ''));
+const taskMetadata = task['x-metadata'] && typeof task['x-metadata'] === 'object' ? task['x-metadata'] : {};
+const envelopeMetadata = raw['x-metadata'] && typeof raw['x-metadata'] === 'object' ? raw['x-metadata'] : {};
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+const firstExplicit = (key) => hasOwn(task, key) ? task[key] : (hasOwn(raw, key) ? raw[key] : undefined);
+const requestedProvider = firstExplicit('provider');
+const requestedModel = firstExplicit('model');
+const provider = requestedProvider === undefined || requestedProvider === null ? null : requestedProvider;
+const model = requestedModel === undefined || requestedModel === null ? null : requestedModel;
+const modelRevision = firstExplicit('model_revision') === undefined || firstExplicit('model_revision') === null ? null : firstExplicit('model_revision');
+const providerValid = provider === null || (typeof provider === 'string' && /^[A-Za-z0-9._/-]{1,64}$/.test(provider));
+const modelValid = model === null || (typeof model === 'string' && /^[A-Za-z0-9._/@:-]{1,128}$/.test(model));
+const modelRevisionValid = modelRevision === null || (typeof modelRevision === 'string' && /^[A-Za-z0-9._/-]{1,64}$/.test(modelRevision));
+const explicitMetadata = (key) => {
+  const taskHas = hasOwn(taskMetadata, key);
+  const envelopeHas = hasOwn(envelopeMetadata, key);
+  if (taskHas && envelopeHas && JSON.stringify(taskMetadata[key]) !== JSON.stringify(envelopeMetadata[key])) return {value: taskMetadata[key], contradiction: true};
+  return {value: taskHas ? taskMetadata[key] : (envelopeHas ? envelopeMetadata[key] : undefined), contradiction: false};
+};
+const routePolicyField = explicitMetadata('route_policy');
+const expectedProviderField = explicitMetadata('expected_provider');
+const expectedModelField = explicitMetadata('expected_model');
+const routePolicy = routePolicyField.value;
+const expectedProvider = expectedProviderField.value;
+const expectedModel = expectedModelField.value;
+const adaptiveRouteLocked = routePolicy === 'FAIL_CLOSED' && adaptiveMetadata !== null;
+const routeBindingErrors = [];
+if (routePolicyField.contradiction || expectedProviderField.contradiction || expectedModelField.contradiction) routeBindingErrors.push('ROUTE_BINDING_REBIND');
+if (routePolicy !== undefined && routePolicy !== 'FAIL_CLOSED') routeBindingErrors.push('ROUTE_POLICY_INVALID');
+if (expectedProvider !== undefined && (typeof expectedProvider !== 'string' || !providerValid || provider !== expectedProvider)) routeBindingErrors.push('ROUTE_BINDING_REBIND');
+if (expectedModel !== undefined && (typeof expectedModel !== 'string' || !modelValid || model !== expectedModel)) routeBindingErrors.push('ROUTE_BINDING_REBIND');
+if (adaptiveRouteLocked && (provider === null || model === null || expectedProvider !== provider || expectedModel !== model)) routeBindingErrors.push('ROUTE_BINDING_REBIND');
+const deepseekRequested = /deepseek/i.test(String(provider || '')) || /deepseek/i.test(String(model || ''));
 const intakeErrors = (deepseekRequested ? v.errors.concat(['DEEPSEEK_RETIRED']) : v.errors)
+  .concat(providerValid ? [] : ['BAD_PROVIDER'])
+  .concat(modelValid ? [] : ['BAD_MODEL'])
+  .concat(modelRevisionValid ? [] : ['BAD_MODEL_REVISION'])
+  .concat(routeBindingErrors)
   .concat(adaptiveValidation.errors || [])
   .concat(adaptiveBindingValid ? [] : ['ADAPTIVE_METADATA_REBIND']);
-return [{ json: { intake_valid: v.ok && adaptiveValidation.ok && adaptiveBindingValid && !deepseekRequested, errors: intakeErrors, issue: issue,
+if (routePolicy !== undefined) issue['x-metadata'].route_policy = routePolicy;
+if (expectedProvider !== undefined) issue['x-metadata'].expected_provider = expectedProvider;
+if (expectedModel !== undefined) issue['x-metadata'].expected_model = expectedModel;
+return [{ json: { intake_valid: v.ok && adaptiveValidation.ok && adaptiveBindingValid && providerValid && modelValid && modelRevisionValid && routeBindingErrors.length === 0 && !deepseekRequested, errors: intakeErrors, issue: issue,
   fixture: fixture, backend: backend, provider: provider, model: model,
   model_revision: modelRevision, run_id: runId } }];
 """
@@ -798,6 +836,7 @@ return[{json:{...carrier,existing_run:existing,...requestedRunOwnership(proposed
             "={{ JSON.stringify({ run_id: $('Prepare Run Row').first().json.data[0].run_id, status: 'ACCEPTED', status_url: '"
             + cfg.webhook
             + "/webhook/autodev/status?run_id=' + $('Prepare Run Row').first().json.data[0].run_id }) }}",
+            response_code=202,
         )
     )
     wf.add_node(
@@ -813,7 +852,7 @@ return[{json:{...carrier,existing_run:existing,...requestedRunOwnership(proposed
             "Run Orchestrator",
             "01 AutoDev Orchestrator",
             P(5, 0),
-            {"executeOnce": True},
+            {"executeOnce": True, "waitForSubWorkflow": False},
         )
     )
     wf.add("Start Webhook", "Validate Intake")
