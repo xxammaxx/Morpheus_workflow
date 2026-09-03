@@ -123,8 +123,9 @@ print(json.dumps({'workflows':out,'full_definition_verified':full,'activation_ve
 def validate(record: dict) -> None:
     required = ("contract", "version", "repository", "source_commit_sha", "source_branch", "deployed_at", "mode", "runtime_artifacts", "n8n_workflows", "services", "verification")
     if any(key not in record for key in required) or record["contract"] != CONTRACT or record["version"] != "v1" or not valid_commit(record["source_commit_sha"]): raise ValueError("PROVENANCE_CONTRACT_INVALID")
-    expected = {"runtime_artifacts_match": True, "n8n_workflows_match": True, "required_services_healthy": True, "workflow_full_definitions": True, "workflow_activation_verified": True}
-    if record["verification"] != expected: raise ValueError("PROVENANCE_CONTRACT_INVALID")
+    expected_keys = {"runtime_artifacts_match", "n8n_workflows_match", "required_services_healthy", "workflow_full_definitions", "workflow_activation_verified"}
+    if set(record["verification"]) != expected_keys or not all(isinstance(value, bool) for value in record["verification"].values()): raise ValueError("PROVENANCE_CONTRACT_INVALID")
+    if not all(record["verification"].values()): raise ValueError("FAILED_VERIFICATION")
     if not all(item["match"] and item["source_sha256"] == item["deployed_sha256"] for item in record["runtime_artifacts"]): raise ValueError("FAILED_VERIFICATION")
     if not all(item["match"] and item["source_semantic_sha256"] == item["live_semantic_sha256"] for item in record["n8n_workflows"]): raise ValueError("FAILED_VERIFICATION")
     if not all(item["active"] for item in record["services"]): raise ValueError("FAILED_VERIFICATION")
