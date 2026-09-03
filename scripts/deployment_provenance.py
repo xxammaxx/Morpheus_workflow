@@ -37,8 +37,11 @@ def valid_commit(commit: str) -> bool:
     return bool(__import__("re").fullmatch(r"[0-9a-f]{40}", commit)) and subprocess.run(["git", "cat-file", "-e", f"{commit}^{{commit}}"], capture_output=True).returncode == 0
 
 def artifact_paths(commit: str) -> list[tuple[str, str]]:
-    roots = [("adapter/harness_adapter_v2.py", "/opt/autodev-harness-v2/harness_adapter_v2.py"), ("adapter/autodev-harness-v2.service", "/etc/systemd/system/autodev-harness-v2.service"), ("dashboard/deploy/morpheus-control-tower.service", "/etc/systemd/system/morpheus-control-tower.service")]
-    for top, dest in (("runtime/contracts", "/opt/autodev-harness-v2/contracts"), ("runtime/hamh", "/opt/autodev-harness-v2/hamh"), ("runtime/providers", "/opt/autodev-harness-v2/providers"), ("dashboard", "/opt/morpheus-control-tower")):
+    # The integration deployment convention installs the adapter execution
+    # tree. Host-specific systemd units and the separately deployed dashboard
+    # are health-checked below, but are not this runtime's source artifact set.
+    roots = [("adapter/harness_adapter_v2.py", "/opt/autodev-harness-v2/harness_adapter_v2.py")]
+    for top, dest in (("runtime/contracts", "/opt/autodev-harness-v2/contracts"), ("runtime/hamh", "/opt/autodev-harness-v2/hamh"), ("runtime/providers", "/opt/autodev-harness-v2/providers")):
         names = subprocess.run(["git", "ls-tree", "-r", "--name-only", commit, "--", top], text=True, capture_output=True, check=True).stdout.splitlines()
         for path in names:
             if "/tests/" in path or path.endswith("/__init__.pyc") or "/static/vendor/" in path: continue
