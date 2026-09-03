@@ -14,7 +14,7 @@
     "runtime_artifacts": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/artifact"}},
     "n8n_workflows": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/workflow"}},
     "services": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["name", "active"], "properties": {"name": {"type": "string"}, "active": {"const": true}}}},
-    "verification": {"type": "object", "required": ["runtime_artifacts_match", "n8n_workflows_match", "required_services_healthy"], "properties": {"runtime_artifacts_match": {"const": true}, "n8n_workflows_match": {"const": true}, "required_services_healthy": {"const": true}}}
+    "verification": {"type": "object", "required": ["runtime_artifacts_match", "n8n_workflows_match", "required_services_healthy", "workflow_full_definitions", "workflow_activation_verified"], "properties": {"runtime_artifacts_match": {"const": true}, "n8n_workflows_match": {"const": true}, "required_services_healthy": {"const": true}, "workflow_full_definitions": {"const": true}, "workflow_activation_verified": {"const": true}}}
   },
   "$defs": {
     "artifact": {"type": "object", "required": ["source_path", "deployed_path", "source_sha256", "deployed_sha256", "match"], "properties": {"source_path": {"type": "string"}, "deployed_path": {"type": "string"}, "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "deployed_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "match": {"const": true}}},
