@@ -697,12 +697,14 @@ const adaptiveBindingValid = envelopeAdaptive === null || taskAdaptive === null 
 if (adaptiveValidation.ok && adaptiveMetadata !== null) {
   issue['x-metadata'].adaptive_metadata = adaptiveMetadata;
 }
-const fixture = (raw.fixture && ['invalid_plan','verify_fail_delta','verify_fail_no_delta','no_signature','attempt_limit','security_critical_blocking','review_fix','review_split'].includes(raw.fixture)) ? raw.fixture : null;
-const backend = (raw.backend === 'embedded' || raw.backend === 'opencode-builder-8001') ? raw.backend : 'opencode-builder-8001';
 const taskMetadata = task['x-metadata'] && typeof task['x-metadata'] === 'object' ? task['x-metadata'] : {};
 const envelopeMetadata = raw['x-metadata'] && typeof raw['x-metadata'] === 'object' ? raw['x-metadata'] : {};
 const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const firstExplicit = (key) => hasOwn(task, key) ? task[key] : (hasOwn(raw, key) ? raw[key] : undefined);
+const requestedFixture = firstExplicit('fixture');
+const fixture = (requestedFixture && ['invalid_plan','verify_fail_delta','verify_fail_no_delta','no_signature','attempt_limit','security_critical_blocking','review_fix','review_split'].includes(requestedFixture)) ? requestedFixture : null;
+const requestedBackend = firstExplicit('backend');
+const backend = (requestedBackend === 'embedded' || requestedBackend === 'opencode-builder-8001') ? requestedBackend : 'opencode-builder-8001';
 const requestedProvider = firstExplicit('provider');
 const requestedModel = firstExplicit('model');
 const provider = requestedProvider === undefined || requestedProvider === null ? null : requestedProvider;

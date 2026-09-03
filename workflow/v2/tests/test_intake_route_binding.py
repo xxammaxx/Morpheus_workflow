@@ -71,10 +71,11 @@ def test_exact_route_and_binding_survive_generated_intake(tmp_path):
         "expected_provider": "opencode",
         "expected_model": "big-pickle",
     }
-    result = run_intake(source, request(metadata, provider="opencode", model="big-pickle"))
+    result = run_intake(source, request(metadata, provider="opencode", model="big-pickle", backend="embedded"))
     assert result["intake_valid"] is True
     assert result["provider"] == "opencode"
     assert result["model"] == "big-pickle"
+    assert result["backend"] == "embedded"
     issue_metadata = result["issue"]["x-metadata"]
     assert issue_metadata["route_policy"] == "FAIL_CLOSED"
     assert issue_metadata["expected_provider"] == "opencode"
