@@ -42,6 +42,7 @@ def artifact_paths(commit: str) -> list[tuple[str, str]]:
         names = subprocess.run(["git", "ls-tree", "-r", "--name-only", commit, "--", top], text=True, capture_output=True, check=True).stdout.splitlines()
         for path in names:
             if "/tests/" in path or path.endswith("/__init__.pyc") or "/static/vendor/" in path: continue
+            if path == "runtime/contracts/schemas/autodev.deployment-provenance.v1.schema.json": continue
             roots.append((path, dest + "/" + path[len(top)+1:]))
     return roots
 
