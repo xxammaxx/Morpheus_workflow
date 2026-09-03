@@ -1388,6 +1388,18 @@ def _ws(run_id):
     return os.path.join(BUILDER_WS_ROOT, "autodev-v2-%s" % run_id)
 
 
+def _checkout_stage_path(ws):
+    """Return a staging path strictly inside the prepared run workspace."""
+    run_root = os.path.realpath(ws)
+    builder_root = os.path.realpath(BUILDER_WS_ROOT)
+    if os.path.commonpath((run_root, builder_root)) != builder_root:
+        raise RuntimeError("BUILDER_WORKSPACE_ROOT_ESCAPE")
+    stage = os.path.realpath(os.path.join(ws, ".checkout-stage"))
+    if stage == run_root or os.path.commonpath((stage, run_root)) != run_root:
+        raise RuntimeError("BUILDER_CHECKOUT_STAGE_ESCAPE")
+    return stage
+
+
 def _workspace_permission_snapshot(ws):
     stat_result = os.stat(ws)
     return {
@@ -2187,19 +2199,43 @@ def _ensure_workspace(run_id, repository_ref=None, benchmark_fixture=None):
         current = pct_stdout("cd '%s' 2>/dev/null && git remote get-url origin 2>/dev/null || true" % ws)
         expected_url = "https://github.com/%s.git" % repository_ref
         if current.rstrip("/") != expected_url.rstrip("/"):
-            tmp = ws + ".checkout"
-            # ws is already mapped and traversable; the checkout temp path is
-            # created by the mapped CT identity under that directory.
-            pct_exec("rm -rf '%s' '%s'" % (tmp, ws))
+            # The run directory is the authorization boundary.  Keep the
+            # checkout stage below it so CT8001 never needs create permission
+            # on BUILDER_WS_ROOT.  Do not remove ws itself: its mapped
+            # ownership and 0700 mode were established by the host adapter.
+            tmp = _checkout_stage_path(ws)
+            qws, qtmp = shlex.quote(ws), shlex.quote(tmp)
+            pct_exec(
+                "set -e; rm -rf -- %s/* %s/.[!.]* %s/..?*; mkdir -p -- %s"
+                % (qws, qws, qws, qtmp)
+            )
             clone = (
                 "set -e; branch=$(git ls-remote --symref '%s' HEAD | "
                 "awk '/^ref:/ {sub(\"refs/heads/\", \"\", $2); print $2; exit}'); "
                 "test -n \"$branch\"; git clone --depth 1 --branch \"$branch\" '%s' '%s'"
-            ) % (repo_url, repo_url, tmp)
-            result = pct_exec(clone)
-            if result.returncode != 0:
-                raise RuntimeError("repository checkout failed: %s" % (result.stderr or "")[:300])
-            pct_exec("mv '%s' '%s'" % (tmp, ws))
+            ) % (repo_url, repo_url, qtmp)
+            try:
+                result = pct_exec(clone)
+                if result.returncode != 0:
+                    raise RuntimeError("repository checkout failed: %s" % (result.stderr or "")[:300])
+                verify = pct_exec(
+                    "set -e; test -s %s/.git/HEAD; git -C %s rev-parse --verify HEAD >/dev/null"
+                    % (qtmp, qtmp)
+                )
+                if verify.returncode != 0:
+                    raise RuntimeError("repository checkout produced no valid Git HEAD")
+                promote = pct_exec(
+                    "set -e; shopt -s dotglob nullglob; entries=(%s/*); "
+                    "test ${#entries[@]} -gt 0; mv -- \"${entries[@]}\" %s/; "
+                    "rmdir -- %s"
+                    % (qtmp, qws, qtmp)
+                )
+                if promote.returncode != 0:
+                    raise RuntimeError("repository checkout promotion failed")
+            finally:
+                # Safe for both a failed clone and an interrupted promotion;
+                # a stage symlink is removed as a link, never followed.
+                pct_exec("rm -rf -- %s" % qtmp)
         return ws
     pct_exec(
         "cd '%s' && "
