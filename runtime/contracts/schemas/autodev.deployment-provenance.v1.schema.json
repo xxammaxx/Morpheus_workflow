@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autodev.deployment-provenance.v1",
+  "type": "object",
+  "required": ["contract", "version", "repository", "source_commit_sha", "source_branch", "deployed_at", "mode", "runtime_artifacts", "n8n_workflows", "services", "verification"],
+  "properties": {
+    "contract": {"const": "autodev.deployment-provenance.v1"},
+    "version": {"const": "v1"},
+    "repository": {"const": "xxammaxx/Morpheus_workflow"},
+    "source_commit_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "source_branch": {"type": "string", "minLength": 1},
+    "deployed_at": {"type": "string", "format": "date-time"},
+    "mode": {"enum": ["deploy", "reconcile-existing-runtime"]},
+    "runtime_artifacts": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/artifact"}},
+    "n8n_workflows": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/workflow"}},
+    "services": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["name", "active"], "properties": {"name": {"type": "string"}, "active": {"const": true}}}},
+    "verification": {"type": "object", "required": ["runtime_artifacts_match", "n8n_workflows_match", "required_services_healthy"], "properties": {"runtime_artifacts_match": {"const": true}, "n8n_workflows_match": {"const": true}, "required_services_healthy": {"const": true}}}
+  },
+  "$defs": {
+    "artifact": {"type": "object", "required": ["source_path", "deployed_path", "source_sha256", "deployed_sha256", "match"], "properties": {"source_path": {"type": "string"}, "deployed_path": {"type": "string"}, "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "deployed_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "match": {"const": true}}},
+    "workflow": {"type": "object", "required": ["workflow_name", "source_semantic_sha256", "live_semantic_sha256", "match"], "properties": {"workflow_name": {"type": "string"}, "source_semantic_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "live_semantic_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "match": {"const": true}}}
+  }
+}
