@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from scripts.deployment_provenance import atomic_write, semantic_hash, validate, normalize_workflow_document, git_blob, workflow_sources
+from scripts.deploy_targeted_workflows import ALLOWLIST, select_names
 
 def good(tmp_path):
     return {"contract":"autodev.deployment-provenance.v1","version":"v1","repository":"xxammaxx/Morpheus_workflow","source_commit_sha":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(),"source_branch":"test","deployed_at":"2026-09-03T00:00:00Z","mode":"reconcile-existing-runtime","runtime_artifacts":[{"source_path":"x","deployed_path":"/x","source_sha256":"a"*64,"deployed_sha256":"a"*64,"match":True}],"n8n_workflows":[{"workflow_name":"w","source_semantic_sha256":"b"*64,"live_semantic_sha256":"b"*64,"match":True}],"services":[{"name":"svc","active":True}],"verification":{"runtime_artifacts_match":True,"n8n_workflows_match":True,"required_services_healthy":True,"workflow_full_definitions":True,"workflow_activation_verified":True}}
@@ -35,6 +36,12 @@ def test_workflow_hash_reads_immutable_commit_not_worktree(monkeypatch):
     expected=semantic_hash(json.loads(git_blob(commit, source["source_path"])))
     monkeypatch.setattr(Path, "read_text", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("worktree read")))
     assert expected == semantic_hash(json.loads(git_blob(commit, source["source_path"])))
+
+def test_targeted_deployer_is_strictly_allowlisted():
+    names=sorted(ALLOWLIST)
+    assert select_names(names) == names
+    with pytest.raises(ValueError): select_names(names + ["01 AutoDev Orchestrator"])
+    with pytest.raises(ValueError): select_names([names[0], names[0]])
 
 def test_failed_verification_cannot_update(tmp_path):
     r=good(tmp_path); r["runtime_artifacts"][0]["match"]=False
