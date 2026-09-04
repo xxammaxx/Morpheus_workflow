@@ -17,6 +17,8 @@ from scripts.deployment_provenance import git_blob, valid_commit, workflow_sourc
 BASE = "http://192.168.1.52:5678"
 API_KEY_PATH = pathlib.Path("/var/lib/n8n-spec-kit/secrets/ghiw-n8n-api-key")
 ALLOWLIST = frozenset({
+    "00 AutoDev API Start",
+    "01 AutoDev Orchestrator",
     "05 AutoDev Control Gateway",
     "06 AutoDev Project Analysis",
     "07 AutoDev Blueprint Bootstrap",

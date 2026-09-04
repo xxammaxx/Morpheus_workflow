@@ -725,6 +725,38 @@ const expectedModelField = explicitMetadata('expected_model');
 const routePolicy = routePolicyField.value;
 const expectedProvider = expectedProviderField.value;
 const expectedModel = expectedModelField.value;
+const scopeField = explicitMetadata('execution_scope');
+const executionScope = scopeField.value === undefined ? null : scopeField.value;
+const probeFields = ['contract','version','backend','provider','model','route_policy',
+  'expected_provider','expected_model','max_attempts','changes_expected','no_change_required',
+  'requested_action'];
+const probeValues = {};
+const probeErrors = [];
+for (const key of probeFields) {
+  const field = explicitMetadata(key);
+  if (field.contradiction) probeErrors.push('PROBE_METADATA_REBIND');
+  if (field.value !== undefined) probeValues[key] = field.value;
+}
+const isProbe = executionScope !== null;
+const validProbeIdentity = typeof task.task_ref === 'string' &&
+  /^qualification:exact-route:[A-Za-z0-9._:-]+$/.test(task.task_ref) &&
+  probeValues.requested_action === 'QUALIFICATION_PLAN_ONLY_ROUTE_PROBE';
+if (isProbe) {
+  const requiredProbe = {
+    contract: 'autodev.route-probe.v1', version: 'v1', execution_scope: 'PLAN_ONLY_ROUTE_PROBE',
+    backend: 'opencode-builder-8001', provider: 'opencode', model: 'big-pickle',
+    route_policy: 'FAIL_CLOSED', expected_provider: 'opencode', expected_model: 'big-pickle',
+    max_attempts: 1, changes_expected: false, no_change_required: true,
+    requested_action: 'QUALIFICATION_PLAN_ONLY_ROUTE_PROBE'
+  };
+  for (const [key, expected] of Object.entries(requiredProbe)) {
+    const actual = key === 'execution_scope' ? executionScope : probeValues[key];
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) probeErrors.push('PROBE_INVARIANT_' + key.toUpperCase());
+  }
+  if (!validProbeIdentity) probeErrors.push('PROBE_IDENTITY_INVALID');
+} else if (executionScope !== null) {
+  probeErrors.push('UNKNOWN_EXECUTION_SCOPE');
+}
 const adaptiveRouteLocked = routePolicy === 'FAIL_CLOSED' && adaptiveMetadata !== null;
 const routeBindingErrors = [];
 if (routePolicyField.contradiction || expectedProviderField.contradiction || expectedModelField.contradiction) routeBindingErrors.push('ROUTE_BINDING_REBIND');
@@ -738,12 +770,16 @@ const intakeErrors = (deepseekRequested ? v.errors.concat(['DEEPSEEK_RETIRED']) 
   .concat(modelValid ? [] : ['BAD_MODEL'])
   .concat(modelRevisionValid ? [] : ['BAD_MODEL_REVISION'])
   .concat(routeBindingErrors)
+  .concat(scopeField.contradiction ? ['PROBE_METADATA_REBIND'] : [])
+  .concat(probeErrors)
   .concat(adaptiveValidation.errors || [])
   .concat(adaptiveBindingValid ? [] : ['ADAPTIVE_METADATA_REBIND']);
 if (routePolicy !== undefined) issue['x-metadata'].route_policy = routePolicy;
 if (expectedProvider !== undefined) issue['x-metadata'].expected_provider = expectedProvider;
 if (expectedModel !== undefined) issue['x-metadata'].expected_model = expectedModel;
-return [{ json: { intake_valid: v.ok && adaptiveValidation.ok && adaptiveBindingValid && providerValid && modelValid && modelRevisionValid && routeBindingErrors.length === 0 && !deepseekRequested, errors: intakeErrors, issue: issue,
+if (executionScope !== null) issue['x-metadata'].execution_scope = executionScope;
+for (const key of probeFields) if (probeValues[key] !== undefined) issue['x-metadata'][key] = probeValues[key];
+return [{ json: { intake_valid: v.ok && adaptiveValidation.ok && adaptiveBindingValid && providerValid && modelValid && modelRevisionValid && routeBindingErrors.length === 0 && probeErrors.length === 0 && !scopeField.contradiction && !deepseekRequested, errors: intakeErrors, issue: issue,
   fixture: fixture, backend: backend, provider: provider, model: model,
   model_revision: modelRevision, run_id: runId } }];
 """
@@ -1021,6 +1057,7 @@ return [{json: {
   provider: s.provider || null,
   model: s.model || null,
   model_revision: s.model_revision || null,
+  execution_scope: ((issue['x-metadata'] || {}).execution_scope) || null,
   adaptive_metadata: (issue['x-metadata'] || {}).adaptive_metadata || null,
   run_row: {state: 'ACCEPTED', project_id: (issue['x-metadata'] || {}).project_id || '', issue_number: (issue['x-metadata'] || {}).issue_number || '', task_ref: issue.task_ref || '', repository_ref: issue.repository_ref || '', current_job: 'baseline', reason_code: 'INTAKE_OK', correlation_id: (issue['x-metadata'] || {}).correlation_id || '', source_run_id: (issue['x-metadata'] || {}).source_run_id || '', continuation_reason: (issue['x-metadata'] || {}).continuation_reason || '', requested_action: (issue['x-metadata'] || {}).requested_action || '', created_via: (issue['x-metadata'] || {}).created_via || 'CONTROL_TOWER_START', requested_by: (issue['x-metadata'] || {}).requested_by || '', experiment_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).experiment_id || '', benchmark_task_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_task_id || '', benchmark_split: ((issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_split || '', candidate_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).candidate_id || '', factor: ((issue['x-metadata'] || {}).adaptive_metadata || {}).factor || '', config_hash: ((issue['x-metadata'] || {}).adaptive_metadata || {}).config_hash || '', task_set_hash: ((issue['x-metadata'] || {}).adaptive_metadata || {}).task_set_hash || '', harness_version: ((issue['x-metadata'] || {}).adaptive_metadata || {}).harness_version || '', context_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).context_policy || '', repo_explorer_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).repo_explorer_policy || '', experience_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).experience_policy || ''},
   baseline: null, research: null, plan: null, gate: null,
@@ -1043,7 +1080,60 @@ return [{json: {
         "row.reason_code = 'START_BASELINE';",
         P(1, 0),
     )
-    wf.add("Init Run State", c)
+    wf.add_node(bool_if(
+        "Plan-Only Probe Scope?",
+        "$json.execution_scope === 'PLAN_ONLY_ROUTE_PROBE'",
+        P(1, -1),
+    ))
+    wf.add("Init Run State", "Plan-Only Probe Scope?")
+
+    # Bounded qualification branch.  It is selected only by the validated
+    # intake scope; ordinary task text and TASK_CLASS never reach this path.
+    probe_plan_state_c, probe_plan_state_h, probe_plan_state_r = state_update_nodes(
+        wf, cfg, "Plan-Only Probe State", "PLANNING", "plan",
+        "row.reason_code = 'QUALIFICATION_PLAN_PROBE_STARTED';",
+        P(3, -1),
+    )
+    wf.add("Plan-Only Probe Scope?", probe_plan_state_c, 0)
+    probe_plan = execute_wf_node(
+        cfg, "Run Plan (Probe)", "30 AutoDev Plan", P(6, -1), {"executeOnce": True}
+    )
+    probe_plan["onError"] = "continueRegularOutput"
+    wf.add_node(probe_plan)
+    wf.add(probe_plan_state_r, "Run Plan (Probe)")
+    wf.add_node(code_node(
+        "Post-Plan (Probe)",
+        """const out = $json;
+const state = $('Plan-Only Probe State Prep').first().json.state || {};
+const plan = out.plan || null;
+const failure = out.failure_class || out.error || null;
+return [{json: Object.assign({}, state, {
+  plan: plan, plan_job: out.job_record || {}, plan_failure: failure,
+  probe_plan_ok: !failure && !!plan,
+  pipeline_execution_complete: !failure && !!plan,
+  plan_contract_valid: !!plan && !!plan.contract,
+  plan_semantic_success: null
+})}];""",
+        P(8, -1),
+    ))
+    wf.add("Run Plan (Probe)", "Post-Plan (Probe)")
+    wf.add_node(bool_if("Probe Plan OK?", "$json.probe_plan_ok === true", P(10, -1)))
+    wf.add("Post-Plan (Probe)", "Probe Plan OK?")
+    probe_done_c, probe_done_h, probe_done_r = state_update_nodes(
+        wf, cfg, "Plan-Only Probe Complete", "DONE", "plan",
+        "row.decision = 'QUALIFICATION_PROBE'; row.reason_code = 'QUALIFICATION_PLAN_PROBE_COMPLETE';",
+        P(12, -1),
+    )
+    wf.add("Probe Plan OK?", probe_done_c, 0)
+    probe_failed_c, probe_failed_h, probe_failed_r = state_update_nodes(
+        wf, cfg, "Plan-Only Probe Failed", "FAILED", "plan",
+        "row.decision = 'BLOCKED'; row.reason_code = $json.plan_failure || 'QUALIFICATION_PLAN_PROBE_FAILED';",
+        P(12, -2),
+    )
+    wf.add("Probe Plan OK?", probe_failed_c, 1)
+
+    # Normal orchestration remains the false branch and starts at BASELINE.
+    wf.add("Plan-Only Probe Scope?", c, 1)
     wf.add_node(
         execute_wf_node(
             cfg, "Run Baseline", "10 AutoDev Baseline", P(3, 0), {"executeOnce": True}

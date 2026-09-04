@@ -14,7 +14,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst issue = s.issue || s;\nreturn [{json: {\n  issue: issue, fixture: s.fixture || null,\n  backend: s.backend || 'opencode-builder-8001',\n  provider: s.provider || null,\n  model: s.model || null,\n  model_revision: s.model_revision || null,\n  adaptive_metadata: (issue['x-metadata'] || {}).adaptive_metadata || null,\n  run_row: {state: 'ACCEPTED', project_id: (issue['x-metadata'] || {}).project_id || '', issue_number: (issue['x-metadata'] || {}).issue_number || '', task_ref: issue.task_ref || '', repository_ref: issue.repository_ref || '', current_job: 'baseline', reason_code: 'INTAKE_OK', correlation_id: (issue['x-metadata'] || {}).correlation_id || '', source_run_id: (issue['x-metadata'] || {}).source_run_id || '', continuation_reason: (issue['x-metadata'] || {}).continuation_reason || '', requested_action: (issue['x-metadata'] || {}).requested_action || '', created_via: (issue['x-metadata'] || {}).created_via || 'CONTROL_TOWER_START', requested_by: (issue['x-metadata'] || {}).requested_by || '', experiment_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).experiment_id || '', benchmark_task_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_task_id || '', benchmark_split: ((issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_split || '', candidate_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).candidate_id || '', factor: ((issue['x-metadata'] || {}).adaptive_metadata || {}).factor || '', config_hash: ((issue['x-metadata'] || {}).adaptive_metadata || {}).config_hash || '', task_set_hash: ((issue['x-metadata'] || {}).adaptive_metadata || {}).task_set_hash || '', harness_version: ((issue['x-metadata'] || {}).adaptive_metadata || {}).harness_version || '', context_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).context_policy || '', repo_explorer_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).repo_explorer_policy || '', experience_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).experience_policy || ''},\n  baseline: null, research: null, plan: null, gate: null,\n  build: null, verification: null, review: null, decision: null,\n  attempt_build: 0, attempt_fix: 0,\n  max_attempts: issue.max_attempts || 2\n}}];"
+        "jsCode": "const s = $json;\nconst issue = s.issue || s;\nreturn [{json: {\n  issue: issue, fixture: s.fixture || null,\n  backend: s.backend || 'opencode-builder-8001',\n  provider: s.provider || null,\n  model: s.model || null,\n  model_revision: s.model_revision || null,\n  execution_scope: ((issue['x-metadata'] || {}).execution_scope) || null,\n  adaptive_metadata: (issue['x-metadata'] || {}).adaptive_metadata || null,\n  run_row: {state: 'ACCEPTED', project_id: (issue['x-metadata'] || {}).project_id || '', issue_number: (issue['x-metadata'] || {}).issue_number || '', task_ref: issue.task_ref || '', repository_ref: issue.repository_ref || '', current_job: 'baseline', reason_code: 'INTAKE_OK', correlation_id: (issue['x-metadata'] || {}).correlation_id || '', source_run_id: (issue['x-metadata'] || {}).source_run_id || '', continuation_reason: (issue['x-metadata'] || {}).continuation_reason || '', requested_action: (issue['x-metadata'] || {}).requested_action || '', created_via: (issue['x-metadata'] || {}).created_via || 'CONTROL_TOWER_START', requested_by: (issue['x-metadata'] || {}).requested_by || '', experiment_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).experiment_id || '', benchmark_task_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_task_id || '', benchmark_split: ((issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_split || '', candidate_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).candidate_id || '', factor: ((issue['x-metadata'] || {}).adaptive_metadata || {}).factor || '', config_hash: ((issue['x-metadata'] || {}).adaptive_metadata || {}).config_hash || '', task_set_hash: ((issue['x-metadata'] || {}).adaptive_metadata || {}).task_set_hash || '', harness_version: ((issue['x-metadata'] || {}).adaptive_metadata || {}).harness_version || '', context_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).context_policy || '', repo_explorer_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).repo_explorer_policy || '', experience_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).experience_policy || ''},\n  baseline: null, research: null, plan: null, gate: null,\n  build: null, verification: null, review: null, decision: null,\n  attempt_build: 0, attempt_fix: 0,\n  max_attempts: issue.max_attempts || 2\n}}];"
       },
       "id": "init-run-state",
       "name": "Init Run State",
@@ -76,6 +76,264 @@
       "position": [
         242,
         0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.execution_scope === 'PLAN_ONLY_ROUTE_PROBE'}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "plan-only-probe-scope?",
+      "name": "Plan-Only Probe Scope?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'PLANNING';\nrow.current_job = 'plan';\nrow.reason_code = 'QUALIFICATION_PLAN_PROBE_STARTED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "plan-only-probe-state-prep",
+      "name": "Plan-Only Probe State Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "plan-only-probe-state-update",
+      "name": "Plan-Only Probe State Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        721,
+        -160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Plan-Only Probe State Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "plan-only-probe-state-restore",
+      "name": "Plan-Only Probe State Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        722,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Z0pcm5duMZyczCWV",
+          "cachedResultName": "30 AutoDev Plan"
+        },
+        "mode": "once",
+        "options": {
+          "executeOnce": true
+        }
+      },
+      "id": "run-plan-(probe)",
+      "name": "Run Plan (Probe)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 4,
+      "position": [
+        1440,
+        -160
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $json;\nconst state = $('Plan-Only Probe State Prep').first().json.state || {};\nconst plan = out.plan || null;\nconst failure = out.failure_class || out.error || null;\nreturn [{json: Object.assign({}, state, {\n  plan: plan, plan_job: out.job_record || {}, plan_failure: failure,\n  probe_plan_ok: !failure && !!plan,\n  pipeline_execution_complete: !failure && !!plan,\n  plan_contract_valid: !!plan && !!plan.contract,\n  plan_semantic_success: null\n})}];"
+      },
+      "id": "post-plan-(probe)",
+      "name": "Post-Plan (Probe)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.probe_plan_ok === true}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "probe-plan-ok?",
+      "name": "Probe Plan OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'DONE';\nrow.current_job = 'plan';\nrow.decision = 'QUALIFICATION_PROBE'; row.reason_code = 'QUALIFICATION_PLAN_PROBE_COMPLETE';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "plan-only-probe-complete-prep",
+      "name": "Plan-Only Probe Complete Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "plan-only-probe-complete-update",
+      "name": "Plan-Only Probe Complete Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2881,
+        -160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Plan-Only Probe Complete Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "plan-only-probe-complete-restore",
+      "name": "Plan-Only Probe Complete Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2882,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json;\nconst row = Object.assign({}, s.run_row || {});\nrow.run_id = s.issue.run_id;\nrow.state = 'FAILED';\nrow.current_job = 'plan';\nrow.decision = 'BLOCKED'; row.reason_code = $json.plan_failure || 'QUALIFICATION_PLAN_PROBE_FAILED';\nrow.updated_at = new Date().toISOString();\nreturn [{json: {filter: {filters: [{columnName: 'run_id', condition: 'eq', value: s.issue.run_id}, {columnName: 'state', condition: 'neq', value: 'ABORTED'}], type: 'and'}, data: row, returnData: true, state: s}}];"
+      },
+      "id": "plan-only-probe-failed-prep",
+      "name": "Plan-Only Probe Failed Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables/P3Eyck556Y76TC4p/rows/update",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "plan-only-probe-failed-update",
+      "name": "Plan-Only Probe Failed Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2881,
+        -320
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $json;\nconst persisted = Array.isArray(result) ? result.length > 0 : result === true || (result && typeof result === 'object' && Object.keys(result).length > 0);\nif (!persisted) return [];\nconst s = $('Plan-Only Probe Failed Prep').first().json.state || {};\nreturn [{json: s}];"
+      },
+      "id": "plan-only-probe-failed-restore",
+      "name": "Plan-Only Probe Failed Restore",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2882,
+        -320
       ]
     },
     {
@@ -2224,7 +2482,142 @@
       "main": [
         [
           {
+            "node": "Plan-Only Probe Scope?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan-Only Probe State Prep": {
+      "main": [
+        [
+          {
+            "node": "Plan-Only Probe State Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan-Only Probe State Update": {
+      "main": [
+        [
+          {
+            "node": "Plan-Only Probe State Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan-Only Probe Scope?": {
+      "main": [
+        [
+          {
+            "node": "Plan-Only Probe State Prep",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Baseline State Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan-Only Probe State Restore": {
+      "main": [
+        [
+          {
+            "node": "Run Plan (Probe)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Plan (Probe)": {
+      "main": [
+        [
+          {
+            "node": "Post-Plan (Probe)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post-Plan (Probe)": {
+      "main": [
+        [
+          {
+            "node": "Probe Plan OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan-Only Probe Complete Prep": {
+      "main": [
+        [
+          {
+            "node": "Plan-Only Probe Complete Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan-Only Probe Complete Update": {
+      "main": [
+        [
+          {
+            "node": "Plan-Only Probe Complete Restore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Probe Plan OK?": {
+      "main": [
+        [
+          {
+            "node": "Plan-Only Probe Complete Prep",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Plan-Only Probe Failed Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan-Only Probe Failed Prep": {
+      "main": [
+        [
+          {
+            "node": "Plan-Only Probe Failed Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan-Only Probe Failed Update": {
+      "main": [
+        [
+          {
+            "node": "Plan-Only Probe Failed Restore",
             "type": "main",
             "index": 0
           }
