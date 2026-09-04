@@ -242,7 +242,7 @@ def table_rows(name):
 def adapter_runtime():
     if not HARNESS_TOKEN:
         return {}, False
-    status, payload = Upstream(ADAPTER_BASE, {"X-Harness-Token": HARNESS_TOKEN}).get("/v1/status/runtime")
+    status, payload = Upstream(ADAPTER_BASE, {"X-Harness-Token": HARNESS_TOKEN}).get("/v1/status/runtime", timeout=15)
     value = unwrap(payload)
     return (value if isinstance(value, dict) else {}, status == 200)
 
