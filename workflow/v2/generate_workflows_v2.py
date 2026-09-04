@@ -229,11 +229,14 @@ def webhook_node(name, path, method, auth_cred, pos, response_mode="responseNode
     )
 
 
-def respond_node(name, pos, response_body="={{ JSON.stringify($json) }}", tv=2):
+def respond_node(name, pos, response_body="={{ JSON.stringify($json) }}", tv=2, response_code=None):
+    parameters = {"respondWith": "json", "responseBody": response_body}
+    if response_code is not None:
+        parameters["options"] = {"responseCode": response_code}
     return node(
         name,
         "n8n-nodes-base.respondToWebhook",
-        {"respondWith": "json", "responseBody": response_body},
+        parameters,
         pos,
         tv,
     )
@@ -665,6 +668,9 @@ const issue = {
   created_at: now.toISOString(),
   trace_id: 'trace-' + runId, source: 'autodev-start-api',
   'x-metadata': {project_id: task.project_id || '', project_mode: task.project_mode || 'MANUAL',
+    changes_expected: typeof task.changes_expected === 'boolean' ? task.changes_expected : undefined,
+    no_change_required: task.no_change_required === true,
+    benchmark_fixture: task.benchmark_fixture || (task['x-metadata'] && task['x-metadata'].benchmark_fixture) || null,
     issue_number: task.issue_number || '', correlation_id: task.correlation_id ||
       (task['x-metadata'] && task['x-metadata'].correlation_id) || '',
     source_run_id: task.source_run_id || (task['x-metadata'] && task['x-metadata'].source_run_id) || '',
@@ -678,18 +684,106 @@ const issue = {
         + """
 const schema = %s;
 const v = validateAutodevContract(issue, schema);
-const fixture = (raw.fixture && ['invalid_plan','verify_fail_delta','verify_fail_no_delta','no_signature','attempt_limit','security_critical_blocking','review_fix','review_split'].includes(raw.fixture)) ? raw.fixture : null;
-const backend = (raw.backend === 'embedded' || raw.backend === 'opencode-builder-8001') ? raw.backend : 'opencode-builder-8001';
-const provider = (typeof raw.provider === 'string' && ['embedded','lmstudio','groq','openrouter','ollama'].includes(raw.provider)) ? raw.provider : null;
-const model = (typeof raw.model === 'string' && raw.model.length <= 64) ? raw.model : null;
-const modelRevision = (typeof raw.model_revision === 'string' && raw.model_revision.length <= 64) ? raw.model_revision : null;
-const deepseekRequested = /deepseek/i.test(String(raw.provider || '')) || /deepseek/i.test(String(raw.model || ''));
-const intakeErrors = deepseekRequested ? v.errors.concat(['DEEPSEEK_RETIRED']) : v.errors;
-return [{ json: { intake_valid: v.ok && !deepseekRequested, errors: intakeErrors, issue: issue,
+const envelopeAdaptive = raw.adaptive_metadata || null;
+const taskAdaptive = (task['x-metadata'] && task['x-metadata'].adaptive_metadata) || null;
+const adaptiveMetadata = envelopeAdaptive || taskAdaptive;
+const adaptiveSchema = %s;
+const adaptiveValidation = adaptiveMetadata === null
+  ? {ok: true, errors: []}
+  : validateAutodevContract(adaptiveMetadata, adaptiveSchema);
+const adaptiveFields = ['experiment_id','benchmark_task_id','benchmark_split','candidate_id','factor','context_policy','repo_explorer_policy','experience_policy','config_hash','task_set_hash','harness_version'];
+const adaptiveBindingValid = envelopeAdaptive === null || taskAdaptive === null ||
+  adaptiveFields.every((key) => envelopeAdaptive[key] === taskAdaptive[key]);
+if (adaptiveValidation.ok && adaptiveMetadata !== null) {
+  issue['x-metadata'].adaptive_metadata = adaptiveMetadata;
+}
+const taskMetadata = task['x-metadata'] && typeof task['x-metadata'] === 'object' ? task['x-metadata'] : {};
+const envelopeMetadata = raw['x-metadata'] && typeof raw['x-metadata'] === 'object' ? raw['x-metadata'] : {};
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+const firstExplicit = (key) => hasOwn(task, key) ? task[key] : (hasOwn(raw, key) ? raw[key] : undefined);
+const requestedFixture = firstExplicit('fixture');
+const fixture = (requestedFixture && ['invalid_plan','verify_fail_delta','verify_fail_no_delta','no_signature','attempt_limit','security_critical_blocking','review_fix','review_split'].includes(requestedFixture)) ? requestedFixture : null;
+const requestedBackend = firstExplicit('backend');
+const backend = (requestedBackend === 'embedded' || requestedBackend === 'opencode-builder-8001') ? requestedBackend : 'opencode-builder-8001';
+const requestedProvider = firstExplicit('provider');
+const requestedModel = firstExplicit('model');
+const provider = requestedProvider === undefined || requestedProvider === null ? null : requestedProvider;
+const model = requestedModel === undefined || requestedModel === null ? null : requestedModel;
+const modelRevision = firstExplicit('model_revision') === undefined || firstExplicit('model_revision') === null ? null : firstExplicit('model_revision');
+const providerValid = provider === null || (typeof provider === 'string' && /^[A-Za-z0-9._/-]{1,64}$/.test(provider));
+const modelValid = model === null || (typeof model === 'string' && /^[A-Za-z0-9._/@:-]{1,128}$/.test(model));
+const modelRevisionValid = modelRevision === null || (typeof modelRevision === 'string' && /^[A-Za-z0-9._/-]{1,64}$/.test(modelRevision));
+const explicitMetadata = (key) => {
+  const taskHas = hasOwn(taskMetadata, key);
+  const envelopeHas = hasOwn(envelopeMetadata, key);
+  if (taskHas && envelopeHas && JSON.stringify(taskMetadata[key]) !== JSON.stringify(envelopeMetadata[key])) return {value: taskMetadata[key], contradiction: true};
+  return {value: taskHas ? taskMetadata[key] : (envelopeHas ? envelopeMetadata[key] : undefined), contradiction: false};
+};
+const routePolicyField = explicitMetadata('route_policy');
+const expectedProviderField = explicitMetadata('expected_provider');
+const expectedModelField = explicitMetadata('expected_model');
+const routePolicy = routePolicyField.value;
+const expectedProvider = expectedProviderField.value;
+const expectedModel = expectedModelField.value;
+const scopeField = explicitMetadata('execution_scope');
+const executionScope = scopeField.value === undefined ? null : scopeField.value;
+const probeFields = ['contract','version','backend','provider','model','route_policy',
+  'expected_provider','expected_model','max_attempts','changes_expected','no_change_required',
+  'requested_action'];
+const probeValues = {};
+const probeErrors = [];
+for (const key of probeFields) {
+  const field = explicitMetadata(key);
+  if (field.contradiction) probeErrors.push('PROBE_METADATA_REBIND');
+  if (field.value !== undefined) probeValues[key] = field.value;
+}
+const isProbe = executionScope !== null;
+const validProbeIdentity = typeof task.task_ref === 'string' &&
+  /^qualification:exact-route:[A-Za-z0-9._:-]+$/.test(task.task_ref) &&
+  probeValues.requested_action === 'QUALIFICATION_PLAN_ONLY_ROUTE_PROBE';
+if (isProbe) {
+  const requiredProbe = {
+    contract: 'autodev.route-probe.v1', version: 'v1', execution_scope: 'PLAN_ONLY_ROUTE_PROBE',
+    backend: 'opencode-builder-8001', provider: 'opencode', model: 'big-pickle',
+    route_policy: 'FAIL_CLOSED', expected_provider: 'opencode', expected_model: 'big-pickle',
+    max_attempts: 1, changes_expected: false, no_change_required: true,
+    requested_action: 'QUALIFICATION_PLAN_ONLY_ROUTE_PROBE'
+  };
+  for (const [key, expected] of Object.entries(requiredProbe)) {
+    const actual = key === 'execution_scope' ? executionScope : probeValues[key];
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) probeErrors.push('PROBE_INVARIANT_' + key.toUpperCase());
+  }
+  if (!validProbeIdentity) probeErrors.push('PROBE_IDENTITY_INVALID');
+} else if (executionScope !== null) {
+  probeErrors.push('UNKNOWN_EXECUTION_SCOPE');
+}
+const adaptiveRouteLocked = routePolicy === 'FAIL_CLOSED' && adaptiveMetadata !== null;
+const routeBindingErrors = [];
+if (routePolicyField.contradiction || expectedProviderField.contradiction || expectedModelField.contradiction) routeBindingErrors.push('ROUTE_BINDING_REBIND');
+if (routePolicy !== undefined && routePolicy !== 'FAIL_CLOSED') routeBindingErrors.push('ROUTE_POLICY_INVALID');
+if (expectedProvider !== undefined && (typeof expectedProvider !== 'string' || !providerValid || provider !== expectedProvider)) routeBindingErrors.push('ROUTE_BINDING_REBIND');
+if (expectedModel !== undefined && (typeof expectedModel !== 'string' || !modelValid || model !== expectedModel)) routeBindingErrors.push('ROUTE_BINDING_REBIND');
+if (adaptiveRouteLocked && (provider === null || model === null || expectedProvider !== provider || expectedModel !== model)) routeBindingErrors.push('ROUTE_BINDING_REBIND');
+const deepseekRequested = /deepseek/i.test(String(provider || '')) || /deepseek/i.test(String(model || ''));
+const intakeErrors = (deepseekRequested ? v.errors.concat(['DEEPSEEK_RETIRED']) : v.errors)
+  .concat(providerValid ? [] : ['BAD_PROVIDER'])
+  .concat(modelValid ? [] : ['BAD_MODEL'])
+  .concat(modelRevisionValid ? [] : ['BAD_MODEL_REVISION'])
+  .concat(routeBindingErrors)
+  .concat(scopeField.contradiction ? ['PROBE_METADATA_REBIND'] : [])
+  .concat(probeErrors)
+  .concat(adaptiveValidation.errors || [])
+  .concat(adaptiveBindingValid ? [] : ['ADAPTIVE_METADATA_REBIND']);
+if (routePolicy !== undefined) issue['x-metadata'].route_policy = routePolicy;
+if (expectedProvider !== undefined) issue['x-metadata'].expected_provider = expectedProvider;
+if (expectedModel !== undefined) issue['x-metadata'].expected_model = expectedModel;
+if (executionScope !== null) issue['x-metadata'].execution_scope = executionScope;
+for (const key of probeFields) if (probeValues[key] !== undefined) issue['x-metadata'][key] = probeValues[key];
+return [{ json: { intake_valid: v.ok && adaptiveValidation.ok && adaptiveBindingValid && providerValid && modelValid && modelRevisionValid && routeBindingErrors.length === 0 && probeErrors.length === 0 && !scopeField.contradiction && !deepseekRequested, errors: intakeErrors, issue: issue,
   fixture: fixture, backend: backend, provider: provider, model: model,
   model_revision: modelRevision, run_id: runId } }];
 """
-        % embed_schema("autodev.issue.v1")
+        % (embed_schema("autodev.issue.v1"), embed_schema("autodev.adaptive-metadata.v1"))
     )
     wf.add_node(code_node("Validate Intake", validate_js, P(1, 0)))
     wf.add_node(bool_if("Intake Valid?", "$json.intake_valid", P(2, 0)))
@@ -717,7 +811,18 @@ return [{json: {intake: {issue: s.issue, fixture: s.fixture, backend: s.backend,
   continuation_reason: (s.issue['x-metadata'] || {}).continuation_reason || '',
   requested_action: (s.issue['x-metadata'] || {}).requested_action || '',
   created_via: (s.issue['x-metadata'] || {}).created_via || 'CONTROL_TOWER_START',
-  requested_by: (s.issue['x-metadata'] || {}).requested_by || ''}], returnType: 'all'}}];""",
+  requested_by: (s.issue['x-metadata'] || {}).requested_by || '',
+  experiment_id: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).experiment_id || '',
+  benchmark_task_id: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_task_id || '',
+  benchmark_split: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_split || '',
+  candidate_id: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).candidate_id || '',
+  factor: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).factor || '',
+  config_hash: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).config_hash || '',
+  task_set_hash: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).task_set_hash || '',
+  harness_version: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).harness_version || '',
+  context_policy: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).context_policy || '',
+  repo_explorer_policy: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).repo_explorer_policy || '',
+  experience_policy: ((s.issue['x-metadata'] || {}).adaptive_metadata || {}).experience_policy || ''}], returnType: 'all'}}];""",
             P(2, 1),
         )
     )
@@ -766,9 +871,10 @@ return[{json:{...carrier,existing_run:existing,...requestedRunOwnership(proposed
         respond_node(
             "Respond 202",
             P(4, 0),
-            "={{ JSON.stringify({ run_id: $json.run_id, status: 'ACCEPTED', status_url: '"
+            "={{ JSON.stringify({ run_id: $('Prepare Run Row').first().json.data[0].run_id, status: 'ACCEPTED', status_url: '"
             + cfg.webhook
-            + "/webhook/autodev/status?run_id=' + $json.run_id }) }}",
+            + "/webhook/autodev/status?run_id=' + $('Prepare Run Row').first().json.data[0].run_id }) }}",
+            response_code=202,
         )
     )
     wf.add_node(
@@ -784,7 +890,7 @@ return[{json:{...carrier,existing_run:existing,...requestedRunOwnership(proposed
             "Run Orchestrator",
             "01 AutoDev Orchestrator",
             P(5, 0),
-            {"executeOnce": True},
+            {"executeOnce": True, "waitForSubWorkflow": False},
         )
     )
     wf.add("Start Webhook", "Validate Intake")
@@ -809,9 +915,9 @@ return [{json: Object.assign({}, intake, {run_row: row,
     wf.add("Requested Run Ownership Allowed?", "Continuation Intake Replay?", 0)
     wf.add("Continuation Intake Replay?", "Respond Existing Continuation", 0)
     wf.add("Continuation Intake Replay?", "Insert Run Row", 1)
+    wf.add("Insert Run Row", "Respond 202")
     wf.add("Insert Run Row", "Restore Intake Carrier")
     wf.add("Restore Intake Carrier", "Pass Intake")
-    wf.add("Pass Intake", "Respond 202")
     wf.add("Pass Intake", "Run Orchestrator")
     return wf
 
@@ -951,7 +1057,9 @@ return [{json: {
   provider: s.provider || null,
   model: s.model || null,
   model_revision: s.model_revision || null,
-  run_row: {state: 'ACCEPTED', project_id: (issue['x-metadata'] || {}).project_id || '', issue_number: (issue['x-metadata'] || {}).issue_number || '', task_ref: issue.task_ref || '', repository_ref: issue.repository_ref || '', current_job: 'baseline', reason_code: 'INTAKE_OK', correlation_id: (issue['x-metadata'] || {}).correlation_id || '', source_run_id: (issue['x-metadata'] || {}).source_run_id || '', continuation_reason: (issue['x-metadata'] || {}).continuation_reason || '', requested_action: (issue['x-metadata'] || {}).requested_action || '', created_via: (issue['x-metadata'] || {}).created_via || 'CONTROL_TOWER_START', requested_by: (issue['x-metadata'] || {}).requested_by || ''},
+  execution_scope: ((issue['x-metadata'] || {}).execution_scope) || null,
+  adaptive_metadata: (issue['x-metadata'] || {}).adaptive_metadata || null,
+  run_row: {state: 'ACCEPTED', project_id: (issue['x-metadata'] || {}).project_id || '', issue_number: (issue['x-metadata'] || {}).issue_number || '', task_ref: issue.task_ref || '', repository_ref: issue.repository_ref || '', current_job: 'baseline', reason_code: 'INTAKE_OK', correlation_id: (issue['x-metadata'] || {}).correlation_id || '', source_run_id: (issue['x-metadata'] || {}).source_run_id || '', continuation_reason: (issue['x-metadata'] || {}).continuation_reason || '', requested_action: (issue['x-metadata'] || {}).requested_action || '', created_via: (issue['x-metadata'] || {}).created_via || 'CONTROL_TOWER_START', requested_by: (issue['x-metadata'] || {}).requested_by || '', experiment_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).experiment_id || '', benchmark_task_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_task_id || '', benchmark_split: ((issue['x-metadata'] || {}).adaptive_metadata || {}).benchmark_split || '', candidate_id: ((issue['x-metadata'] || {}).adaptive_metadata || {}).candidate_id || '', factor: ((issue['x-metadata'] || {}).adaptive_metadata || {}).factor || '', config_hash: ((issue['x-metadata'] || {}).adaptive_metadata || {}).config_hash || '', task_set_hash: ((issue['x-metadata'] || {}).adaptive_metadata || {}).task_set_hash || '', harness_version: ((issue['x-metadata'] || {}).adaptive_metadata || {}).harness_version || '', context_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).context_policy || '', repo_explorer_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).repo_explorer_policy || '', experience_policy: ((issue['x-metadata'] || {}).adaptive_metadata || {}).experience_policy || ''},
   baseline: null, research: null, plan: null, gate: null,
   build: null, verification: null, review: null, decision: null,
   attempt_build: 0, attempt_fix: 0,
@@ -972,7 +1080,60 @@ return [{json: {
         "row.reason_code = 'START_BASELINE';",
         P(1, 0),
     )
-    wf.add("Init Run State", c)
+    wf.add_node(bool_if(
+        "Plan-Only Probe Scope?",
+        "$json.execution_scope === 'PLAN_ONLY_ROUTE_PROBE'",
+        P(1, -1),
+    ))
+    wf.add("Init Run State", "Plan-Only Probe Scope?")
+
+    # Bounded qualification branch.  It is selected only by the validated
+    # intake scope; ordinary task text and TASK_CLASS never reach this path.
+    probe_plan_state_c, probe_plan_state_h, probe_plan_state_r = state_update_nodes(
+        wf, cfg, "Plan-Only Probe State", "PLANNING", "plan",
+        "row.reason_code = 'QUALIFICATION_PLAN_PROBE_STARTED';",
+        P(3, -1),
+    )
+    wf.add("Plan-Only Probe Scope?", probe_plan_state_c, 0)
+    probe_plan = execute_wf_node(
+        cfg, "Run Plan (Probe)", "30 AutoDev Plan", P(6, -1), {"executeOnce": True}
+    )
+    probe_plan["onError"] = "continueRegularOutput"
+    wf.add_node(probe_plan)
+    wf.add(probe_plan_state_r, "Run Plan (Probe)")
+    wf.add_node(code_node(
+        "Post-Plan (Probe)",
+        """const out = $json;
+const state = $('Plan-Only Probe State Prep').first().json.state || {};
+const plan = out.plan || null;
+const failure = out.failure_class || out.error || null;
+return [{json: Object.assign({}, state, {
+  plan: plan, plan_job: out.job_record || {}, plan_failure: failure,
+  probe_plan_ok: !failure && !!plan,
+  pipeline_execution_complete: !failure && !!plan,
+  plan_contract_valid: !!plan && !!plan.contract,
+  plan_semantic_success: null
+})}];""",
+        P(8, -1),
+    ))
+    wf.add("Run Plan (Probe)", "Post-Plan (Probe)")
+    wf.add_node(bool_if("Probe Plan OK?", "$json.probe_plan_ok === true", P(10, -1)))
+    wf.add("Post-Plan (Probe)", "Probe Plan OK?")
+    probe_done_c, probe_done_h, probe_done_r = state_update_nodes(
+        wf, cfg, "Plan-Only Probe Complete", "DONE", "plan",
+        "row.decision = 'QUALIFICATION_PROBE'; row.reason_code = 'QUALIFICATION_PLAN_PROBE_COMPLETE';",
+        P(12, -1),
+    )
+    wf.add("Probe Plan OK?", probe_done_c, 0)
+    probe_failed_c, probe_failed_h, probe_failed_r = state_update_nodes(
+        wf, cfg, "Plan-Only Probe Failed", "FAILED", "plan",
+        "row.decision = 'BLOCKED'; row.reason_code = $json.plan_failure || 'QUALIFICATION_PLAN_PROBE_FAILED';",
+        P(12, -2),
+    )
+    wf.add("Probe Plan OK?", probe_failed_c, 1)
+
+    # Normal orchestration remains the false branch and starts at BASELINE.
+    wf.add("Plan-Only Probe Scope?", c, 1)
     wf.add_node(
         execute_wf_node(
             cfg, "Run Baseline", "10 AutoDev Baseline", P(3, 0), {"executeOnce": True}
@@ -1138,11 +1299,15 @@ return [{json: {artifact: {contract: 'autodev.decision.v1', version: 'v1',
         P(16, 0),
     )
     wf.add("Plan Gate?", c, 0)
-    wf.add_node(
-        execute_wf_node(
-            cfg, "Run Build", "40 AutoDev Build", P(18, 0), {"executeOnce": True}
-        )
+    build_runner = execute_wf_node(
+        cfg, "Run Build", "40 AutoDev Build", P(18, 0), {"executeOnce": True}
     )
+    # A rejected adapter dispatch is a terminal build failure, not a reason
+    # to leave the canonical run stuck in BUILDING.  Continue with the
+    # existing Post-Build -> Build Failed state transition so the adapter
+    # error remains visible in n8n execution data while the run is terminal.
+    build_runner["onError"] = "continueRegularOutput"
+    wf.add_node(build_runner)
     wf.add(r, "Run Build")
     wf.add("Run Build", "Post-Build")
     wf.add_node(
@@ -1651,6 +1816,7 @@ return [{json: {
   provider: (s.provider || null),
   model: (s.model || null),
   model_revision: (s.model_revision || null),
+  adaptive_metadata: (input['x-metadata'] || {}).adaptive_metadata || null,
   task_class: '%s'
 }}];""" % (
             input_expr,
@@ -1735,6 +1901,7 @@ return [{json: {
     job_id: rec.job_id, status: rec.status, job_type: rec.job_type,
     attempt_id: rec.attempt_id, backend: rec.backend, provider: rec.provider,
     model: rec.model, input_contract: rec.input_contract,
+    adaptive_metadata: rec.adaptive_metadata || null,
     input_fingerprint: rec.input_fingerprint,
     output_contract: rec.output_contract,
     output_fingerprint: rec.output_fingerprint,
@@ -1760,6 +1927,7 @@ return [{json: {ok: false, failure_class: s.failure_class || 'UNKNOWN',
     backend: s.backend, provider: s.provider, model: s.model,
     input_contract: s.input_contract, input_fingerprint: s.input_fingerprint,
     output_contract: s.output_contract, output_fingerprint: null,
+    adaptive_metadata: s.adaptive_metadata || null,
     started_at: s.started_at, ended_at: s.ended_at, duration_ms: s.duration_ms,
     failure_class: s.failure_class, failure_signature: s.failure_signature,
     strategy_delta: s.strategy_delta, result_ref: s.result_ref, error: s.error}}}];""",
@@ -1832,6 +2000,9 @@ if (!v.ok) {
 const ctx = $('Sub-Workflow Trigger').first().json;
 const issue = ctx.issue || {};
 const baselineHead = (ctx.baseline && ctx.baseline.repository && ctx.baseline.repository.head) || '';
+const expectedAdaptive = (issue['x-metadata'] || {}).adaptive_metadata || null;
+const observedAdaptive = (plan['x-metadata'] || {}).adaptive_metadata ||
+  (s.job_record || {}).adaptive_metadata || null;
 const reasons = [];
 if (plan.run_id !== issue.run_id) reasons.push('PLAN_RUN_ID_MISMATCH');
 if (baselineHead && plan.repository_head !== baselineHead) reasons.push('PLAN_HEAD_MISMATCH');
@@ -1840,6 +2011,8 @@ if (!plan.build_scope || !plan.build_scope.allowed_files || !plan.build_scope.al
 if (!plan.required_tests || !plan.required_tests.length) reasons.push('REQUIRED_TESTS_INVALID');
 if (!plan.context || !plan.context.fingerprint) reasons.push('CONTEXT_FINGERPRINT_MISSING');
 if (plan.safety && (plan.safety.sentinel_absent !== true || plan.safety.repo_unchanged !== true)) reasons.push('FORBIDDEN_MUTATION');
+const adaptiveFields = ['experiment_id','benchmark_task_id','benchmark_split','candidate_id','factor','context_policy','repo_explorer_policy','experience_policy','config_hash','task_set_hash','harness_version'];
+if (expectedAdaptive && adaptiveFields.some((key) => (observedAdaptive || {})[key] !== expectedAdaptive[key])) reasons.push('ADAPTIVE_METADATA_MISMATCH');
 const planTargets = [].concat((plan.targets && plan.targets.files) || [],
   (plan.build_scope && plan.build_scope.allowed_files) || []);
 if (planTargets.some((path) => path === '.plan-canary-sentinel' || path === './.plan-canary-sentinel')) reasons.push('FORBIDDEN_TARGET');
@@ -1906,7 +2079,8 @@ const input = {
   changes_expected: plan.changes_expected !== false,
   task_description: issue.task_description || '',
   strategy_delta: null,
-  failure_context: null
+  failure_context: null,
+  'x-metadata': {adaptive_metadata: (issue['x-metadata'] || {}).adaptive_metadata || null}
 };
 return [{json: {
   run_id: issue.run_id, job_id: issue.run_id + ':build:' + ((s.attempt_build || 0) + 1),
@@ -1916,6 +2090,7 @@ return [{json: {
   provider: (s.provider || null),
   model: (s.model || null),
   model_revision: (s.model_revision || null),
+  adaptive_metadata: (input['x-metadata'] || {}).adaptive_metadata || null,
   task_class: 'build'
 }}];"""
         prep = code_node("Prep Build Input", prep_js, P(0, 0))
@@ -2064,7 +2239,8 @@ const input = {
   build_scope: plan.build_scope || {allowed_files: []},
   changes_expected: plan.changes_expected !== false,
   task_description: issue.task_description || '',
-  strategy_delta: null, failure_context: null
+  strategy_delta: null, failure_context: null,
+  'x-metadata': {adaptive_metadata: (issue['x-metadata'] || {}).adaptive_metadata || null}
 };
 return [{json: {
   run_id: issue.run_id, job_id: issue.run_id + ':verify:' + attemptId.split(':').pop(),
@@ -2074,6 +2250,7 @@ return [{json: {
   provider: (s.provider || null),
   model: (s.model || null),
   model_revision: (s.model_revision || null),
+  adaptive_metadata: (input['x-metadata'] || {}).adaptive_metadata || null,
   task_class: 'verify'
 }}];"""
         prep = code_node("Prep Verify Input", prep_js, P(0, 0))
@@ -2226,7 +2403,8 @@ const input = {
     failure_signature: verification.failure_signature || '',
     failure_class: verification.failure_class || 'UNKNOWN',
     new_evidence: verification.new_evidence || []
-  }
+  },
+  'x-metadata': {adaptive_metadata: (issue['x-metadata'] || {}).adaptive_metadata || null}
 };
 return [{json: {
   run_id: issue.run_id, job_id: issue.run_id + ':fix:' + attemptNo,
@@ -2236,6 +2414,7 @@ return [{json: {
   provider: (s.provider || null),
   model: (s.model || null),
   model_revision: (s.model_revision || null),
+  adaptive_metadata: (input['x-metadata'] || {}).adaptive_metadata || null,
   task_class: 'build'
 }}];"""
         prep = code_node("Prep Fix Input", prep_js, P(0, 0))
@@ -2381,6 +2560,7 @@ const jobs = ['code', 'docs', 'tests'].map((area) => ({
   provider: s.provider || null,
   model: s.model || null,
   model_revision: s.model_revision || null,
+  adaptive_metadata: (s.issue['x-metadata'] || {}).adaptive_metadata || null,
   task_class: 'research',
   timeout_s: 600
 }));

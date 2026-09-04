@@ -1,0 +1,14 @@
+{
+  "url": "http://192.168.1.136:8092",
+  "run_id": "run-mb-bf5449adfc207d6b52d4",
+  "viewer_abort_status": 403,
+  "operator_abort_status": 202,
+  "viewer_abort": "DENY",
+  "operator_abort": "ALLOWED_BY_BFF",
+  "browser_abort_button_count": 0,
+  "playwright_abort_e2e": "NOT_PROVEN_UI_ACTION_NOT_EXPOSED",
+  "console_errors": 0,
+  "http_500_count": 0,
+  "csrf_gate": true,
+  "auth_gate": true
+}

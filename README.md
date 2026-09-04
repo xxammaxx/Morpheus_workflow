@@ -39,6 +39,23 @@ flowchart LR
   P --> RN[Run N]
 ```
 
+The canonical AutoDev start remains the sole execution authority. A validated
+`PLAN_ONLY_ROUTE_PROBE` is an additive, bounded branch inside the same n8n run
+lifecycle and canonical `autodev_runs` SOR; it is not a second webhook, SOR, or
+Control Tower execution path.
+
+```mermaid
+flowchart LR
+  START[00 AutoDev API Start\ncanonical intake + 202] --> ORCH[01 AutoDev Orchestrator\ncanonical run lifecycle]
+  ORCH --> NORMAL[Normal scope\nBaseline → Research → Plan → ...]
+  ORCH -->|validated execution_scope| PROBE[PLAN_ONLY_ROUTE_PROBE\nFAIL_CLOSED, one attempt]
+  PROBE --> PLAN[30 AutoDev Plan\nresearch = null]
+  PLAN --> STOP[Terminal DONE/FAILED\nno Plan Gate, Build, or later stage]
+  START -.-> SOR[(autodev_runs SOR)]
+  ORCH -.-> SOR
+  T[Control Tower] -. read/command only .-> START
+```
+
 ## Historical closure records
 
 ## Morpheus V1 closure

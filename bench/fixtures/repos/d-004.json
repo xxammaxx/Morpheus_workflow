@@ -1,0 +1,1 @@
+{"files":{"src/queue.py":"class Queue:\n    def __init__(self):\n        self.items = []\n\n    def push(self, item):\n        self.items.append(item)\n","tests/test_queue.py":"def test_push_preserves_order():\n    q = Queue()\n    q.push('a')\n    assert q.items == ['a']\n"}}

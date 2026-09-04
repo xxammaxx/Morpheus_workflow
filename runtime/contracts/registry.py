@@ -28,6 +28,12 @@ CONTRACTS = [
     "hamh.harness.v1",
     "hamh.resolution.v1",
     "provider.execution-proof.v1",
+    "autodev.benchmark-task.v1",
+    "autodev.benchmark-result.v1",
+    "autodev.context-pack.v1",
+    "autodev.experience.v1",
+    "autodev.harness-candidate.v1",
+    "autodev.adaptive-metadata.v1",
 ]
 
 _SCHEMAS = {}

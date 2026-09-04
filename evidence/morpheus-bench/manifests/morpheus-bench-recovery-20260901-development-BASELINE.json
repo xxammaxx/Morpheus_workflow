@@ -1,0 +1,20 @@
+{
+  "config_hashes": [
+    "f82cca1a02c18981d9b9d724d75178140cbeee7581230187144ee8fb9279ffb2"
+  ],
+  "experiment_id": "morpheus-bench-recovery-20260901",
+  "factor": "BASELINE",
+  "finished_at": "2026-09-01T08:34:06.579920+00:00",
+  "head": "UNKNOWN",
+  "model": "big-pickle",
+  "provider": "opencode",
+  "result_hash": "31a2d1ea8b1c544f715e63b7901b0090cc04bce311ff33b7ac18a582e06e5bbe",
+  "runtime_versions": {
+    "adapter": "UNKNOWN",
+    "control_tower": "UNKNOWN",
+    "n8n": "UNKNOWN"
+  },
+  "split": "development",
+  "started_at": "2026-09-01T08:31:42.825601+00:00",
+  "task_set_hash": "6e1d9cb88d5ab46bc99f4c6d0e85c69633e411af48490d2cae90848653c2b962"
+}

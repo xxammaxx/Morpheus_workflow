@@ -14,7 +14,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst input = s.issue;\nreturn [{json: {\n  run_id: s.issue.run_id, job_id: s.issue.run_id + ':baseline:1', job_type: 'baseline',\n  attempt_id: s.issue.run_id + ':baseline:1', input_contract: 'autodev.issue.v1', input: input,\n  backend: s.backend, fixture: s.fixture,\n  provider: (s.provider || null),\n  model: (s.model || null),\n  model_revision: (s.model_revision || null),\n  task_class: 'baseline'\n}}];"
+        "jsCode": "const s = $json;\nconst input = s.issue;\nreturn [{json: {\n  run_id: s.issue.run_id, job_id: s.issue.run_id + ':baseline:1', job_type: 'baseline',\n  attempt_id: s.issue.run_id + ':baseline:1', input_contract: 'autodev.issue.v1', input: input,\n  backend: s.backend, fixture: s.fixture,\n  provider: (s.provider || null),\n  model: (s.model || null),\n  model_revision: (s.model_revision || null),\n  adaptive_metadata: (input['x-metadata'] || {}).adaptive_metadata || null,\n  task_class: 'baseline'\n}}];"
       },
       "id": "prep-baseline",
       "name": "Prep baseline",
@@ -225,7 +225,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nconst rec = s;\nreturn [{json: {\n  job_record: {\n    job_id: rec.job_id, status: rec.status, job_type: rec.job_type,\n    attempt_id: rec.attempt_id, backend: rec.backend, provider: rec.provider,\n    model: rec.model, input_contract: rec.input_contract,\n    input_fingerprint: rec.input_fingerprint,\n    output_contract: rec.output_contract,\n    output_fingerprint: rec.output_fingerprint,\n    started_at: rec.started_at, ended_at: rec.ended_at,\n    duration_ms: rec.duration_ms, failure_class: rec.failure_class,\n    failure_signature: rec.failure_signature, strategy_delta: rec.strategy_delta,\n    result_ref: rec.result_ref, error: rec.error\n  },\n  result: rec.result || null\n}}];"
+        "jsCode": "const s = $json;\nconst rec = s;\nreturn [{json: {\n  job_record: {\n    job_id: rec.job_id, status: rec.status, job_type: rec.job_type,\n    attempt_id: rec.attempt_id, backend: rec.backend, provider: rec.provider,\n    model: rec.model, input_contract: rec.input_contract,\n    adaptive_metadata: rec.adaptive_metadata || null,\n    input_fingerprint: rec.input_fingerprint,\n    output_contract: rec.output_contract,\n    output_fingerprint: rec.output_fingerprint,\n    started_at: rec.started_at, ended_at: rec.ended_at,\n    duration_ms: rec.duration_ms, failure_class: rec.failure_class,\n    failure_signature: rec.failure_signature, strategy_delta: rec.strategy_delta,\n    result_ref: rec.result_ref, error: rec.error\n  },\n  result: rec.result || null\n}}];"
       },
       "id": "extract-baseline",
       "name": "Extract baseline",
@@ -238,7 +238,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $json;\nreturn [{json: {ok: false, failure_class: s.failure_class || 'UNKNOWN',\n  failure_signature: s.failure_signature || null, error: s.error || null,\n  job_record: {job_id: s.job_id, attempt_id: s.attempt_id, status: s.status,\n    backend: s.backend, provider: s.provider, model: s.model,\n    input_contract: s.input_contract, input_fingerprint: s.input_fingerprint,\n    output_contract: s.output_contract, output_fingerprint: null,\n    started_at: s.started_at, ended_at: s.ended_at, duration_ms: s.duration_ms,\n    failure_class: s.failure_class, failure_signature: s.failure_signature,\n    strategy_delta: s.strategy_delta, result_ref: s.result_ref, error: s.error}}}];"
+        "jsCode": "const s = $json;\nreturn [{json: {ok: false, failure_class: s.failure_class || 'UNKNOWN',\n  failure_signature: s.failure_signature || null, error: s.error || null,\n  job_record: {job_id: s.job_id, attempt_id: s.attempt_id, status: s.status,\n    backend: s.backend, provider: s.provider, model: s.model,\n    input_contract: s.input_contract, input_fingerprint: s.input_fingerprint,\n    output_contract: s.output_contract, output_fingerprint: null,\n    adaptive_metadata: s.adaptive_metadata || null,\n    started_at: s.started_at, ended_at: s.ended_at, duration_ms: s.duration_ms,\n    failure_class: s.failure_class, failure_signature: s.failure_signature,\n    strategy_delta: s.strategy_delta, result_ref: s.result_ref, error: s.error}}}];"
       },
       "id": "failed-baseline",
       "name": "Failed baseline",

@@ -91,6 +91,8 @@ try:
         is_valid_model_identifier,
         probe_eligibility,
         promotion_eligibility,
+        evaluate_route_admission,
+        new_id,
     )  # noqa: E402
     from providers.capabilities import classify_task  # noqa: E402
 except ImportError:  # pragma: no cover - legacy deployment without providers
@@ -112,6 +114,8 @@ except ImportError:  # pragma: no cover - legacy deployment without providers
         return False
     def promotion_eligibility(_entry):
         return False
+    def evaluate_route_admission(_request, _entry, state=None, catalog_member=True):
+        return {"eligible": False, "reasons": [{"gate": "RUNTIME", "code": "RUNTIME_UNAVAILABLE"}], "gate_reasons": [], "decision_inputs": {}}
     classify_task = lambda payload, task_class=None: {"task_class": task_class or "research"}
 
 # HAMH harness registry: loaded from <STATE_DIR>/hamh/registry.json when
@@ -134,6 +138,46 @@ _provider_runtime = ProviderRuntime() if ProviderRuntime is not None else None
 # ------------------------------------------------------------------ config --
 BUILDER_CTID = "8001"
 BUILDER_WS_ROOT = "/var/lib/ghiw/workspaces"
+
+
+def _mapped_host_id(kind):
+    """Resolve container-root's host id from deployment mapping when present."""
+    env_name = "AUTODEV_BUILDER_HOST_%s" % kind.upper()
+    configured = os.environ.get(env_name)
+    if configured is not None:
+        return int(configured)
+    config_path = "/etc/pve/lxc/%s.conf" % BUILDER_CTID
+    prefix = "u" if kind == "uid" else "g"
+    try:
+        with open(config_path, encoding="utf-8") as config:
+            for line in config:
+                fields = line.split()
+                if len(fields) >= 5 and fields[0] == "lxc.idmap:" and fields[1] == prefix and fields[2] == "0":
+                    return int(fields[3])
+    except (OSError, ValueError):
+        pass
+    subid_path = "/etc/sub%s" % kind
+    try:
+        with open(subid_path, encoding="utf-8") as subids:
+            for line in subids:
+                owner, start, _count = line.strip().split(":")
+                if owner == "root":
+                    return int(start)
+    except (OSError, ValueError):
+        pass
+    # CT8001 is intentionally pinned to the standard Proxmox unprivileged
+    # root mapping when the host exposes neither config nor subid metadata.
+    return 100000
+
+
+# OpenCode is launched as container-root inside bwrap.  In unprivileged CT
+# 8001 that identity is mapped to host 100000:100000; using the container's
+# ``builder`` identity (101000:101000) leaves a 0700 run tree inaccessible
+# once bwrap drops the host-side DAC override.  Keep overrides explicit for
+# deployments with a different narrow idmap.
+BUILDER_HOST_UID = _mapped_host_id("uid")
+BUILDER_HOST_GID = _mapped_host_id("gid")
+BUILDER_WORKSPACE_MODE = 0o700
 LOCAL_LLM_SRC = "/var/lib/ghiw/workspaces/provider-smoke-v3/local_llm"
 OPENCODE_BIN = os.environ.get("OPENCODE_BIN", "opencode")
 MORPHEUS_MODEL_ALIAS = "morpheus-dynamic-free"
@@ -521,6 +565,7 @@ def new_job(
     task_class=None,
     harness_resolution=None,
     route_decision=None,
+    adaptive_metadata=None,
 ):
     rec = {
         "ts": _now(),
@@ -552,6 +597,7 @@ def new_job(
         "harness_resolution": harness_resolution,
         "input_contract": input_contract,
         "correlation_id": (payload.get("x-metadata") or {}).get("correlation_id"),
+        "adaptive_metadata": adaptive_metadata,
         "source": "Adapter",
         "target": "OpenCode" if backend == "opencode-builder-8001" else "Adapter",
         "contract": input_contract,
@@ -621,6 +667,12 @@ def finalize_job(
         rec["execution_proof"] = provider_execution.get("execution_proof")
         rec["failover"] = provider_execution.get("failover", [])
     if result is not None:
+        if isinstance(result, dict) and rec.get("adaptive_metadata") is not None:
+            result_metadata = dict(result.get("x-metadata") or {})
+            # Provenance is controller-owned. Worker/model output cannot
+            # rebind the experiment, factor, task set, or config hash.
+            result_metadata["adaptive_metadata"] = rec["adaptive_metadata"]
+            result["x-metadata"] = result_metadata
         rec["result"] = result
         rec["output_contract"] = (
             result.get("contract") if isinstance(result, dict) else None
@@ -680,6 +732,7 @@ def finalize_job(
                     "harness_version",
                     "harness_fingerprint",
                     "input_contract",
+                    "adaptive_metadata",
                     "input_fingerprint",
                     "output_contract",
                     "output_fingerprint",
@@ -707,6 +760,14 @@ def _is_opencode_transport_failure(exc):
         "MODEL_IDENTITY_MISSING", "ACTUAL_PROVIDER_MISMATCH", "ACTUAL_MODEL_MISMATCH",
         "OPENCODE_CATALOG_REFRESH_FAILED",
     ))
+
+
+def _benchmark_route_locked(payload):
+    metadata = payload.get("x-metadata") or {}
+    return bool(
+        isinstance(metadata.get("adaptive_metadata"), dict)
+        and metadata.get("route_policy") == "FAIL_CLOSED"
+    )
 
 
 def _select_next_opencode_route(run_id, job_id, job_type, payload):
@@ -838,6 +899,15 @@ def run_job_thread(
                             if not fatal and route_attempt == 1:
                                 route_attempt = 2
                                 continue
+                            if _benchmark_route_locked(payload):
+                                finalize_job(
+                                    job_id,
+                                    "failed",
+                                    error="benchmark route failed; fallback disabled",
+                                    failure_class="ROUTE_IDENTITY_MISMATCH",
+                                    failure_signature="BENCHMARK_ROUTE_FAIL_CLOSED",
+                                )
+                                return
                             next_route = _select_next_opencode_route(run_id, job_id, job_type, payload)
                             assert_runtime_model_allowed(
                                 next_route.get("selected_provider"),
@@ -1322,6 +1392,56 @@ def _ws(run_id):
     return os.path.join(BUILDER_WS_ROOT, "autodev-v2-%s" % run_id)
 
 
+def _checkout_stage_path(ws):
+    """Return a staging path strictly inside the prepared run workspace."""
+    run_root = os.path.realpath(ws)
+    builder_root = os.path.realpath(BUILDER_WS_ROOT)
+    if os.path.commonpath((run_root, builder_root)) != builder_root:
+        raise RuntimeError("BUILDER_WORKSPACE_ROOT_ESCAPE")
+    stage = os.path.realpath(os.path.join(ws, ".checkout-stage"))
+    if stage == run_root or os.path.commonpath((stage, run_root)) != run_root:
+        raise RuntimeError("BUILDER_CHECKOUT_STAGE_ESCAPE")
+    return stage
+
+
+def _workspace_permission_snapshot(ws):
+    stat_result = os.stat(ws)
+    return {
+        "uid": stat_result.st_uid,
+        "gid": stat_result.st_gid,
+        "mode": stat_result.st_mode & 0o777,
+    }
+
+
+def _prepare_builder_workspace(ws):
+    """Make a host-created run directory usable by container-root in CT8001.
+
+    The unprivileged CT maps container uid/gid 0 to the host ids supplied by
+    deployment configuration.  This must happen before the first pct command
+    that traverses the run directory; otherwise git init sees an inaccessible
+    host-root-owned directory.
+    """
+    root = os.path.realpath(ws)
+    builder_root = os.path.realpath(BUILDER_WS_ROOT)
+    if os.path.commonpath((root, builder_root)) != builder_root:
+        raise RuntimeError("BUILDER_WORKSPACE_ROOT_ESCAPE")
+    os.makedirs(ws, exist_ok=True)
+    os.chown(ws, BUILDER_HOST_UID, BUILDER_HOST_GID)
+    os.chmod(ws, BUILDER_WORKSPACE_MODE)
+    snapshot = _workspace_permission_snapshot(ws)
+    if (snapshot["uid"], snapshot["gid"], snapshot["mode"]) != (
+        BUILDER_HOST_UID, BUILDER_HOST_GID, BUILDER_WORKSPACE_MODE
+    ):
+        raise RuntimeError("BUILDER_WORKSPACE_PERMISSION_PREFLIGHT_FAILED")
+    access = pct_exec(
+        "test -x %s && test -r %s && test -w %s"
+        % (shlex.quote(ws), shlex.quote(ws), shlex.quote(ws))
+    )
+    if access.returncode != 0:
+        raise RuntimeError("BUILDER_WORKSPACE_ACCESS_PREFLIGHT_FAILED")
+    return snapshot
+
+
 def _agent_md(name, tools, permissions, blurb, model=None):
     worker_ref = model or MORPHEUS_MODEL_ALIAS
     return (
@@ -1462,19 +1582,10 @@ def _opencode_script(
             }
         }
     }, separators=(",", ":"))
-    return (
-        "set -e; cd '%s'; "
-        "mkdir -p .opencode/agents; "
-        "cat > .opencode/agents/%s.md << 'EOFAGENT'\n%s\nEOFAGENT\n"
-        "export OPENCODE_CONFIG_CONTENT='%s'; "
-        "export PATH='/opt/dev-fabric/opencode:/usr/local/bin:/usr/bin:/bin'; "
+    opencode_command = (
         "timeout --kill-after=5s %ss %s run --agent %s --model '%s/%s' --format json %s "
         "> %s 2> %s"
     ) % (
-        ws,
-        agent_name,
-        agent_md,
-        config,
         attempt_timeout_s,
         OPENCODE_BIN,
         agent_name,
@@ -1483,6 +1594,33 @@ def _opencode_script(
         json.dumps(prompt),
         output_name,
         stderr_name,
+    )
+    sandbox_command = (
+        "bwrap --ro-bind / / --tmpfs %s --bind %s %s --proc /proc --dev /dev "
+        "--bind %s /root/.local/share/opencode "
+        "--ro-bind /root/.local/share/opencode/auth.json "
+        "/root/.local/share/opencode/auth.json --chdir %s /bin/sh -c %s"
+    ) % (
+        shlex.quote(BUILDER_WS_ROOT),
+        shlex.quote(ws),
+        shlex.quote(ws),
+        shlex.quote(os.path.join(ws, ".opencode/runtime-state")),
+        shlex.quote(ws),
+        shlex.quote(opencode_command),
+    )
+    return (
+        "set -e; cd %s; "
+        "mkdir -p .opencode/agents .opencode/runtime-state; "
+        "cat > .opencode/agents/%s.md << 'EOFAGENT'\n%s\nEOFAGENT\n"
+        "export OPENCODE_CONFIG_CONTENT='%s'; "
+        "export PATH='/opt/dev-fabric/opencode:/usr/local/bin:/usr/bin:/bin'; "
+        "%s"
+    ) % (
+        shlex.quote(ws),
+        agent_name,
+        agent_md,
+        config,
+        shlex.quote(sandbox_command),
     )
 
 
@@ -1582,7 +1720,7 @@ def _opencode_observed_identity(ws, output_name="build.jsonl"):
     }
 
 
-def _opencode_proof(ws, expected_provider=None, expected_model=None, output_name="build.jsonl"):
+def _opencode_proof(ws, expected_provider=None, expected_model=None, output_name="build.jsonl", require_observed_identity=False):
     identity = _opencode_observed_identity(ws, output_name)
     identity_source = "EVENT"
     if expected_provider and identity["provider"] and identity["provider"] != expected_provider:
@@ -1596,7 +1734,7 @@ def _opencode_proof(ws, expected_provider=None, expected_model=None, output_name
         # CLI. Preserve provenance from that bounded invocation instead of
         # discarding a valid response and triggering a false transport
         # failover.
-        if expected_provider and expected_model:
+        if expected_provider and expected_model and not require_observed_identity:
             identity = {"provider": expected_provider, "model": expected_model}
             identity_source = "SELECTED_INVOCATION"
         else:
@@ -1723,6 +1861,43 @@ def _extract_json(text):
     return None
 
 
+def _validate_adaptive_metadata(payload):
+    """Return immutable benchmark provenance or a fail-closed error."""
+    metadata = (payload.get("x-metadata") or {}).get("adaptive_metadata")
+    if metadata is None:
+        return None, None
+    if not isinstance(metadata, dict):
+        return None, "adaptive_metadata must be an object"
+    result = registry.validate(metadata, "autodev.adaptive-metadata.v1")
+    if not result["ok"]:
+        return None, "adaptive_metadata contract invalid: %s" % result["errors"]
+    return json.loads(json.dumps(metadata, sort_keys=True)), None
+
+
+def _adaptive_metadata_equal(left, right):
+    if not isinstance(left, dict) or not isinstance(right, dict):
+        return False
+    fields = ("experiment_id", "benchmark_task_id", "benchmark_split",
+              "candidate_id", "factor", "context_policy",
+              "repo_explorer_policy", "experience_policy", "config_hash",
+              "task_set_hash", "harness_version")
+    return all(left.get(field) == right.get(field) for field in fields)
+
+
+def _validate_adaptive_metadata_binding(body_metadata, input_metadata):
+    """Validate the duplicated job envelope provenance before dispatch."""
+    if body_metadata is None:
+        return None
+    _, error = _validate_adaptive_metadata(
+        {"x-metadata": {"adaptive_metadata": body_metadata}}
+    )
+    if error:
+        return "ADAPTIVE_METADATA_INVALID: %s" % error
+    if not _adaptive_metadata_equal(body_metadata, input_metadata):
+        return "ADAPTIVE_METADATA_REBIND: job and input adaptive metadata differ"
+    return None
+
+
 def _write_attempts(tool_events):
     writes = [e for e in tool_events if e in ("edit", "write")]
     denied = [e for e in tool_events if e.startswith("denied")]
@@ -1743,6 +1918,38 @@ def _plan_scope_errors(plan):
     if outside:
         errors.append("$.build_scope: targets outside allowed_files: %s" % ", ".join(outside[:10]))
     return errors
+
+
+def _plan_candidate(obj, payload, run_id, head, fingerprint, sentinel_present,
+                    head_before, status_before, head_after, status_after,
+                    tool_events, backend, provider, model):
+    """Map model fields without inventing missing semantic content."""
+    obj = obj if isinstance(obj, dict) else {}
+    targets = obj.get("targets") if isinstance(obj.get("targets"), dict) else {}
+    scope = obj.get("build_scope") if isinstance(obj.get("build_scope"), dict) else {}
+    return {
+        "contract": "autodev.plan.v1", "version": "v1", "run_id": run_id,
+        "repository_head": head[:40],
+        "targets": {"files": targets.get("files", []), "symbols": targets.get("symbols", [])},
+        "acceptance_criteria": obj.get("acceptance_criteria", []),
+        "required_tests": obj.get("required_tests", []),
+        "risks": obj.get("risks", []),
+        "build_scope": {"allowed_files": scope.get("allowed_files", [])},
+        "changes_expected": _changes_expected(payload, scope.get("allowed_files", [])),
+        "context": {"fingerprint": fingerprint, "research_summary": str(obj.get("research_summary", ""))[:4000]},
+        "safety": {
+            "sentinel_absent": not sentinel_present,
+            "repo_unchanged": head_before == head_after and status_before == status_after,
+            "write_attempts": _write_attempts(tool_events)[0],
+            "denied_events": _write_attempts(tool_events)[1],
+        },
+        "x-metadata": {
+            "backend": backend, "semantic_attempt_id": payload.get("attempt_id") or "",
+            "contract_serialization_pass": True, "formatter_calls": 0,
+            "serialization_path": "native_cloud_json",
+            "provider": provider, "model": model,
+        },
+    }
 
 
 def _explicit_scoped_plan(payload, run_id, head):
@@ -1895,7 +2102,90 @@ def _runtime_dashboard_scope_denied(payload, allowed):
     return any(term in task_text for term in DASHBOARD_RUNTIME_DENY_TERMS)
 
 
-def _ensure_workspace(run_id, repository_ref=None):
+def _materialize_benchmark_fixture(ws, fixture):
+    """Materialize only controller-supplied benchmark files in a new workspace.
+
+    The fixture is data, not a command.  Paths are validated before any file
+    is opened and the workspace is committed as an isolated disposable git
+    tree, so benchmark mutation can never target the adapter or product tree.
+    """
+    if not isinstance(fixture, dict) or not isinstance(fixture.get("files"), dict):
+        raise RuntimeError("BENCHMARK_FIXTURE_INVALID")
+    files = fixture["files"]
+    if not files or len(files) > 64:
+        raise RuntimeError("BENCHMARK_FIXTURE_INVALID")
+    root = os.path.realpath(ws)
+    builder_root = os.path.realpath(BUILDER_WS_ROOT)
+    if os.path.commonpath((root, builder_root)) != builder_root:
+        raise RuntimeError("BENCHMARK_FIXTURE_ROOT_ESCAPE")
+    _prepare_builder_workspace(ws)
+    marker = os.path.join(ws, ".morpheus-benchmark-fixture")
+    if os.path.exists(marker):
+        return ws
+    if os.path.exists(ws) and os.listdir(ws):
+        raise RuntimeError("BENCHMARK_FIXTURE_WORKSPACE_NOT_EMPTY")
+    for relative, content in sorted(files.items()):
+        if (not isinstance(relative, str) or not relative or relative.startswith(("/", "\\"))
+                or "\\" in relative or "\x00" in relative
+                or any(part in ("", ".", "..", ".git") for part in relative.split("/"))):
+            raise RuntimeError("BENCHMARK_FIXTURE_PATH_INVALID")
+        if not isinstance(content, str) or len(content.encode("utf-8")) > 128 * 1024:
+            raise RuntimeError("BENCHMARK_FIXTURE_CONTENT_INVALID")
+        destination = os.path.realpath(os.path.join(ws, relative))
+        if os.path.commonpath((destination, root)) != root:
+            raise RuntimeError("BENCHMARK_FIXTURE_PATH_ESCAPE")
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
+        with open(destination, "w", encoding="utf-8", newline="") as stream:
+            stream.write(content)
+    with open(marker, "w", encoding="utf-8") as stream:
+        stream.write("morpheus-benchmark-fixture-v1\n")
+    # Host-side fixture writes create root-owned descendants. Normalize the
+    # complete tree before the first CT filesystem access (git init).
+    os.chown(ws, BUILDER_HOST_UID, BUILDER_HOST_GID)
+    for directory, directories, filenames in os.walk(ws):
+        os.chown(directory, BUILDER_HOST_UID, BUILDER_HOST_GID)
+        os.chmod(directory, BUILDER_WORKSPACE_MODE if directory == ws else 0o755)
+        for filename in filenames:
+            os.chown(os.path.join(directory, filename), BUILDER_HOST_UID, BUILDER_HOST_GID)
+    snapshot = _workspace_permission_snapshot(ws)
+    if (snapshot["uid"], snapshot["gid"], snapshot["mode"]) != (
+        BUILDER_HOST_UID, BUILDER_HOST_GID, BUILDER_WORKSPACE_MODE
+    ):
+        raise RuntimeError("BUILDER_WORKSPACE_PERMISSION_PREFLIGHT_FAILED")
+    qws = shlex.quote(ws)
+    access = pct_exec(
+        "test -x %s && test -r %s && test -w %s"
+        % (qws, qws, qws)
+    )
+    if access.returncode != 0:
+        raise RuntimeError("BUILDER_WORKSPACE_ACCESS_PREFLIGHT_FAILED")
+    result = pct_exec(
+        "set -e; cd %s; git init -q; git config user.email harness@local; "
+        "git config user.name harness; git add -A; git commit -qm benchmark-fixture"
+        % qws
+    )
+    if result.returncode != 0:
+        raise RuntimeError("BENCHMARK_FIXTURE_GIT_INIT_FAILED")
+    return ws
+
+
+def _benchmark_fixture_from_payload(payload):
+    metadata = (payload.get("x-metadata") or {}) if isinstance(payload, dict) else {}
+    fixture = metadata.get("benchmark_fixture")
+    if fixture is not None:
+        return fixture
+    hint = str(payload.get("acceptance_hint") or "") if isinstance(payload, dict) else ""
+    marker = "BENCHMARK_FIXTURE_JSON:"
+    if marker not in hint:
+        return None
+    encoded = hint.split(marker, 1)[1].split("\n", 1)[0].strip()
+    try:
+        return json.loads(encoded)
+    except (TypeError, ValueError):
+        raise RuntimeError("BENCHMARK_FIXTURE_INVALID")
+
+
+def _ensure_workspace(run_id, repository_ref=None, benchmark_fixture=None):
     """Create a clean worker workspace, materializing the requested repo.
 
     External acceptance jobs must inspect the target repository, not the
@@ -1903,6 +2193,9 @@ def _ensure_workspace(run_id, repository_ref=None):
     default branch, so repositories using ``master`` remain supported.
     """
     ws = _ws(run_id)
+    _prepare_builder_workspace(ws)
+    if benchmark_fixture is not None:
+        return _materialize_benchmark_fixture(ws, benchmark_fixture)
     if repository_ref:
         if not REPOSITORY_REF_RE.fullmatch(repository_ref):
             raise RuntimeError("invalid repository_ref")
@@ -1910,20 +2203,46 @@ def _ensure_workspace(run_id, repository_ref=None):
         current = pct_stdout("cd '%s' 2>/dev/null && git remote get-url origin 2>/dev/null || true" % ws)
         expected_url = "https://github.com/%s.git" % repository_ref
         if current.rstrip("/") != expected_url.rstrip("/"):
-            tmp = ws + ".checkout"
-            pct_exec("rm -rf '%s' '%s'" % (tmp, ws))
+            # The run directory is the authorization boundary.  Keep the
+            # checkout stage below it so CT8001 never needs create permission
+            # on BUILDER_WS_ROOT.  Do not remove ws itself: its mapped
+            # ownership and 0700 mode were established by the host adapter.
+            tmp = _checkout_stage_path(ws)
+            qws, qtmp = shlex.quote(ws), shlex.quote(tmp)
+            pct_exec(
+                "set -e; rm -rf -- %s/* %s/.[!.]* %s/..?*; mkdir -p -- %s"
+                % (qws, qws, qws, qtmp)
+            )
             clone = (
                 "set -e; branch=$(git ls-remote --symref '%s' HEAD | "
                 "awk '/^ref:/ {sub(\"refs/heads/\", \"\", $2); print $2; exit}'); "
                 "test -n \"$branch\"; git clone --depth 1 --branch \"$branch\" '%s' '%s'"
-            ) % (repo_url, repo_url, tmp)
-            result = pct_exec(clone)
-            if result.returncode != 0:
-                raise RuntimeError("repository checkout failed: %s" % (result.stderr or "")[:300])
-            pct_exec("mv '%s' '%s'" % (tmp, ws))
+            ) % (repo_url, repo_url, qtmp)
+            try:
+                result = pct_exec(clone)
+                if result.returncode != 0:
+                    raise RuntimeError("repository checkout failed: %s" % (result.stderr or "")[:300])
+                verify = pct_exec(
+                    "set -e; test -s %s/.git/HEAD; git -C %s rev-parse --verify HEAD >/dev/null"
+                    % (qtmp, qtmp)
+                )
+                if verify.returncode != 0:
+                    raise RuntimeError("repository checkout produced no valid Git HEAD")
+                promote = pct_exec(
+                    "set -e; shopt -s dotglob nullglob; entries=(%s/*); "
+                    "test ${#entries[@]} -gt 0; mv -- \"${entries[@]}\" %s/; "
+                    "rmdir -- %s"
+                    % (qtmp, qws, qtmp)
+                )
+                if promote.returncode != 0:
+                    raise RuntimeError("repository checkout promotion failed")
+            finally:
+                # Safe for both a failed clone and an interrupted promotion;
+                # a stage symlink is removed as a link, never followed.
+                pct_exec("rm -rf -- %s" % qtmp)
         return ws
     pct_exec(
-        "mkdir -p '%s' && cd '%s' && "
+        "cd '%s' && "
         "git init -q 2>/dev/null; git config user.email harness@local; "
         "git config user.name harness; "
         "mkdir -p src tests; "
@@ -1935,7 +2254,7 @@ def _ensure_workspace(run_id, repository_ref=None):
 
 
 def job_baseline(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"), _benchmark_fixture_from_payload(payload))
     head, status, branch = _git_state(ws)
     if len(head) < 7:
         head = "workspace-" + str(run_id)[:48]
@@ -1992,7 +2311,7 @@ def job_baseline(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
 
 
 def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"), _benchmark_fixture_from_payload(payload))
     route_provider, route_model = _opencode_worker_identity(payload)
     area = job_type.split(".")[1]
     prompt = (
@@ -2036,7 +2355,10 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
     if execution.returncode != 0:
         raise ProviderFailure("opencode execution failure", retryable=True)
     text, events = _parse_opencode_jsonl(ws, output_name)
-    cloud_proof = _opencode_proof(ws, route_provider, route_model, output_name)
+    cloud_proof = _opencode_proof(
+        ws, route_provider, route_model, output_name,
+        require_observed_identity=_benchmark_route_locked(payload),
+    )
     note = text.strip()
     obj = _extract_json(text)
     if isinstance(obj, dict) and isinstance(obj.get("note"), str):
@@ -2085,7 +2407,7 @@ def job_research(job_id, run_id, job_type, payload, backend, fixture, timeout_s)
 
 
 def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"), _benchmark_fixture_from_payload(payload))
     route_provider, route_model = _opencode_worker_identity(payload)
     head_before, status_before, _ = _git_state(ws)
     explicit_plan = _explicit_scoped_plan(payload, run_id, head_before)
@@ -2119,7 +2441,9 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         "The read-only policy and sentinel-deny preflight are already verified. "
         "Do not call write, edit, task, bash, or any tool; do not access the network. "
         "Return JSON immediately, with concrete non-empty targets and allowed_files "
-        "supported by the task/research. Never include .plan-canary-sentinel.\n"
+        "supported by the task/research. Every targets.files entry MUST also occur "
+        "in build_scope.allowed_files; use the exact same relative path spelling. "
+        "Never include .plan-canary-sentinel.\n"
         "Schema: {\"targets\":{\"files\":[\"path\"],\"symbols\":[]},"
         "\"acceptance_criteria\":[\"criterion\"],\"required_tests\":[\"test\"],"
         "\"risks\":[],\"build_scope\":{\"allowed_files\":[\"path\"]},"
@@ -2174,49 +2498,50 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         pct_stdout("cd '%s' && ls .plan-canary-sentinel 2>/dev/null || true" % ws)
     )
     writes, denied = _write_attempts(events)
-    formatter_used = False
     parse_failed = not isinstance(obj, dict)
-    if not isinstance(obj, dict):
-        obj = {}
-    plan = {
-        "contract": "autodev.plan.v1",
-        "version": "v1",
-        "run_id": run_id,
-        "repository_head": head_after[:40],
-        "targets": {
-            "files": obj.get("targets", {}).get("files", []),
-            "symbols": obj.get("targets", {}).get("symbols", []),
-        },
-        "acceptance_criteria": obj.get("acceptance_criteria", []),
-        "required_tests": obj.get("required_tests", []),
-        "risks": obj.get("risks", []),
-        "build_scope": {
-            "allowed_files": obj.get("build_scope", {}).get("allowed_files", [])
-        },
-        "changes_expected": _changes_expected(
-            payload, obj.get("build_scope", {}).get("allowed_files", [])
-        ),
-        "context": {
-            "fingerprint": fp(payload),
-            "research_summary": obj.get("research_summary", "")[:4000],
-        },
-        "safety": {
-            "sentinel_absent": not sentinel_present,
-            "repo_unchanged": head_before == head_after
-            and status_before == status_after,
-            "write_attempts": writes,
-            "denied_events": denied,
-        },
-    }
+    plan = _plan_candidate(obj, payload, run_id, head_after, fp(payload), sentinel_present,
+                           head_before, status_before, head_after, status_after,
+                           events, backend, route_provider, route_model)
     v = registry.validate(plan, "autodev.plan.v1")
     consistency_errors = _plan_scope_errors(plan)
     if plan["safety"]["sentinel_absent"] is not True:
         consistency_errors.append("$.safety.sentinel_absent: must be true")
     if plan["safety"]["repo_unchanged"] is not True:
         consistency_errors.append("$.safety.repo_unchanged: must be true")
+    # The observed failure was a model-produced scope mismatch. Give the same
+    # worker one bounded correction opportunity with the exact deterministic
+    # invariant; this is prompt repair, not semantic field invention.
+    if any("targets outside allowed_files" in error for error in consistency_errors):
+        retry_prompt = (
+            "/no_think Return ONLY the corrected JSON object for this task: %s\n"
+            "The previous object failed because every targets.files path must be "
+            "present verbatim in build_scope.allowed_files. Preserve all semantic "
+            "fields, add no files, call no tools, and never include .plan-canary-sentinel.\n"
+            "Schema keys: targets(files,symbols), acceptance_criteria, required_tests, "
+            "risks, build_scope(allowed_files), research_summary."
+        ) % payload.get("task_description", "")
+        retry_script = _opencode_script(
+            ws, "plan-worker", _agent_md("plan-worker", PLAN_SERIALIZATION_TOOLS,
+            PLAN_PERMS, "Read-only planning worker", _worker_model_ref(payload)),
+            retry_prompt, timeout_s, *_opencode_worker_identity(payload),
+        )
+        retry_execution = pct_exec(retry_script, timeout=timeout_s)
+        if retry_execution.returncode == 0:
+            retry_text, retry_events = _parse_opencode_jsonl(ws)
+            retry_obj = _extract_json(retry_text)
+            events.extend(retry_events)
+            if isinstance(retry_obj, dict):
+                plan = _plan_candidate(retry_obj, payload, run_id, head_after, fp(payload),
+                                       sentinel_present, head_before, status_before,
+                                       head_after, status_after, events, backend,
+                                       route_provider, route_model)
+                v = registry.validate(plan, "autodev.plan.v1")
+                consistency_errors = _plan_scope_errors(plan)
+                parse_failed = False
+
     if not v["ok"] or consistency_errors:
         errors = list(v["errors"]) + consistency_errors
-        errors.insert(0, "native cloud JSON serialization failed; no local formatter is configured")
+        errors.insert(0, "plan output violated the canonical semantic scope invariant")
         finalize_job(
             job_id,
             "failed",
@@ -2225,17 +2550,13 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
             failure_signature="PLAN_PARSE_FAILED" if parse_failed else "CONTRACT_INVALID",
         )
         return
-    plan["x-metadata"] = {
-        "backend": backend,
-        "semantic_attempt_id": (payload.get("attempt_id") or ""),
-        "contract_serialization_pass": formatter_used,
-        "formatter_calls": 1 if formatter_used else 0,
-        "serialization_path": "native_cloud_json",
-        "provider": route_provider,
-        "model": route_model,
+    plan["x-metadata"].update({
         "model_alias": MORPHEUS_MODEL_ALIAS,
-        "provider_execution": _opencode_proof(ws, route_provider, route_model),
-    }
+        "provider_execution": _opencode_proof(
+            ws, route_provider, route_model,
+            require_observed_identity=_benchmark_route_locked(payload),
+        ),
+    })
     finalize_job(
         job_id,
         "completed",
@@ -2247,7 +2568,7 @@ def job_plan(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
 
 
 def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"), _benchmark_fixture_from_payload(payload))
     route_provider, route_model = _opencode_worker_identity(payload)
     dashboard_error = _dashboard_scope_error(payload)
     if dashboard_error:
@@ -2377,7 +2698,10 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
         raise ProviderFailure("opencode execution failure", retryable=True)
     build_ended_at = _now()
     text, events = _parse_opencode_jsonl(ws)
-    cloud_proof = _opencode_proof(ws, route_provider, route_model)
+    cloud_proof = _opencode_proof(
+        ws, route_provider, route_model,
+        require_observed_identity=_benchmark_route_locked(payload),
+    )
     obj = _extract_json(text)
     after = _git_snapshot(ws)
     files = _build_manifest(ws, after["entries"])
@@ -2461,7 +2785,7 @@ def job_build(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
 
 
 def job_verify(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"), _benchmark_fixture_from_payload(payload))
     changes_expected = _changes_expected(
         payload,
         payload.get("build_scope", {}).get("allowed_files", [])
@@ -2646,7 +2970,7 @@ def _changed_file_contents(ws, paths):
 
 
 def job_review(job_id, run_id, job_type, payload, backend, fixture, timeout_s):
-    ws = _ensure_workspace(run_id, payload.get("repository_ref"))
+    ws = _ensure_workspace(run_id, payload.get("repository_ref"), _benchmark_fixture_from_payload(payload))
     area = job_type.split(".")[1]
     changed = payload.get("changed_files") or []
     contents = _changed_file_contents(ws, [c.get("path", "") for c in changed])
@@ -2849,6 +3173,9 @@ def _dispatch(
         )
     payload = dict(payload)
     metadata = dict(payload.get("x-metadata") or {})
+    adaptive_metadata, adaptive_error = _validate_adaptive_metadata(payload)
+    if adaptive_error:
+        return None, err("ADAPTIVE_METADATA_INVALID", adaptive_error)
     metadata["execution_provider"] = provider or ("embedded" if backend == "embedded" else MORPHEUS_MODEL_ALIAS)
     metadata["execution_model"] = model or ("embedded" if backend == "embedded" else "runtime-selected")
     payload["x-metadata"] = metadata
@@ -2961,6 +3288,7 @@ def _dispatch(
             or (None if hamh_resolver is None else _task_class_of(job_type)),
             harness_resolution=harness_resolution,
             route_decision=route_decision,
+            adaptive_metadata=adaptive_metadata,
         )
         run_job_thread(
             run_id,
@@ -3055,6 +3383,7 @@ def _job_view(rec, with_result=True):
             "harness_version",
             "harness_fingerprint",
             "correlation_id",
+            "adaptive_metadata",
             "input_contract",
             "input_fingerprint",
             "output_contract",
@@ -3145,6 +3474,19 @@ class Handler(BaseHTTPRequestHandler):
                 provider = entry.get("provider")
                 if provider in {"deepseek", "groq"} or "deepseek" in str(provider or "").lower() or "deepseek" in str(entry.get("model") or "").lower():
                     continue
+                status_request = RouteRequest(
+                    provider=provider,
+                    model=entry.get("model", ""),
+                    task_class="plan",
+                    task_profile=classify_task({"task_class": "plan"}, "plan"),
+                    privacy_class="ALLOWED",
+                    free_first=True,
+                ) if RouteRequest is not None else None
+                admission = evaluate_route_admission(status_request, entry) if status_request else {
+                    "eligible": False,
+                    "reasons": [{"gate": "RUNTIME", "code": "RUNTIME_UNAVAILABLE"}],
+                    "decision_inputs": {},
+                }
                 providers.append(
                     {
                         "provider": provider,
@@ -3154,7 +3496,8 @@ class Handler(BaseHTTPRequestHandler):
                         "cost_class": entry.get("cost_class", "UNKNOWN"),
                         "free_eligible": bool(entry.get("free_eligible")),
                         "catalog_eligible": bool(entry.get("catalog_eligible", not is_deepseek_identifier(provider, entry.get("model")))),
-                        "router_eligible": bool(entry.get("router_eligible", entry.get("free_eligible"))),
+                        "router_eligible": bool(admission["eligible"]),
+                        "admission": admission,
                         "explicit_request_allowed": bool(entry.get("explicit_request_allowed", not is_deepseek_identifier(provider, entry.get("model")))),
                         "fallback_allowed": bool(entry.get("fallback_allowed", not is_deepseek_identifier(provider, entry.get("model")))),
                         "opencode_default": bool(entry.get("opencode_default", not is_deepseek_identifier(provider, entry.get("model")))),
@@ -3167,6 +3510,26 @@ class Handler(BaseHTTPRequestHandler):
                 )
             mcp = _mcp_snapshot()
             opencode = _opencode_runtime_snapshot()
+            preflight = None
+            if query.get("preflight", ["0"])[0].lower() in {"1", "true", "yes"}:
+                if _provider_runtime is None or RouteRequest is None:
+                    preflight = {"eligible": False, "reasons": [{"gate": "RUNTIME", "code": "RUNTIME_UNAVAILABLE"}]}
+                else:
+                    requested_provider = (query.get("provider") or [""])[0]
+                    requested_model = (query.get("model") or [""])[0]
+                    requested_task = (query.get("task_class") or ["plan"])[0]
+                    preflight_request = RouteRequest(
+                        provider=requested_provider,
+                        model=requested_model,
+                        task_class=requested_task,
+                        task_profile=classify_task({"task_class": requested_task}, requested_task),
+                        privacy_class=(query.get("privacy_class") or ["ALLOWED"])[0],
+                        free_first=True,
+                        run_id="status-preflight-%s" % new_id("run"),
+                    )
+                    # This is the same begin_run -> refresh_live -> admission
+                    # lifecycle used by dispatch, but never invokes a model.
+                    preflight = _provider_runtime.preflight(preflight_request, refresh=True)
             self._send(
                 200,
                 ok(
@@ -3177,7 +3540,7 @@ class Handler(BaseHTTPRequestHandler):
                         "batches_running": running_batches,
                         "free_first_enabled": bool(getattr(_provider_runtime, "enabled", False)),
                         "automatic_paid_agent_escalation": False,
-                        "free_pool_size": sum(1 for p in providers if p["free_eligible"]),
+                        "free_pool_size": sum(1 for p in providers if p["router_eligible"]),
                         "providers": providers,
                         "mcp": mcp,
                         "mcp_servers": mcp.get("servers", []),
@@ -3193,6 +3556,7 @@ class Handler(BaseHTTPRequestHandler):
                             "opencode_default": False,
                         },
                         "provider_lease_state": "READ_ONLY_SNAPSHOT",
+                        "exact_route_preflight": preflight,
                     }
                 ),
             )
@@ -3212,7 +3576,7 @@ class Handler(BaseHTTPRequestHandler):
                             record = json.loads(line)
                         except ValueError:
                             continue
-                        events.append({key: record.get(key) for key in ("event", "timestamp", "ts", "started_at", "ended_at", "run_id", "job_id", "attempt_id", "job_type", "status", "provider", "model", "selected_provider", "selected_model", "actual_provider", "actual_model", "resolved_model", "failure_signature", "input_contract", "output_contract", "routing_event_id", "worker_id", "mcp_call_id", "correlation_id", "source", "target", "contract", "validation") if record.get(key) is not None})
+                        events.append({key: record.get(key) for key in ("event", "timestamp", "ts", "started_at", "ended_at", "run_id", "job_id", "attempt_id", "job_type", "status", "provider", "model", "selected_provider", "selected_model", "actual_provider", "actual_model", "resolved_model", "failure_signature", "input_contract", "output_contract", "routing_event_id", "worker_id", "mcp_call_id", "correlation_id", "adaptive_metadata", "source", "target", "contract", "validation") if record.get(key) is not None})
             self._send(200, ok({"events": events, "source": "canonical_run_ledger"}))
             return
         if path.startswith("/v1/jobs/"):
@@ -3300,6 +3664,16 @@ class Handler(BaseHTTPRequestHandler):
             }))
             return
         if self.path == "/v1/jobs":
+            input_payload = body.get("input") or {}
+            body_metadata = body.get("adaptive_metadata")
+            input_metadata = (input_payload.get("x-metadata") or {}).get("adaptive_metadata")
+            metadata_binding_error = _validate_adaptive_metadata_binding(
+                body_metadata, input_metadata
+            )
+            if metadata_binding_error:
+                code, _, message = metadata_binding_error.partition(": ")
+                self._send(400, err(code, message))
+                return
             rec, e = _dispatch(
                 body.get("run_id"),
                 body.get("job_id"),

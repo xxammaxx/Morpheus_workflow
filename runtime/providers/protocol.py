@@ -317,6 +317,142 @@ def promotion_eligibility(entry, decision=None):
     )
 
 
+def required_capabilities(request):
+    """Return the hard capability gates for a route request."""
+    required = list(request.requested_capabilities or [])
+    capability = TASK_CAPABILITIES.get(request.task_class)
+    if capability and capability not in required:
+        required.append(capability)
+    profile = request.task_profile or {}
+    if profile.get("requires_code") and "BUILD_CAPABLE" not in required:
+        required.append("BUILD_CAPABLE")
+    if profile.get("requires_vision") and "VISION_CAPABLE" not in required:
+        required.append("VISION_CAPABLE")
+    if profile.get("requires_repository_tools") and "TOOL_CAPABLE" not in required:
+        required.append("TOOL_CAPABLE")
+    if profile.get("requires_structured_output") and "STRUCTURED_OUTPUT_CAPABLE" not in required:
+        required.append("STRUCTURED_OUTPUT_CAPABLE")
+    return required
+
+
+def evaluate_route_admission(request, entry, state=None, catalog_member=True):
+    """Evaluate the exact pre-execution route admission predicate.
+
+    This is intentionally provider-free.  The returned reasons are stable
+    diagnostic codes; dispatch may continue to expose its stable public error.
+    """
+    state = state or {
+        "run_model_exclusions": set(),
+        "task_model_exclusions": {},
+        "provider_exclusions": set(),
+    }
+    reasons = []
+    identity = "%s/%s" % (entry.get("provider"), entry.get("model"))
+    task_id = request.task_id
+    task_exclusions = set((state.get("task_model_exclusions") or {}).get(task_id, set()))
+    caps = entry.get("capabilities") or {}
+    profile = request.task_profile or {}
+    required = required_capabilities(request)
+
+    gates = {
+        "CATALOG_MEMBER": catalog_member,
+        "REQUESTED_PROVIDER_MATCH": not request.provider or request.provider == entry.get("provider"),
+        "REQUESTED_MODEL_MATCH": not request.model or request.model == entry.get("model"),
+        "NOT_DEEPSEEK": not is_deepseek_identifier(entry.get("provider"), entry.get("model")),
+        "NOT_RUN_MODEL_EXCLUDED": identity not in set(state.get("run_model_exclusions") or set()),
+        "NOT_TASK_MODEL_EXCLUDED": identity not in task_exclusions,
+        "NOT_PROVIDER_EXCLUDED": entry.get("provider") not in set(state.get("provider_exclusions") or set()),
+        "AUTHENTICATED": entry.get("authenticated", True) is not False,
+        "AVAILABLE": entry.get("availability") is True,
+        "HEALTH_ALLOWED": entry.get("health") in ("HEALTHY", "DEGRADED"),
+        "PROBE_ELIGIBLE": probe_eligibility(entry),
+        "PROMOTION_ELIGIBLE": promotion_eligibility(entry),
+        "COST_CLASS_ALLOWED": entry.get("cost_class") in FREE_CLASSES,
+        "PRIVACY_ALLOWED": _privacy_ok(entry, request.privacy_class),
+        "QUOTA_AVAILABLE": entry.get("quota_state", {}).get("exhausted") is not True,
+        "NOT_QUARANTINED": not entry.get("quarantined", False),
+    }
+    for capability in required:
+        gates[capability] = caps.get(capability) is True
+    if profile.get("requires_vision"):
+        gates["VISION_GATE"] = caps.get("VISION_CAPABLE") is True and entry.get("vision_probe") != "FAIL"
+    else:
+        gates["VISION_GATE"] = True
+    if profile.get("requires_repository_tools"):
+        gates["TOOL_GATE"] = caps.get("TOOL_CAPABLE") is True and entry.get("tool_probe") == "PASS"
+    else:
+        gates["TOOL_GATE"] = True
+    if profile.get("requires_long_context"):
+        gates["CONTEXT_GATE"] = int(entry.get("context_length") or 0) >= int(profile.get("minimum_context_tokens") or 0)
+    else:
+        gates["CONTEXT_GATE"] = True
+    if profile.get("requires_structured_output"):
+        score = float(entry.get("structured_output_score") or 0)
+        gates["STRUCTURED_OUTPUT_SCORE_OK"] = score >= 0.8
+    else:
+        gates["STRUCTURED_OUTPUT_SCORE_OK"] = True
+    gates["PREEXECUTION_ELIGIBLE"] = gates["PROBE_ELIGIBLE"] or gates["PROMOTION_ELIGIBLE"]
+    gates["FREE_EVIDENCE_ALLOWED"] = gates["PREEXECUTION_ELIGIBLE"]
+    gate_reasons = []
+    for name, passed in gates.items():
+        if not passed:
+            gate_reasons.append({
+                "gate": name,
+                "code": {
+                    "AVAILABLE": "ROUTE_UNAVAILABLE",
+                    "HEALTH_ALLOWED": "HEALTH_NOT_ALLOWED",
+                    "AUTHENTICATED": "PROVIDER_NOT_AUTHENTICATED",
+                    "NOT_DEEPSEEK": "DEEPSEEK_RETIRED",
+                    "NOT_RUN_MODEL_EXCLUDED": "RUN_MODEL_EXCLUDED",
+                    "NOT_TASK_MODEL_EXCLUDED": "TASK_MODEL_EXCLUDED",
+                    "NOT_PROVIDER_EXCLUDED": "PROVIDER_EXCLUDED",
+                    "PROBE_ELIGIBLE": "PROBE_NOT_ELIGIBLE",
+                    "PROMOTION_ELIGIBLE": "PROMOTION_NOT_ELIGIBLE",
+                    "STRUCTURED_OUTPUT_CAPABLE": "STRUCTURED_OUTPUT_CAPABILITY_MISSING",
+                    "STRUCTURED_OUTPUT_SCORE_OK": "STRUCTURED_OUTPUT_SCORE_TOO_LOW",
+                    "PLAN_CAPABLE": "PLAN_CAPABILITY_MISSING",
+                    "COST_CLASS_ALLOWED": "COST_CLASS_NOT_FREE",
+                    "PRIVACY_ALLOWED": "PRIVACY_NOT_ALLOWED",
+                    "QUOTA_AVAILABLE": "QUOTA_EXHAUSTED",
+                    "NOT_QUARANTINED": "MODEL_QUARANTINED",
+                    "CATALOG_MEMBER": "MODEL_NOT_IN_CATALOG",
+                    "REQUESTED_PROVIDER_MATCH": "PROVIDER_IDENTITY_MISMATCH",
+                    "REQUESTED_MODEL_MATCH": "MODEL_IDENTITY_MISMATCH",
+                    "VISION_GATE": "VISION_CAPABILITY_MISSING",
+                    "TOOL_GATE": "TOOL_CAPABILITY_MISSING",
+                    "CONTEXT_GATE": "CONTEXT_TOO_SHORT",
+                }.get(name, name),
+            })
+    # Probe and promotion are alternative lifecycle proofs.  A missing
+    # promotion proof is not a rejection when the pre-execution probe gate is
+    # valid, and vice versa.
+    reasons = [reason for reason in gate_reasons if not (
+        (reason["gate"] == "PROMOTION_ELIGIBLE" and gates["PROBE_ELIGIBLE"])
+        or (reason["gate"] == "PROBE_ELIGIBLE" and gates["PROMOTION_ELIGIBLE"])
+        or reason["gate"] == "PREEXECUTION_ELIGIBLE"
+        or reason["gate"] == "FREE_EVIDENCE_ALLOWED"
+    )]
+    # Derived gates are useful in diagnostics but should not duplicate a
+    # second admission policy: final eligibility is their conjunction.
+    alternative_gates = {"PROBE_ELIGIBLE", "PROMOTION_ELIGIBLE", "PREEXECUTION_ELIGIBLE", "FREE_EVIDENCE_ALLOWED"}
+    eligible = bool(gates["PREEXECUTION_ELIGIBLE"] and all(
+        passed for name, passed in gates.items() if name not in alternative_gates
+    ))
+    return {
+        "eligible": bool(eligible),
+        "reasons": reasons,
+        "gate_reasons": gate_reasons,
+        "decision_inputs": {
+            "identity": identity,
+            "required_capabilities": required,
+            "gates": gates,
+            "free_eligible": bool(entry.get("free_eligible")),
+            "probe_eligibility": gates["PROBE_ELIGIBLE"],
+            "promotion_eligibility": gates["PROMOTION_ELIGIBLE"],
+        },
+    }
+
+
 def safe_id(value):
     return bool(re.match(r"^[A-Za-z0-9._/-]{1,128}$", str(value or "")))
 

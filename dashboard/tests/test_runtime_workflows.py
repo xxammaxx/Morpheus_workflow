@@ -277,6 +277,19 @@ console.log(JSON.stringify({same,crossProject,differentSource}));
         self.assertIn("run_id", insert["parameters"]["jsonBody"])
         self.assertIn("Restore Intake Carrier", {node["name"] for node in workflow["nodes"]})
 
+    def test_start_response_projects_persisted_canonical_run_id_after_upsert(self):
+        workflow = self._generate()["00 AutoDev API Start"]
+        response = next(node for node in workflow["nodes"] if node["name"] == "Respond 202")
+        response_body = response["parameters"]["responseBody"]
+        self.assertIn("$('Prepare Run Row').first().json.data[0].run_id", response_body)
+        self.assertNotIn("$json.run_id", response_body)
+        insert_routes = workflow["connections"]["Insert Run Row"]["main"][0]
+        self.assertEqual(
+            {route["node"] for route in insert_routes},
+            {"Respond 202", "Restore Intake Carrier"},
+        )
+        self.assertNotIn("Respond 202", json.dumps(workflow["connections"]["Pass Intake"]))
+
     def test_continuation_has_no_provider_or_model_selection(self):
         reassessment = json.dumps(self._generate()["08 AutoDev Project Reassessment"])
         self.assertIn("backend:'opencode-builder-8001'", reassessment)

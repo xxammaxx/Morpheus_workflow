@@ -1,0 +1,651 @@
+{
+  "name": "07 AutoDev Blueprint Bootstrap",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "autodev/project/blueprint",
+        "responseMode": "responseNode",
+        "options": {},
+        "authentication": "headerAuth"
+      },
+      "id": "blueprint-webhook",
+      "name": "Blueprint Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "bNrV3DszwdD7hXuY",
+          "name": "autodev-api-auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const env=$json.body||$json,p=env.payload||{},md=String(p.blueprint_md||'').replace(/\\r/g,'');const lines=md.split('\\n'),heads=[],sections={};let cur='';for(const line of lines){const m=line.match(/^#{1,3}\\s+(.+?)\\s*$/);if(m){cur=m[1].trim();heads.push(cur);sections[cur]=[]}else if(cur&&line.trim())sections[cur].push(line.trim())}const find=names=>{const k=heads.find(h=>names.includes(h.toLowerCase()));return k?sections[k]||[]:[]};const goal=find(['ziel','projektziel','goal','objective']),req=find(['anforderungen','requirements']),ac=find(['acceptance criteria','akzeptanzkriterien']),mil=find(['meilensteine','milestones']);if(!goal.length&&!req.length&&!ac.length)return[{json:{valid:false,error:'BLUEPRINT_MISSING_REQUIRED_SECTIONS'}}];const slug=String(p.project_name||'blueprint').toLowerCase().replace(/[^a-z0-9-]+/g,'-').replace(/^-|-$/g,'').slice(0,60)||'blueprint-project',repoUrl=String(p.repository_url||''),repoParts=repoUrl.split('/').filter(Boolean),owner=String(p.github_owner||repoParts[repoParts.length-2]||'xxammaxx'),repo=repoParts[repoParts.length-1]||slug,pid=p.project_id||`project-${slug}`,work=[...mil,...req].filter(Boolean),nodes=work.map((text,i)=>({index:i+1,title:text.replace(/^[-*]\\s*/,'').slice(0,180),blueprint_section:mil.includes(text)?'milestones':'requirements'})),rows=nodes.map((n,i)=>({project_id:pid,issue_number:`plan-${i+1}`,title:n.title,body:`# Ziel\\n\\n${n.title}\\n\\n# Kontext\\n\\nBlueprint: docs/blueprint.md\\n\\n# Scope\\n\\n${n.title}\\n\\n# Nicht-Scope\\n\\nNicht in diesem Arbeitspaket.\\n\\n# Abhängigkeiten\\n\\n${i?'DEPENDS_ON=plan-'+i:'Keine'}\\n\\n# Acceptance Criteria\\n\\n${ac.join('\\n')}\\n\\n# Verifikation\\n\\nAutomatisierte Tests und Gate-Nachweis.\\n\\n# Artefakte\\n\\nBLUEPRINT_SECTION=${n.blueprint_section}`,state:'open',morpheus_status:i?'BLOCKED':'READY',depends_on:i?`plan-${i}`:'',changes_expected:'true',github_url:'',blueprint_section:n.blueprint_section,updated_at:new Date().toISOString()}));const sha=Array.from(new TextEncoder().encode(md)).reduce((h,b)=>((h*33+b)>>>0),5381).toString(16);return[{json:{valid:true,owner,repo,new_repository:!repoUrl&&p.dry_run!==true,blueprint_write:p.dry_run!==true,blueprint_md:md,blueprint_b64:Buffer.from(md).toString('base64'),create_github_issues:p.create_github_issues===true&&!p.dry_run,project_row:{project_id:pid,name:p.project_name||'Blueprint Project',repository_url:repoUrl,blueprint_ref:'docs/blueprint.md',project_mode:p.project_mode==='AUTO'?'AUTO':'MANUAL',status:'READY',current_run_id:'',current_issue:rows[0]?.issue_number||'',created_at:new Date().toISOString(),updated_at:new Date().toISOString(),blueprint_sha256:sha,blueprint_coverage:'PENDING'},issue_rows:rows,graph:{nodes,edges:nodes.slice(1).map((n,i)=>({from:'plan-'+(i+1),to:'plan-'+(i+2)}))},blueprint:{goal,scope:find(['scope']),non_scope:find(['nicht-scope','non-scope']),architecture:find(['architektur','architecture']),requirements:req,milestones:mil,acceptance_criteria:ac}}}];"
+      },
+      "id": "parse-blueprint-graph",
+      "name": "Parse Blueprint Graph",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.valid === true}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "blueprint-valid?",
+      "name": "Blueprint Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({status:'error',code:$json.error||'BLUEPRINT_INVALID'}) }}"
+      },
+      "id": "reject-blueprint",
+      "name": "Reject Blueprint",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        780,
+        -170
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.new_repository === true}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "create-new-repository?",
+      "name": "Create New Repository?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        780,
+        170
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/user/repos",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({name: $('Parse Blueprint Graph').first().json.repo, private: true, auto_init: true, description: $('Parse Blueprint Graph').first().json.project_row.name}) }}",
+        "options": {}
+      },
+      "id": "create-github-repository",
+      "name": "Create GitHub Repository",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1040,
+        170
+      ],
+      "credentials": {
+        "githubApi": null
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s=$('Parse Blueprint Graph').first().json,r=$json;const project={...s.project_row,repository_url:r.html_url||`https://github.com/${s.owner}/${s.repo}`};return[{json:{...s,project_row:project,repository_url:project.repository_url}}];"
+      },
+      "id": "normalize-created-repository",
+      "name": "Normalize Created Repository",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        170
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s=$json;return[{json:{...s,repository_url:s.project_row.repository_url}}];"
+      },
+      "id": "normalize-existing-repository",
+      "name": "Normalize Existing Repository",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.github.com/repos/{{ $json.owner }}/{{ $json.repo }}/contents/docs/blueprint.md",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({message: 'chore: persist canonical blueprint',content: $json.blueprint_b64}) }}",
+        "options": {}
+      },
+      "id": "persist-blueprint-in-repository",
+      "name": "Persist Blueprint in Repository",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1560,
+        170
+      ],
+      "credentials": {
+        "githubApi": null
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s=$('Parse Blueprint Graph').first().json;let repo=s.project_row.repository_url;try{repo=$('Normalize Created Repository').first().json.project_row.repository_url}catch(e){}try{repo=$('Normalize Existing Repository').first().json.project_row.repository_url||repo}catch(e){}return[{json:{...s,repository_url:repo,project_row:{...s.project_row,repository_url:repo}}}];"
+      },
+      "id": "restore-blueprint-state",
+      "name": "Restore Blueprint State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        170
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.blueprint_write}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "persist-existing-blueprint?",
+      "name": "Persist Existing Blueprint?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables//rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({filter:{filters:[{columnName:'project_id',condition:'eq',value:$json.project_row.project_id}]},data:$json.project_row,returnData:true}) }}",
+        "options": {}
+      },
+      "id": "persist-blueprint-project",
+      "name": "Persist Blueprint Project",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2080,
+        170
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s=$('Restore Blueprint State').first().json;return s.issue_rows.map(issue=>({json:{...s,issue_row:issue,github_issue_body:issue.body}}));"
+      },
+      "id": "prepare-blueprint-issue-items",
+      "name": "Prepare Blueprint Issue Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2340,
+        170
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.create_github_issues}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        }
+      },
+      "id": "create-blueprint-issues?",
+      "name": "Create Blueprint Issues?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        170
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/{{ $json.owner }}/{{ $json.repo }}/issues",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({title: $json.issue_row.title, body: $json.github_issue_body}) }}",
+        "options": {}
+      },
+      "id": "create-github-blueprint-issue",
+      "name": "Create GitHub Blueprint Issue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2860,
+        170
+      ],
+      "credentials": {
+        "githubApi": null
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.52:5678/api/v1/data-tables//rows/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({filter:{filters:[{columnName:'project_id',condition:'eq',value:$json.issue_row.project_id},{columnName:'issue_number',condition:'eq',value:$json.issue_row.issue_number}]},data:$json.issue_row,returnData:true}) }}",
+        "options": {}
+      },
+      "id": "persist-blueprint-issue-graph",
+      "name": "Persist Blueprint Issue Graph",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3120,
+        170
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Qy9ElX1H6XmeXGr9",
+          "name": "autodev-n8n-api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return[{json:{persisted:$input.all().length}}];"
+      },
+      "id": "blueprint-issue-persistence-comp",
+      "name": "Blueprint Issue Persistence Complete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3380,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s=$('Restore Blueprint State').first().json;return[{json:{status:'ACCEPTED',project:s.project_row,repository_url:s.project_row.repository_url,graph:s.graph,blueprint:s.blueprint,issue_plan:s.issue_rows,github_mutation:s.new_repository||s.create_github_issues,source:'n8n-blueprint-bootstrap'}}];"
+      },
+      "id": "blueprint-bootstrap-result",
+      "name": "Blueprint Bootstrap Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3380,
+        170
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-blueprint-bootstrap",
+      "name": "Respond Blueprint Bootstrap",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        3640,
+        170
+      ]
+    }
+  ],
+  "connections": {
+    "Blueprint Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Blueprint Graph",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Blueprint Graph": {
+      "main": [
+        [
+          {
+            "node": "Blueprint Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Blueprint Valid?": {
+      "main": [
+        [
+          {
+            "node": "Create New Repository?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject Blueprint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create New Repository?": {
+      "main": [
+        [
+          {
+            "node": "Create GitHub Repository",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize Existing Repository",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create GitHub Repository": {
+      "main": [
+        [
+          {
+            "node": "Normalize Created Repository",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Created Repository": {
+      "main": [
+        [
+          {
+            "node": "Persist Blueprint in Repository",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Blueprint in Repository": {
+      "main": [
+        [
+          {
+            "node": "Restore Blueprint State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Existing Repository": {
+      "main": [
+        [
+          {
+            "node": "Persist Existing Blueprint?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Existing Blueprint?": {
+      "main": [
+        [
+          {
+            "node": "Persist Blueprint in Repository",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Restore Blueprint State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Blueprint State": {
+      "main": [
+        [
+          {
+            "node": "Persist Blueprint Project",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Blueprint Project": {
+      "main": [
+        [
+          {
+            "node": "Prepare Blueprint Issue Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Blueprint Issue Items": {
+      "main": [
+        [
+          {
+            "node": "Create Blueprint Issues?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Blueprint Issues?": {
+      "main": [
+        [
+          {
+            "node": "Create GitHub Blueprint Issue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Persist Blueprint Issue Graph",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create GitHub Blueprint Issue": {
+      "main": [
+        [
+          {
+            "node": "Blueprint Issue Persistence Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Blueprint Issue Graph": {
+      "main": [
+        [
+          {
+            "node": "Blueprint Issue Persistence Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Blueprint Issue Persistence Complete": {
+      "main": [
+        [
+          {
+            "node": "Blueprint Bootstrap Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Blueprint Bootstrap Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Blueprint Bootstrap",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

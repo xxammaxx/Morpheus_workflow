@@ -15,6 +15,8 @@ from .protocol import (
     free_eligibility,
     probe_eligibility,
     promotion_eligibility,
+    evaluate_route_admission,
+    required_capabilities,
     is_deepseek_identifier,
     assert_runtime_model_allowed,
     new_id,
@@ -43,20 +45,7 @@ class ProviderRouter:
 
     @staticmethod
     def _caps(request):
-        required = list(request.requested_capabilities or [])
-        capability = TASK_CAPABILITIES.get(request.task_class)
-        if capability and capability not in required:
-            required.append(capability)
-        profile = request.task_profile or {}
-        if profile.get("requires_code") and "BUILD_CAPABLE" not in required:
-            required.append("BUILD_CAPABLE")
-        if profile.get("requires_vision") and "VISION_CAPABLE" not in required:
-            required.append("VISION_CAPABLE")
-        if profile.get("requires_repository_tools") and "TOOL_CAPABLE" not in required:
-            required.append("TOOL_CAPABLE")
-        if profile.get("requires_structured_output") and "STRUCTURED_OUTPUT_CAPABLE" not in required:
-            required.append("STRUCTURED_OUTPUT_CAPABLE")
-        return required
+        return required_capabilities(request)
 
     def _candidate_rows(self, request):
         rows = []
@@ -67,45 +56,19 @@ class ProviderRouter:
             entry = copy.deepcopy(original)
             normalize_live_capabilities(entry)
             identity = "%s/%s" % (entry.get("provider"), entry.get("model"))
-            if request.model and entry.get("model") != request.model:
-                continue
-            if request.provider and request.provider != entry.get("provider"):
-                continue
-            if is_deepseek_identifier(entry.get("provider"), entry.get("model")):
-                continue
-            if identity in excluded or identity in task_excluded:
-                continue
-            if entry.get("provider") in state["provider_exclusions"]:
-                continue
-            if entry.get("authenticated") is False:
-                continue
-            if entry.get("quarantined") or entry.get("availability") is not True:
-                continue
-            if entry.get("health") not in ("HEALTHY", "DEGRADED"):
-                continue
-            if not all((entry.get("capabilities") or {}).get(name) is True for name in self._caps(request)):
-                continue
             profile = request.task_profile or classify_task({"task_class": request.task_class}, request.task_class)
-            caps = entry.get("capabilities") or {}
-            if profile.get("requires_vision") and (
-                not caps.get("VISION_CAPABLE") or entry.get("vision_probe") == "FAIL"
-            ):
-                continue
-            if profile.get("requires_repository_tools") and (
-                not caps.get("TOOL_CAPABLE") or entry.get("tool_probe") != "PASS"
-            ):
-                continue
-            if profile.get("requires_structured_output") and (
-                not caps.get("STRUCTURED_OUTPUT_CAPABLE")
-                or float(entry.get("structured_output_score") or 0) < 0.8
-            ):
-                continue
-            if profile.get("requires_long_context") and int(entry.get("context_length") or 0) < int(profile.get("minimum_context_tokens") or 0):
-                continue
-            is_free = promotion_eligibility(entry) or probe_eligibility(entry)
-            if not is_free:
-                continue
-            if entry.get("cost_class") not in FREE_CLASSES:
+            admission_request = copy.copy(request)
+            admission_request.task_profile = profile
+            admission = evaluate_route_admission(
+                admission_request,
+                entry,
+                state={
+                    "run_model_exclusions": excluded,
+                    "task_model_exclusions": {request.task_id: task_excluded},
+                    "provider_exclusions": state["provider_exclusions"],
+                },
+            )
+            if not admission["eligible"]:
                 continue
             entry["_rank_score"] = self._rank_score(entry, request, state)
             rows.append(entry)
