@@ -91,6 +91,8 @@ try:
         is_valid_model_identifier,
         probe_eligibility,
         promotion_eligibility,
+        evaluate_route_admission,
+        new_id,
     )  # noqa: E402
     from providers.capabilities import classify_task  # noqa: E402
 except ImportError:  # pragma: no cover - legacy deployment without providers
@@ -112,6 +114,8 @@ except ImportError:  # pragma: no cover - legacy deployment without providers
         return False
     def promotion_eligibility(_entry):
         return False
+    def evaluate_route_admission(_request, _entry, state=None, catalog_member=True):
+        return {"eligible": False, "reasons": [{"gate": "RUNTIME", "code": "RUNTIME_UNAVAILABLE"}], "gate_reasons": [], "decision_inputs": {}}
     classify_task = lambda payload, task_class=None: {"task_class": task_class or "research"}
 
 # HAMH harness registry: loaded from <STATE_DIR>/hamh/registry.json when
@@ -3470,6 +3474,19 @@ class Handler(BaseHTTPRequestHandler):
                 provider = entry.get("provider")
                 if provider in {"deepseek", "groq"} or "deepseek" in str(provider or "").lower() or "deepseek" in str(entry.get("model") or "").lower():
                     continue
+                status_request = RouteRequest(
+                    provider=provider,
+                    model=entry.get("model", ""),
+                    task_class="plan",
+                    task_profile=classify_task({"task_class": "plan"}, "plan"),
+                    privacy_class="ALLOWED",
+                    free_first=True,
+                ) if RouteRequest is not None else None
+                admission = evaluate_route_admission(status_request, entry) if status_request else {
+                    "eligible": False,
+                    "reasons": [{"gate": "RUNTIME", "code": "RUNTIME_UNAVAILABLE"}],
+                    "decision_inputs": {},
+                }
                 providers.append(
                     {
                         "provider": provider,
@@ -3479,7 +3496,8 @@ class Handler(BaseHTTPRequestHandler):
                         "cost_class": entry.get("cost_class", "UNKNOWN"),
                         "free_eligible": bool(entry.get("free_eligible")),
                         "catalog_eligible": bool(entry.get("catalog_eligible", not is_deepseek_identifier(provider, entry.get("model")))),
-                        "router_eligible": bool(entry.get("router_eligible", entry.get("free_eligible"))),
+                        "router_eligible": bool(admission["eligible"]),
+                        "admission": admission,
                         "explicit_request_allowed": bool(entry.get("explicit_request_allowed", not is_deepseek_identifier(provider, entry.get("model")))),
                         "fallback_allowed": bool(entry.get("fallback_allowed", not is_deepseek_identifier(provider, entry.get("model")))),
                         "opencode_default": bool(entry.get("opencode_default", not is_deepseek_identifier(provider, entry.get("model")))),
@@ -3492,6 +3510,26 @@ class Handler(BaseHTTPRequestHandler):
                 )
             mcp = _mcp_snapshot()
             opencode = _opencode_runtime_snapshot()
+            preflight = None
+            if query.get("preflight", ["0"])[0].lower() in {"1", "true", "yes"}:
+                if _provider_runtime is None or RouteRequest is None:
+                    preflight = {"eligible": False, "reasons": [{"gate": "RUNTIME", "code": "RUNTIME_UNAVAILABLE"}]}
+                else:
+                    requested_provider = (query.get("provider") or [""])[0]
+                    requested_model = (query.get("model") or [""])[0]
+                    requested_task = (query.get("task_class") or ["plan"])[0]
+                    preflight_request = RouteRequest(
+                        provider=requested_provider,
+                        model=requested_model,
+                        task_class=requested_task,
+                        task_profile=classify_task({"task_class": requested_task}, requested_task),
+                        privacy_class=(query.get("privacy_class") or ["ALLOWED"])[0],
+                        free_first=True,
+                        run_id="status-preflight-%s" % new_id("run"),
+                    )
+                    # This is the same begin_run -> refresh_live -> admission
+                    # lifecycle used by dispatch, but never invokes a model.
+                    preflight = _provider_runtime.preflight(preflight_request, refresh=True)
             self._send(
                 200,
                 ok(
@@ -3502,7 +3540,7 @@ class Handler(BaseHTTPRequestHandler):
                         "batches_running": running_batches,
                         "free_first_enabled": bool(getattr(_provider_runtime, "enabled", False)),
                         "automatic_paid_agent_escalation": False,
-                        "free_pool_size": sum(1 for p in providers if p["free_eligible"]),
+                        "free_pool_size": sum(1 for p in providers if p["router_eligible"]),
                         "providers": providers,
                         "mcp": mcp,
                         "mcp_servers": mcp.get("servers", []),
@@ -3518,6 +3556,7 @@ class Handler(BaseHTTPRequestHandler):
                             "opencode_default": False,
                         },
                         "provider_lease_state": "READ_ONLY_SNAPSHOT",
+                        "exact_route_preflight": preflight,
                     }
                 ),
             )

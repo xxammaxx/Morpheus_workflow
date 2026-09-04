@@ -12,6 +12,7 @@ from .protocol import (
     RouteRequest,
     new_id,
     assert_runtime_model_allowed,
+    evaluate_route_admission,
 )
 from .router import ProviderRouter
 from .lease import ProviderProbeLease
@@ -40,6 +41,25 @@ class ProviderRuntime:
         if not self.enabled:
             return None
         return self.router.select(request)
+
+    def preflight(self, request, refresh=True):
+        """Evaluate a route with dispatch-equivalent refresh, without invoke."""
+        if refresh:
+            self.begin_run(request.run_id or new_id("preflight"))
+        requested = [
+            entry for entry in self.catalog.model_entries()
+            if (not request.provider or entry.get("provider") == request.provider)
+            and (not request.model or entry.get("model") == request.model)
+        ]
+        if not requested:
+            return {
+                "eligible": False,
+                "reasons": [{"gate": "CATALOG_MEMBER", "code": "MODEL_NOT_IN_CATALOG"}],
+                "gate_reasons": [{"gate": "CATALOG_MEMBER", "code": "MODEL_NOT_IN_CATALOG"}],
+                "decision_inputs": {"identity": "%s/%s" % (request.provider, request.model)},
+            }
+        state = self.router.state.load(request.run_id) if request.run_id else None
+        return evaluate_route_admission(request, requested[0], state=state)
 
     def direct_invoke(self, decision, messages, task_class, timeout, attempt_id):
         assert_runtime_model_allowed(
