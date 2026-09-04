@@ -162,6 +162,14 @@ def provider_pool_status(size):
     return "HEALTHY" if size >= FREE_POOL_MINIMUM else "DEGRADED" if size == 1 else "UNAVAILABLE"
 
 
+def operational_provider_pool(runtime, runtime_ok):
+    """Project the canonical routable pool; unavailable data is not an empty pool."""
+    if not runtime_ok or not isinstance(runtime, dict):
+        return []
+    return [provider for provider in runtime.get("providers", [])
+            if isinstance(provider, dict) and provider.get("router_eligible") is True]
+
+
 class Upstream:
     """Read-only upstream client; writes use command_post's fixed n8n path."""
     def __init__(self, base, headers=None):
@@ -344,7 +352,7 @@ def projection():
     health_adapter = adapter_health()
     clean_runs = [sanitize_run(x) for x in runs]
     recent = sort_recent_runs(clean_runs)
-    pool = [p for p in runtime.get("providers", []) if p.get("free_eligible")]
+    pool = operational_provider_pool(runtime, runtime_ok)
     mcp = runtime.get("mcp") if isinstance(runtime.get("mcp"), dict) else {}
     mcp_servers = runtime.get("mcp_servers") if isinstance(runtime.get("mcp_servers"), list) else mcp.get("servers", [])
     lmstudio_configured = any(str(p.get("provider", "")).lower() == "lmstudio" for p in runtime.get("providers", []))
@@ -352,7 +360,7 @@ def projection():
     opencode_ok = opencode.get("ct8001_reachable") is True and opencode.get("binary_present") is True and bool(opencode.get("version")) and opencode.get("version") != "UNKNOWN"
     run_counts = build_run_counts(clean_runs)
     alerts = []
-    if len(pool) < FREE_POOL_MINIMUM: alerts.append({"severity": "HIGH", "code": "FREE_POOL_BELOW_MIN", "message": "No eligible zero-cost route available"})
+    if runtime_ok and len(pool) < FREE_POOL_MINIMUM: alerts.append({"severity": "HIGH", "code": "FREE_POOL_BELOW_MIN", "message": "No eligible zero-cost route available"})
     if runtime.get("automatic_paid_agent_escalation"): alerts.append({"severity": "CRITICAL", "code": "PAID_ESCALATION_ENABLED", "message": "Automatic paid escalation enabled"})
     if health_n8n["status"] != "HEALTHY": alerts.append({"severity": "HIGH", "code": "N8N_UNAVAILABLE", "message": "n8n UNAVAILABLE"})
     if health_adapter["status"] != "HEALTHY": alerts.append({"severity": "HIGH", "code": "ADAPTER_UNAVAILABLE", "message": "Adapter UNAVAILABLE"})
@@ -362,7 +370,7 @@ def projection():
     active = choose_active_run(clean_runs)
     debug, debug_ok = debugging_events(active.get("run_id") if active else None)
     telemetry = runtime_telemetry(active or {}, debug)
-    pool_health = provider_pool_status(len(pool))
+    pool_health = provider_pool_status(len(pool)) if runtime_ok else "UNAVAILABLE"
     pool_module = {"status": pool_health, "diagnostic_status": "OK" if pool_health == "HEALTHY" else "NICHT_OK", "role": "REQUIRED", "checked_at": now(), "freshness_seconds": 0}
     event_module = safe_status(debug_ok)
     mcp_module = {"status": "OK" if mcp.get("status") == "OK" else "NICHT_KONFIGURIERT" if mcp.get("status") == "NICHT_KONFIGURIERT" else "NICHT_OK", "diagnostic_status": mcp.get("status", "NICHT_KONFIGURIERT"), "role": "OPTIONAL", "checked_at": now(), "freshness_seconds": 0, "servers": mcp_servers}
@@ -375,7 +383,8 @@ def projection():
     optional_missing = []
     if mcp_module["status"] == "NICHT_KONFIGURIERT": optional_missing.append("MCP")
     if lmstudio_module["status"] == "NICHT_KONFIGURIERT": optional_missing.append("LM Studio")
-    return {"contract": "autodev.control-tower-overview.v1", "version": "v1", "generated_at": now(), "freshness": {"checked_at": now(), "freshness_seconds": 0}, "system_health": modules, "system_health_summary": {"status": "OK" if mandatory_ok else "NICHT_OK", "diagnostic_status": "OK" if mandatory_ok else "NICHT_OK", "mandatory_ok": mandatory_ok, "ok": sum(value.get("status") in {"HEALTHY", "OK"} for value in modules.values()), "total": len(modules), "optional_not_configured": len(optional_missing)}, "free_pool": {"size": len(pool), "providers": pool}, "run_counts": run_counts, "recent_runs": recent, "projects": project_rows, "active_run": active, "debugging": {"current_run_id": active.get("run_id") if active else None, "stage": active.get("current_job") if active else None, "events": debug, "source": "LIVE" if debug_ok else "IDLE"}, "telemetry": telemetry, "alerts": alerts, "optional_components_not_configured": optional_missing, "release": {"dashboard_version": VERSION, "core_v1_release": "v1.0.0", "morpheus_release": "v1.1.2", "dashboard_release": VERSION, "v1_release": "v1.0.0", "n8n_autodev_workflows": health_n8n.get("workflow_count", 0), "free_first_active": bool(runtime.get("free_first_enabled")), "paid_escalation": bool(runtime.get("automatic_paid_agent_escalation")), "deepseek": "INELIGIBLE"}, "sources": {"n8n": "LIVE" if runs_ok and health_n8n["status"] == "HEALTHY" else "UNAVAILABLE", "adapter": "LIVE" if runtime_ok else "UNAVAILABLE", "projects": "LIVE" if projects_ok or issues_ok else "DERIVED"}}
+    free_pool_status = "AVAILABLE" if runtime_ok and pool else "EMPTY" if runtime_ok else "UNAVAILABLE"
+    return {"contract": "autodev.control-tower-overview.v1", "version": "v1", "generated_at": now(), "freshness": {"checked_at": now(), "freshness_seconds": 0}, "system_health": modules, "system_health_summary": {"status": "OK" if mandatory_ok else "NICHT_OK", "diagnostic_status": "OK" if mandatory_ok else "NICHT_OK", "mandatory_ok": mandatory_ok, "ok": sum(value.get("status") in {"HEALTHY", "OK"} for value in modules.values()), "total": len(modules), "optional_not_configured": len(optional_missing)}, "free_pool": {"status": free_pool_status, "size": len(pool), "providers": pool}, "run_counts": run_counts, "recent_runs": recent, "projects": project_rows, "active_run": active, "debugging": {"current_run_id": active.get("run_id") if active else None, "stage": active.get("current_job") if active else None, "events": debug, "source": "LIVE" if debug_ok else "IDLE"}, "telemetry": telemetry, "alerts": alerts, "optional_components_not_configured": optional_missing, "release": {"dashboard_version": VERSION, "core_v1_release": "v1.0.0", "morpheus_release": "v1.1.2", "dashboard_release": VERSION, "v1_release": "v1.0.0", "n8n_autodev_workflows": health_n8n.get("workflow_count", 0), "free_first_active": bool(runtime.get("free_first_enabled")), "paid_escalation": bool(runtime.get("automatic_paid_agent_escalation")), "deepseek": "INELIGIBLE"}, "sources": {"n8n": "LIVE" if runs_ok and health_n8n["status"] == "HEALTHY" else "UNAVAILABLE", "adapter": "LIVE" if runtime_ok else "UNAVAILABLE", "projects": "LIVE" if projects_ok or issues_ok else "DERIVED"}}
 
 
 def command_result_status(upstream_status: int, result: dict) -> int:

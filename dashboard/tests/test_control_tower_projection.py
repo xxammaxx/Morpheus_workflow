@@ -54,6 +54,28 @@ class ProjectionTests(unittest.TestCase):
         self.assertEqual(control_tower.provider_pool_status(1), "HEALTHY")
         self.assertEqual(control_tower.provider_pool_status(0), "UNAVAILABLE")
 
+    def test_runtime_auth_failure_is_not_empty_pool(self):
+        self.assertEqual(control_tower.operational_provider_pool({}, False), [])
+        original = (control_tower.table_rows, control_tower.adapter_runtime, control_tower.n8n_health, control_tower.adapter_health)
+        try:
+            control_tower.table_rows = lambda name: ([], True)
+            control_tower.adapter_runtime = lambda: ({}, False)
+            control_tower.n8n_health = lambda: control_tower.safe_status(True)
+            control_tower.adapter_health = lambda: control_tower.safe_status(True)
+            value = control_tower.projection()
+            self.assertEqual(value["free_pool"], {"status": "UNAVAILABLE", "size": 0, "providers": []})
+            self.assertEqual(value["alerts"], [])
+        finally:
+            control_tower.table_rows, control_tower.adapter_runtime, control_tower.n8n_health, control_tower.adapter_health = original
+
+    def test_operational_pool_uses_canonical_router_eligibility(self):
+        runtime = {"providers": [
+            {"provider": "free", "model": "a", "free_eligible": True, "router_eligible": False},
+            {"provider": "openrouter", "model": "b", "free_eligible": False, "router_eligible": True},
+        ]}
+        pool = control_tower.operational_provider_pool(runtime, True)
+        self.assertEqual([item["model"] for item in pool], ["b"])
+
     def test_n8n_health_counts_all_sixteen_canonical_workflows(self):
         original_get = control_tower.Upstream.get
         try:
@@ -74,7 +96,7 @@ class ProjectionTests(unittest.TestCase):
             control_tower.adapter_runtime = lambda: ({
                 "free_first_enabled": True,
                 "automatic_paid_agent_escalation": False,
-                "providers": [{"provider": "openrouter", "model": "x:free", "free_eligible": True}],
+                "providers": [{"provider": "openrouter", "model": "x:free", "free_eligible": True, "router_eligible": True}],
                 "mcp": {"status": "NICHT_KONFIGURIERT", "servers": []},
                 "opencode": {"ct8001_reachable": True, "binary_present": True, "version": "1.18.22"},
                 "deepseek_policy": {key: False for key in ("catalog_eligible", "router_eligible", "explicit_request_allowed", "fallback_allowed", "opencode_default")},
